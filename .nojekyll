@@ -1,0 +1,1 @@
+# This file prevents Jekyll from processing the site, which is necessary for Next.js static exports.
