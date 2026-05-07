@@ -1,0 +1,40 @@
+"""
+User model for MongoDB users collection.
+"""
+from beanie import Document
+from pydantic import EmailStr, Field
+from datetime import datetime
+from enum import Enum
+from typing import Optional
+
+
+class UserRole(str, Enum):
+    ADMIN = "admin"
+    EMPLOYEE = "employee"
+
+
+class User(Document):
+    name: str = Field(..., min_length=1, max_length=100)
+    email: EmailStr = Field(..., unique=True)
+    password_hash: str
+    role: UserRole = UserRole.EMPLOYEE
+    reward_points: int = Field(default=0, ge=0)
+    is_active: bool = Field(default=True)
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: Optional[datetime] = None
+
+    class Settings:
+        name = "users"
+        indexes = ["email"]
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "name": "John Doe",
+                "email": "john@example.com",
+                "password_hash": "hashed_password",
+                "role": "employee",
+                "reward_points": 0,
+                "is_active": True,
+            }
+        }
