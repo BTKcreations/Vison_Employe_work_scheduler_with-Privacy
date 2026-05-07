@@ -62,12 +62,17 @@ async def create_task(
 async def list_tasks(
     status_filter: Optional[str] = Query(None, alias="status"),
     priority: Optional[str] = None,
+    employee_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Get tasks. Admins see all; employees see only their own."""
     is_admin = current_user.role == UserRole.ADMIN
+    
+    # If not admin, they can only see their own tasks
+    target_user_id = str(current_user.id) if not is_admin else employee_id
+    
     tasks = await task_service.get_tasks(
-        user_id=str(current_user.id) if not is_admin else None,
+        user_id=target_user_id,
         status=status_filter,
         priority=priority,
         is_admin=is_admin,

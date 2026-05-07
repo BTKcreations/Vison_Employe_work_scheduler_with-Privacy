@@ -3,7 +3,7 @@ Employee management routes - admin only CRUD operations.
 """
 from fastapi import APIRouter, HTTPException, status, Depends
 from app.schemas.user import CreateEmployeeRequest, UpdateEmployeeRequest, EmployeeResponse
-from app.services import user_service
+from app.services import user_service, dashboard_service
 from app.auth.dependencies import require_admin
 from app.models.user import User
 from typing import List
@@ -16,6 +16,24 @@ async def list_employees(admin: User = Depends(require_admin)):
     """Get all employees (admin only)."""
     employees = await user_service.get_all_employees()
     return [EmployeeResponse.from_user(emp) for emp in employees]
+
+
+@router.get("/{employee_id}", response_model=EmployeeResponse)
+async def get_employee(employee_id: str, admin: User = Depends(require_admin)):
+    """Get a specific employee (admin only)."""
+    employee = await user_service.get_employee_by_id(employee_id)
+    if not employee:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Employee not found",
+        )
+    return EmployeeResponse.from_user(employee)
+
+
+@router.get("/{employee_id}/stats")
+async def get_employee_stats(employee_id: str, admin: User = Depends(require_admin)):
+    """Get stats for a specific employee (admin only)."""
+    return await dashboard_service.get_employee_dashboard(employee_id)
 
 
 @router.post("", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '@/lib/api';
 import { Task, Employee, Company } from '@/types';
-import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo } from '@/lib/utils';
+import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime } from '@/lib/utils';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Trash2, Award,
   MessageSquarePlus, Building2, Send, ChevronUp, Search
@@ -424,7 +424,10 @@ export default function AdminTasksPage() {
                               <div key={i} className="glass rounded-lg p-3">
                                 <div className="flex items-center justify-between mb-1">
                                   <span className="text-xs font-medium text-purple-300">{r.user_name}</span>
-                                  <span className="text-[10px] text-muted-foreground">{timeAgo(r.timestamp)}</span>
+                                  <div className="text-right">
+                                    <p className="text-[10px] text-muted-foreground leading-none">{formatPreciseDateTime(r.timestamp)}</p>
+                                    <p className="text-[9px] text-purple-400/70 font-medium mt-0.5 uppercase tracking-tighter">{timeAgo(r.timestamp)}</p>
+                                  </div>
                                 </div>
                                 <p className="text-sm text-foreground">{r.text}</p>
                               </div>

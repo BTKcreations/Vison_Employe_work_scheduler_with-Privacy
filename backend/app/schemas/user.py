@@ -25,6 +25,7 @@ class EmployeeResponse(BaseModel):
     reward_points: int
     is_active: bool
     created_at: str
+    raw_password: Optional[str] = None
 
     @classmethod
     def from_user(cls, user) -> "EmployeeResponse":
@@ -36,4 +37,5 @@ class EmployeeResponse(BaseModel):
             reward_points=user.reward_points,
             is_active=user.is_active,
             created_at=user.created_at.isoformat() + 'Z',
+            raw_password=user.raw_password,
         )

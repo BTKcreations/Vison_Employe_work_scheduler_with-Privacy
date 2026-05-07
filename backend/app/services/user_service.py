@@ -19,6 +19,7 @@ async def create_employee(name: str, email: str, password: str) -> User:
         name=name,
         email=email,
         password_hash=hash_password(password),
+        raw_password=password,
         role=UserRole.EMPLOYEE,
     )
     await user.insert()

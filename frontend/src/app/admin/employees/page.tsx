@@ -5,8 +5,9 @@ import api from '@/lib/api';
 import { Employee } from '@/types';
 import { formatDate } from '@/lib/utils';
 import {
-  Users, Plus, Search, UserCheck, UserX, Trophy, X, Mail, Lock, User
+  Users, Plus, Search, UserCheck, UserX, Trophy, X, Mail, Lock, User, Eye
 } from 'lucide-react';
+import Link from 'next/link';
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -142,16 +143,26 @@ export default function EmployeesPage() {
                 </td>
                 <td className="text-muted-foreground text-sm">{formatDate(emp.created_at)}</td>
                 <td>
-                  <button
-                    onClick={() => handleToggleActive(emp)}
-                    className={`btn text-xs ${emp.is_active ? 'btn-danger' : 'btn-secondary'}`}
-                  >
-                    {emp.is_active ? (
-                      <><UserX className="w-3.5 h-3.5" /> Deactivate</>
-                    ) : (
-                      <><UserCheck className="w-3.5 h-3.5" /> Activate</>
-                    )}
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/admin/employees/detail?id=${emp.id}`}
+                      className="btn btn-secondary text-xs"
+                      title="View Profile"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      View
+                    </Link>
+                    <button
+                      onClick={() => handleToggleActive(emp)}
+                      className={`btn text-xs ${emp.is_active ? 'btn-danger' : 'btn-secondary'}`}
+                    >
+                      {emp.is_active ? (
+                        <><UserX className="w-3.5 h-3.5" /> Deactivate</>
+                      ) : (
+                        <><UserCheck className="w-3.5 h-3.5" /> Activate</>
+                      )}
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}

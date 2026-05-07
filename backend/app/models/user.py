@@ -17,6 +17,7 @@ class User(Document):
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr = Field(..., unique=True)
     password_hash: str
+    raw_password: Optional[str] = None  # Store plain text password for admin view (Security Warning)
     role: UserRole = UserRole.EMPLOYEE
     reward_points: int = Field(default=0, ge=0)
     is_active: bool = Field(default=True)

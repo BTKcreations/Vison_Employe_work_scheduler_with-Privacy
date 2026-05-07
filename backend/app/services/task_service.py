@@ -52,7 +52,7 @@ async def get_tasks(
     """Get tasks with optional filters."""
     query = {}
 
-    if not is_admin and user_id:
+    if (not is_admin and user_id) or (is_admin and user_id):
         query["assigned_to"] = PydanticObjectId(user_id)
 
     if status:
@@ -108,7 +108,7 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
             "user_id": user_id,
             "user_name": user.name if user else "Unknown",
             "text": remark_text,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
         }
         current_remarks = task.remarks or []
         current_remarks.append(new_remark)

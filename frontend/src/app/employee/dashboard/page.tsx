@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { EmployeeDashboard } from '@/types';
-import { timeAgo } from '@/lib/utils';
+import { timeAgo, formatPreciseDateTime } from '@/lib/utils';
 import {
   ClipboardList, CheckCircle2, Clock, AlertTriangle, Play,
   Trophy, Star, Activity
@@ -162,7 +162,11 @@ export default function EmployeeDashboardPage() {
                   <div className="w-2 h-2 rounded-full bg-purple-400 mt-2 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-muted-foreground">{activity.details || activity.action}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(activity.timestamp)}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <p className="text-[10px] text-muted-foreground">{formatPreciseDateTime(activity.timestamp)}</p>
+                      <span className="text-[10px] text-purple-400 font-bold">•</span>
+                      <p className="text-[10px] text-purple-400/80 font-bold uppercase tracking-tighter">{timeAgo(activity.timestamp)}</p>
+                    </div>
                   </div>
                 </div>
               ))}

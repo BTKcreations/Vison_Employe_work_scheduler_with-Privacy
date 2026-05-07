@@ -36,7 +36,7 @@ async def get_admin_dashboard():
             "user_name": user.name if user else "Unknown",
             "action": activity.action,
             "details": activity.details,
-            "timestamp": activity.timestamp.isoformat(),
+            "timestamp": activity.timestamp.isoformat() + "Z",
         })
 
     # Total rewards given
@@ -75,7 +75,7 @@ async def get_employee_dashboard(user_id: str):
             "id": str(a.id),
             "action": a.action,
             "details": a.details,
-            "timestamp": a.timestamp.isoformat(),
+            "timestamp": a.timestamp.isoformat() + "Z",
         }
         for a in recent_activities
     ]
