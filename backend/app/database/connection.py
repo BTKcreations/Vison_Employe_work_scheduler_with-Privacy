@@ -12,12 +12,17 @@ from app.models.company import Company
 
 async def init_db():
     """Initialize MongoDB connection and Beanie ODM."""
-    client = AsyncMongoClient(settings.MONGODB_URL)
-    database = client[settings.DATABASE_NAME]
+    try:
+        # Set a 5-second timeout for server selection to prevent hanging on Render
+        client = AsyncMongoClient(settings.MONGODB_URL, serverSelectionTimeoutMS=5000)
+        database = client[settings.DATABASE_NAME]
 
-    await init_beanie(
-        database=database,
-        document_models=[User, Task, ActivityLog, Company]
-    )
-
-    print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
+        await init_beanie(
+            database=database,
+            document_models=[User, Task, ActivityLog, Company]
+        )
+        print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
+    except Exception as e:
+        print(f"[ERROR] Failed to connect to MongoDB: {str(e)}")
+        # We don't raise the error here to allow the app to start and show a health check
+        # even if DB is down, which helps in debugging 502 vs 500 errors.

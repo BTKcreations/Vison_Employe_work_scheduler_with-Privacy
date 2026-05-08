@@ -51,6 +51,7 @@ export interface Employee {
   reward_points: number;
   is_active: boolean;
   created_at: string;
+  raw_password?: string;
 }
 
 export interface LoginRequest {
