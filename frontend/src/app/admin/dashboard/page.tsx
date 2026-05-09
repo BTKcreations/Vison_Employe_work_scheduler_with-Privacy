@@ -81,7 +81,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
         {statCards.map((card, i) => {
           const Icon = card.icon;
           return (

@@ -5,8 +5,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Bell
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Bell, Menu
 } from 'lucide-react';
+import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
 
 const navItems = [
@@ -19,6 +20,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
   const { user, isLoading, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -36,8 +38,19 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
 
   return (
     <div className="min-h-screen bg-background flex">
+      {/* Mobile Sidebar Overlay */}
+      {isMobileMenuOpen && (
+        <div 
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 lg:hidden"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
-      <aside className="w-64 glass-strong flex flex-col fixed h-full z-30">
+      <aside className={`
+        w-64 glass-strong flex flex-col fixed h-full z-50 transition-transform duration-300
+        lg:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
+      `}>
         {/* Brand */}
         <div className="p-5 border-b border-border">
           <div className="flex items-center gap-3">
@@ -99,10 +112,18 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64 min-h-screen">
+      <main className="flex-1 lg:ml-64 min-h-screen">
         {/* Top Header */}
-        <header className="h-16 border-b border-border bg-white/50 backdrop-blur-md sticky top-0 z-20 px-8 flex items-center justify-between">
-          <GlobalSearch />
+        <header className="h-16 border-b border-border bg-white/50 backdrop-blur-md sticky top-0 z-40 px-4 lg:px-8 flex items-center justify-between">
+          <div className="flex items-center gap-4 flex-1">
+            <button 
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="p-2 hover:bg-slate-100 rounded-lg lg:hidden transition-colors"
+            >
+              <Menu className="w-5 h-5 text-slate-600" />
+            </button>
+            <GlobalSearch />
+          </div>
           <div className="flex items-center gap-4">
             <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
               <Bell className="w-5 h-5 text-slate-500" />

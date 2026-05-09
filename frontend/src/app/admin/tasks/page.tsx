@@ -304,8 +304,8 @@ export default function AdminTasksPage() {
       </div>
 
       {/* Tasks Table */}
-      <div className="glass rounded-xl">
-        <table className="data-table">
+      <div className="glass rounded-xl overflow-x-auto">
+        <table className="data-table min-w-[1000px] lg:min-w-full">
           <thead>
             <tr>
               <th className="w-16">S.No</th>

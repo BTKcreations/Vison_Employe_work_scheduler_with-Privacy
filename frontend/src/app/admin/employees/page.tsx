@@ -122,8 +122,8 @@ export default function EmployeesPage() {
       </div>
 
       {/* Employee Table */}
-      <div className="glass rounded-xl border border-border">
-        <table className="w-full text-left text-sm">
+      <div className="glass rounded-xl border border-border overflow-x-auto">
+        <table className="w-full text-left text-sm min-w-[800px] lg:min-w-full">
           <thead className="bg-slate-50 text-muted-foreground font-medium border-b border-border">
             <tr>
               <th className="px-6 py-4">Employee</th>

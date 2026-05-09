@@ -92,7 +92,7 @@ export default function GlobalSearch() {
       {/* Search Trigger (Input-like button) */}
       <button
         onClick={() => setIsOpen(true)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/50 hover:bg-slate-100 border border-slate-200 transition-all text-muted-foreground w-48 md:w-64"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/50 hover:bg-slate-100 border border-slate-200 transition-all text-muted-foreground flex-1 max-w-[180px] sm:max-w-xs"
       >
         <Search className="w-4 h-4" />
         <span className="text-xs flex-1 text-left">Quick Search...</span>
