@@ -67,7 +67,10 @@ async def _get_task_data(
             "Assigned by": task.created_by_name or "Unknown"
         })
 
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    # Convert all column names to UPPERCASE as per requirement
+    df.columns = [str(c).upper() for c in df.columns]
+    return df
 
 
 async def generate_tasks_csv(
@@ -123,6 +126,8 @@ async def generate_employees_excel() -> BytesIO:
         })
 
     df = pd.DataFrame(rows)
+    # Convert all column names to UPPERCASE as per requirement
+    df.columns = [str(c).upper() for c in df.columns]
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Employees", index=False)

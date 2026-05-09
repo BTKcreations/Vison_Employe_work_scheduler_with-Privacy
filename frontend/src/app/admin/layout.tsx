@@ -6,8 +6,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, Users, ClipboardList, FileBarChart,
-  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin
+  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Bell
 } from 'lucide-react';
+import GlobalSearch from '@/components/GlobalSearch';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -102,7 +103,23 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64">
+      <main className="flex-1 ml-64 min-h-screen">
+        {/* Top Header */}
+        <header className="h-16 border-b border-border bg-white/50 backdrop-blur-md sticky top-0 z-20 px-8 flex items-center justify-between">
+          <GlobalSearch />
+          <div className="flex items-center gap-4">
+            <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
+              <Bell className="w-5 h-5 text-slate-500" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+            </button>
+            <div className="h-8 w-px bg-border mx-1" />
+            <div className="text-right hidden sm:block">
+              <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
+              <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter font-black">{user.role}</p>
+            </div>
+          </div>
+        </header>
+
         <div className="p-6 lg:p-8">
           {children}
         </div>

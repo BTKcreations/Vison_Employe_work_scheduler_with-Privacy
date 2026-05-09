@@ -5,8 +5,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Bell
 } from 'lucide-react';
+import GlobalSearch from '@/components/GlobalSearch';
 
 const navItems = [
   { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -98,7 +99,26 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 ml-64">
+      <main className="flex-1 ml-64 min-h-screen">
+        {/* Top Header */}
+        <header className="h-16 border-b border-border bg-white/50 backdrop-blur-md sticky top-0 z-20 px-8 flex items-center justify-between">
+          <GlobalSearch />
+          <div className="flex items-center gap-4">
+            <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
+              <Bell className="w-5 h-5 text-slate-500" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
+            </button>
+            <div className="h-8 w-px bg-border mx-1" />
+            <div className="flex items-center gap-2 text-right hidden sm:block">
+              <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
+              <div className="flex items-center gap-1 justify-end mt-1">
+                <Trophy className="w-2.5 h-2.5 text-yellow-500" />
+                <span className="text-[10px] text-yellow-600 font-bold">{user.reward_points} pts</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
         <div className="p-6 lg:p-8">
           {children}
         </div>

@@ -1,5 +1,5 @@
 """
-FastAPI application entry point.
+FastAPI application entry point. Updated with Global Search.
 Employee Task & Reward Management System
 """
 from contextlib import asynccontextmanager
@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database.connection import init_db
-from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance
+from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search
 
 
 @asynccontextmanager
@@ -41,7 +41,7 @@ app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(companies.router)
 app.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
-
+app.include_router(search.router)
 
 @app.get("/", tags=["Health"])
 async def health_check():
