@@ -23,7 +23,7 @@ async def get_admin_dashboard():
     # Task priority distribution
     high_priority = await Task.find(Task.priority == "high").count()
     medium_priority = await Task.find(Task.priority == "medium").count()
-    low_priority = await Task.find(Task.priority == "low").count()
+    regular_priority = await Task.find(Task.priority == "regular").count()
     critical_priority = await Task.find(Task.priority == "critical").count()
 
     # Recent activity
@@ -53,7 +53,7 @@ async def get_admin_dashboard():
             "critical": critical_priority,
             "high": high_priority,
             "medium": medium_priority,
-            "low": low_priority,
+            "regular": regular_priority,
         },
         "leaderboard": leaderboard,
         "recent_activity": activity_list,

@@ -370,11 +370,9 @@ function EmployeeProfileContent() {
                         <td>
                           <div className="max-w-md">
                             <p className="font-medium text-slate-800 leading-relaxed text-sm">{task.work_description}</p>
-                            {task.company_name && (
-                              <span className="text-[9px] uppercase tracking-widest text-indigo-500 font-black mt-1.5 block">
-                                Client: {task.company_name}
-                              </span>
-                            )}
+                            <span className={`text-[9px] uppercase tracking-widest ${task.company_name === 'Personal / Internal' ? 'text-slate-400' : 'text-indigo-500'} font-black mt-1.5 block`}>
+                              Client: {task.company_name}
+                            </span>
                           </div>
                         </td>
                         <td>
@@ -525,7 +523,7 @@ function EmployeeProfileContent() {
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
                     className="select h-11"
                   >
-                    <option value="low">Low</option>
+                    <option value="regular">Regular</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>

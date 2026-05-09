@@ -59,7 +59,7 @@ export default function AdminDashboard() {
     { name: 'Critical', count: stats.priority_distribution.critical },
     { name: 'High', count: stats.priority_distribution.high },
     { name: 'Medium', count: stats.priority_distribution.medium },
-    { name: 'Low', count: stats.priority_distribution.low },
+    { name: 'Regular', count: stats.priority_distribution.regular },
   ];
 
   const statCards = [

@@ -189,11 +189,9 @@ export default function EmployeeTasksPage() {
                           <Award className="w-3 h-3" /> Rewarded (+{task.reward_points})
                         </span>
                       )}
-                      {task.company_name && (
-                        <span className="badge badge-purple flex items-center gap-1">
-                          <Building2 className="w-3 h-3" /> {task.company_name}
-                        </span>
-                      )}
+                      <span className={`badge ${task.company_name === 'Personal / Internal' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'badge-purple'} flex items-center gap-1`}>
+                        <Building2 className="w-3 h-3" /> {task.company_name}
+                      </span>
                     </div>
                     <p className="text-base font-medium text-slate-800 leading-relaxed mb-3">{task.work_description}</p>
                     
@@ -392,7 +390,7 @@ export default function EmployeeTasksPage() {
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
                     className="select h-11"
                   >
-                    <option value="low">Low</option>
+                    <option value="regular">Regular</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>

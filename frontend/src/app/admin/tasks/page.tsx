@@ -227,7 +227,7 @@ export default function AdminTasksPage() {
               className="select"
             >
               <option value="">All</option>
-              <option value="low">Low</option>
+              <option value="regular">Regular</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="critical">Critical</option>
@@ -339,11 +339,9 @@ export default function AdminTasksPage() {
                     })()}
                   </td>
                   <td>
-                    {task.company_name ? (
-                      <span className="badge badge-purple">{task.company_name}</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+                    <span className={`badge ${task.company_name === 'Personal / Internal' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'badge-purple'}`}>
+                      {task.company_name}
+                    </span>
                   </td>
                   <td className="max-w-md">
                     <p className="text-sm text-slate-700 leading-relaxed">{task.work_description}</p>
@@ -551,7 +549,7 @@ export default function AdminTasksPage() {
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
                     className="select h-11"
                   >
-                    <option value="low">Low</option>
+                    <option value="regular">Regular</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>

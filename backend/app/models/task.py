@@ -18,7 +18,7 @@ class TaskStatus(str, Enum):
 
 
 class TaskPriority(str, Enum):
-    LOW = "low"
+    REGULAR = "regular"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"

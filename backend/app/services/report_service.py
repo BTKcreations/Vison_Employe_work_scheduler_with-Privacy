@@ -54,7 +54,7 @@ async def _get_task_data(
         rows.append({
             "s.no": i,
             "employee name": task.assigned_to_name or "Unknown",
-            "company name": task.company_name or "Personal",
+            "company name": task.company_name or "Personal / Internal",
             "work description": task.work_description,
             "work priority": task.priority.value,
             "dead-line": task.deadline.strftime("%d-%m-%Y %H:%M:%S"),

@@ -16,7 +16,7 @@ class RemarkEntry(BaseModel):
 class CreateTaskRequest(BaseModel):
     work_description: str = Field(..., min_length=1, max_length=2000)
     assigned_to: Optional[str] = None  # Employee ID; None = personal task
-    priority: str = Field(default="medium", pattern="^(low|medium|high|critical)$")
+    priority: str = Field(default="medium", pattern="^(regular|medium|high|critical)$")
     deadline: datetime
     company_id: Optional[str] = None  # Company ID
 
@@ -24,7 +24,7 @@ class CreateTaskRequest(BaseModel):
 class UpdateTaskRequest(BaseModel):
     work_description: Optional[str] = Field(None, min_length=1, max_length=2000)
     status: Optional[str] = Field(None, pattern="^(pending|in_progress|completed|overdue|completed_late)$")
-    priority: Optional[str] = Field(None, pattern="^(low|medium|high|critical)$")
+    priority: Optional[str] = Field(None, pattern="^(regular|medium|high|critical)$")
     deadline: Optional[datetime] = None
     remarks: Optional[str] = Field(None, max_length=1000)  # New remark text to append
 
@@ -65,7 +65,7 @@ class TaskResponse(BaseModel):
             reward_given=task.reward_given,
             reward_points=task.reward_points,
             company_id=str(task.company_id) if task.company_id else None,
-            company_name=company_name or task.company_name,
+            company_name=company_name or task.company_name or "Personal / Internal",
             remarks=[RemarkEntry(**r) for r in (task.remarks or [])],
             created_at=task.created_at.isoformat() + 'Z',
         )

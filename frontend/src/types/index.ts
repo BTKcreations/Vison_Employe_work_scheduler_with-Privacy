@@ -24,7 +24,7 @@ export interface Task {
   created_by: string;
   created_by_name: string | null;
   status: 'pending' | 'in_progress' | 'completed' | 'overdue' | 'completed_late';
-  priority: 'low' | 'medium' | 'high' | 'critical';
+  priority: 'regular' | 'medium' | 'high' | 'critical';
   task_type: 'assigned' | 'personal';
   deadline: string;
   completed_at: string | null;
@@ -125,7 +125,7 @@ export interface DashboardStats {
     critical: number;
     high: number;
     medium: number;
-    low: number;
+    regular: number;
   };
   leaderboard: LeaderboardEntry[];
   recent_activity: ActivityEntry[];

@@ -59,7 +59,7 @@ export function getStatusColor(status: string): string {
 
 export function getPriorityColor(priority: string): string {
   switch (priority) {
-    case 'low': return 'priority-low';
+    case 'regular': return 'priority-regular';
     case 'medium': return 'priority-medium';
     case 'high': return 'priority-high';
     case 'critical': return 'priority-critical';
