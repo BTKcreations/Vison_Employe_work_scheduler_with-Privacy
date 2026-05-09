@@ -6,7 +6,7 @@ import { Employee } from '@/types';
 import UserLink from '@/components/UserLink';
 import { formatDate } from '@/lib/utils';
 import {
-  Users, Plus, Search, UserCheck, UserX, Trophy, X, Mail, Lock, User, Eye, Shield, Briefcase
+  Users, Plus, Search, UserCheck, UserX, Trophy, X, Mail, Lock, User, Eye, Shield, Briefcase, Loader2
 } from 'lucide-react';
 import Link from 'next/link';
 

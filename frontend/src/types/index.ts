@@ -157,7 +157,8 @@ export interface LeaderboardEntry {
 
 export interface ActivityEntry {
   id: string;
-  user_name?: string;
+  user_id: string;
+  user_name: string;
   action: string;
   details: string | null;
   timestamp: string;

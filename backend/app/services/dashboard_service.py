@@ -74,6 +74,8 @@ async def get_employee_dashboard(user_id: str):
     activity_list = [
         {
             "id": str(a.id),
+            "user_id": str(a.user_id),
+            "user_name": user.name,
             "action": a.action,
             "details": a.details,
             "timestamp": a.timestamp.isoformat() + "Z",

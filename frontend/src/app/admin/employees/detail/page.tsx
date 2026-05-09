@@ -13,7 +13,7 @@ import {
   Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle, 
   ClipboardList, Activity, ArrowLeft, Plus, UserX, UserCheck,
   MessageSquarePlus, Play, Trash2, ChevronUp, Send,
-  Eye, EyeOff, Copy, ShieldCheck
+  Eye, EyeOff, Copy, ShieldCheck, X
 } from 'lucide-react';
 
 function EmployeeProfileContent() {
