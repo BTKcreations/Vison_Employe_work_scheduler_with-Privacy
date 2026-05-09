@@ -29,14 +29,18 @@ async def check_and_award_reward(task: Task) -> bool:
             await user.set({
                 "reward_points": user.reward_points + 1
             })
-            await task.set({"reward_given": True})
+            # Also store reward points on the task for reports
+            await task.set({
+                "reward_given": True,
+                "reward_points": 1
+            })
 
             # Log the reward
             await ActivityLog(
                 user_id=user.id,
                 action="reward_earned",
                 task_id=task.id,
-                details=f"Earned 1 reward point for completing '{task.title}' before deadline",
+                details=f"Earned 1 reward point for completing '{task.work_description[:30]}...' before deadline",
             ).insert()
 
             return True
@@ -60,4 +64,4 @@ async def get_leaderboard(limit: int = 10):
             "reward_points": emp.reward_points,
         }
         for emp in employees
-    ]
+      ]

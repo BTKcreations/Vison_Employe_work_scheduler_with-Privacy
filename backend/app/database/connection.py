@@ -8,6 +8,7 @@ from app.models.user import User
 from app.models.task import Task
 from app.models.activity_log import ActivityLog
 from app.models.company import Company
+from app.models.attendance import Attendance
 
 
 async def init_db():
@@ -19,7 +20,7 @@ async def init_db():
 
         await init_beanie(
             database=database,
-            document_models=[User, Task, ActivityLog, Company]
+            document_models=[User, Task, ActivityLog, Company, Attendance]
         )
         print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
     except Exception as e:

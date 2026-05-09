@@ -6,6 +6,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.auth.jwt_handler import decode_access_token
 from app.models.user import User, UserRole
 from beanie import PydanticObjectId
+from typing import List
 
 security = HTTPBearer()
 
@@ -47,13 +48,39 @@ async def get_current_user(
     return user
 
 
+class RoleChecker:
+    """Dependency factory for checking if a user has specific roles."""
+    def __init__(self, allowed_roles: List[UserRole]):
+        self.allowed_roles = allowed_roles
+
+    def __call__(self, user: User = Depends(get_current_user)):
+        if user.role not in self.allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required roles: {[r.value for r in self.allowed_roles]}",
+            )
+        return user
+
+
 async def require_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Ensure the current user is an admin."""
-    if current_user.role != UserRole.ADMIN:
+    """Ensure the current user is an admin or super admin."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
+        )
+    return current_user
+
+
+async def require_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Ensure the current user is a super admin."""
+    if current_user.role != UserRole.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super Admin access required",
         )
     return current_user

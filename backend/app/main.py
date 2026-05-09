@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database.connection import init_db
-from app.routes import auth, employees, tasks, dashboard, reports, companies
+from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance
 
 
 @asynccontextmanager
@@ -40,6 +40,7 @@ app.include_router(tasks.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
 app.include_router(companies.router)
+app.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 
 
 @app.get("/", tags=["Health"])

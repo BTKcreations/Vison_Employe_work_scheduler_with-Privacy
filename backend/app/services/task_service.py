@@ -3,6 +3,7 @@ Task service - business logic for task operations.
 """
 from app.models.task import Task, TaskStatus, TaskPriority, TaskType
 from app.models.user import User
+from app.models.company import Company
 from app.models.activity_log import ActivityLog
 from app.services.reward_service import check_and_award_reward
 from beanie import PydanticObjectId
@@ -11,8 +12,7 @@ from typing import Optional, List
 
 
 async def create_task(
-    title: str,
-    description: Optional[str],
+    work_description: str,
     assigned_to: str,
     created_by: str,
     priority: str,
@@ -21,15 +21,21 @@ async def create_task(
     company_id: Optional[str] = None,
 ) -> Task:
     """Create a new task."""
+    assigned_user = await User.get(PydanticObjectId(assigned_to))
+    creator_user = await User.get(PydanticObjectId(created_by))
+    company = await Company.get(PydanticObjectId(company_id)) if company_id else None
+
     task = Task(
-        title=title,
-        description=description,
+        work_description=work_description,
         assigned_to=PydanticObjectId(assigned_to),
+        assigned_to_name=assigned_user.name if assigned_user else "Unknown",
         created_by=PydanticObjectId(created_by),
+        created_by_name=creator_user.name if creator_user else "Unknown",
         priority=TaskPriority(priority),
         task_type=TaskType(task_type),
         deadline=deadline,
         company_id=PydanticObjectId(company_id) if company_id else None,
+        company_name=company.name if company else None,
     )
     await task.insert()
 
@@ -37,7 +43,7 @@ async def create_task(
         user_id=PydanticObjectId(created_by),
         action="task_created",
         task_id=task.id,
-        details=f"Task '{title}' created",
+        details=f"Work '{work_description[:50]}...' assigned to {assigned_user.name if assigned_user else 'Unknown'}",
     ).insert()
 
     return task
@@ -133,7 +139,7 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
             user_id=task.assigned_to,
             action="task_completed",
             task_id=task.id,
-            details=f"Task '{task.title}' completed",
+            details=f"Work '{task.work_description[:50]}...' completed",
         ).insert()
 
     return task

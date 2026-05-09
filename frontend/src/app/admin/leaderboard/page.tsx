@@ -26,22 +26,22 @@ export default function LeaderboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   const getRankIcon = (index: number) => {
-    if (index === 0) return <Crown className="w-6 h-6 text-yellow-400" />;
-    if (index === 1) return <Medal className="w-6 h-6 text-slate-300" />;
-    if (index === 2) return <Medal className="w-6 h-6 text-amber-600" />;
+    if (index === 0) return <Crown className="w-6 h-6 text-yellow-600" />;
+    if (index === 1) return <Medal className="w-6 h-6 text-slate-500" />;
+    if (index === 2) return <Medal className="w-6 h-6 text-amber-700" />;
     return <span className="text-lg font-bold text-muted-foreground">{index + 1}</span>;
   };
 
   const getRankBg = (index: number) => {
-    if (index === 0) return 'from-yellow-500/20 to-amber-500/10 border-yellow-500/20';
-    if (index === 1) return 'from-slate-400/15 to-slate-500/5 border-slate-400/15';
-    if (index === 2) return 'from-amber-600/15 to-amber-700/5 border-amber-600/15';
+    if (index === 0) return 'from-yellow-50 to-amber-50 border-yellow-200';
+    if (index === 1) return 'from-slate-50 to-slate-100 border-slate-200';
+    if (index === 2) return 'from-amber-50 to-orange-50 border-amber-200';
     return 'from-transparent to-transparent border-border';
   };
 
@@ -50,7 +50,7 @@ export default function LeaderboardPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Trophy className="w-7 h-7 text-yellow-400" />
+          <Trophy className="w-7 h-7 text-yellow-500" />
           Leaderboard
         </h1>
         <p className="text-muted-foreground text-sm mt-1">Top performers based on reward points</p>
@@ -58,8 +58,8 @@ export default function LeaderboardPage() {
 
       {/* Info Banner */}
       <div className="glass rounded-xl p-4 mb-8 flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-yellow-500/15 flex items-center justify-center shrink-0">
-          <Award className="w-5 h-5 text-yellow-400" />
+        <div className="w-10 h-10 rounded-lg bg-yellow-50 flex items-center justify-center shrink-0 border border-yellow-100">
+          <Award className="w-5 h-5 text-yellow-600" />
         </div>
         <div>
           <p className="text-sm font-medium">Reward System</p>
@@ -67,7 +67,7 @@ export default function LeaderboardPage() {
             Employees earn +1 reward point for completing tasks before the deadline. Tasks completed after the deadline earn no points.
           </p>
         </div>
-        <TrendingUp className="w-5 h-5 text-purple-400 ml-auto shrink-0" />
+        <TrendingUp className="w-5 h-5 text-indigo-500 ml-auto shrink-0" />
       </div>
 
       {/* Leaderboard */}
@@ -76,11 +76,10 @@ export default function LeaderboardPage() {
           {leaderboard.map((emp, i) => (
             <div
               key={emp.id}
-              className={`glass rounded-xl p-5 flex items-center gap-4 bg-gradient-to-r ${getRankBg(i)} stat-card count-animate`}
-              style={{ animationDelay: `${i * 0.1}s` }}
+              className={`glass rounded-xl p-5 flex items-center gap-4 bg-gradient-to-r ${getRankBg(i)} stat-card`}
             >
               {/* Rank */}
-              <div className="w-12 h-12 rounded-xl bg-background/50 flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-center shrink-0 shadow-sm">
                 {getRankIcon(i)}
               </div>
 
@@ -103,8 +102,8 @@ export default function LeaderboardPage() {
               {/* Points */}
               <div className="text-right">
                 <div className="flex items-center gap-1.5">
-                  <Star className={`w-5 h-5 ${i === 0 ? 'text-yellow-400' : 'text-purple-400'}`} />
-                  <span className={`text-2xl font-bold ${i === 0 ? 'text-yellow-400' : ''}`}>
+                  <Star className={`w-5 h-5 ${i === 0 ? 'text-yellow-500' : 'text-indigo-500'}`} />
+                  <span className={`text-2xl font-bold ${i === 0 ? 'text-yellow-600' : 'text-indigo-600'}`}>
                     {emp.reward_points}
                   </span>
                 </div>

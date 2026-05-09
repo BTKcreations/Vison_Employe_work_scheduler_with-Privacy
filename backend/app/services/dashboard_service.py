@@ -33,6 +33,7 @@ async def get_admin_dashboard():
         user = await User.get(activity.user_id)
         activity_list.append({
             "id": str(activity.id),
+            "user_id": str(activity.user_id),
             "user_name": user.name if user else "Unknown",
             "action": activity.action,
             "details": activity.details,

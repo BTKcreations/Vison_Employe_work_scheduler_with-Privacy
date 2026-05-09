@@ -29,17 +29,20 @@ class TaskType(str, Enum):
 
 
 class Task(Document):
-    title: str = Field(..., min_length=1, max_length=200)
-    description: Optional[str] = Field(default=None, max_length=2000)
+    work_description: str = Field(..., min_length=1, max_length=2000)
     assigned_to: PydanticObjectId
+    assigned_to_name: Optional[str] = None
     created_by: PydanticObjectId
+    created_by_name: Optional[str] = None
     status: TaskStatus = TaskStatus.PENDING
     priority: TaskPriority = TaskPriority.MEDIUM
     task_type: TaskType = TaskType.ASSIGNED
     deadline: datetime
     completed_at: Optional[datetime] = None
     reward_given: bool = False
+    reward_points: int = 0
     company_id: Optional[PydanticObjectId] = None
+    company_name: Optional[str] = None
     remarks: List[dict] = Field(default_factory=list)  # [{"user_id": str, "user_name": str, "text": str, "timestamp": str}]
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
@@ -51,8 +54,7 @@ class Task(Document):
     class Config:
         json_schema_extra = {
             "example": {
-                "title": "Prepare Weekly Report",
-                "description": "Complete the weekly status report",
+                "work_description": "Complete the weekly status report with all details",
                 "status": "pending",
                 "priority": "high",
                 "task_type": "assigned",

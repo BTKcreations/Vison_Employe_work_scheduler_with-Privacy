@@ -4,17 +4,17 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Employee, Task, Company } from '@/types';
+import StatusChart from '@/components/StatusChart';
 import { 
   formatDate, formatDateTime, getStatusColor, getStatusLabel, 
   getPriorityColor, timeAgo, formatPreciseDateTime 
 } from '@/lib/utils';
 import {
-  User, Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle, 
-  ClipboardList, Activity, ArrowLeft, Plus, Building2, UserX, UserCheck,
-  ChevronRight, MessageSquarePlus, Play, Trash2, Award, ChevronUp, Send,
+  Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle, 
+  ClipboardList, Activity, ArrowLeft, Plus, UserX, UserCheck,
+  MessageSquarePlus, Play, Trash2, ChevronUp, Send,
   Eye, EyeOff, Copy, ShieldCheck
 } from 'lucide-react';
-import Link from 'next/link';
 
 function EmployeeProfileContent() {
   const searchParams = useSearchParams();
@@ -31,7 +31,7 @@ function EmployeeProfileContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newTask, setNewTask] = useState({
-    title: '', description: '', priority: 'medium', deadline: '', company_id: '',
+    work_description: '', priority: 'medium', deadline: '', company_id: '',
   });
 
   // Remarks state
@@ -89,7 +89,7 @@ function EmployeeProfileContent() {
       };
       await api.post('/tasks', payload);
       setShowCreateModal(false);
-      setNewTask({ title: '', description: '', priority: 'medium', deadline: '', company_id: '' });
+      setNewTask({ work_description: '', priority: 'medium', deadline: '', company_id: '' });
       fetchData();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to create task');
@@ -157,31 +157,31 @@ function EmployeeProfileContent() {
       {/* Top Navigation & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
-          <button onClick={() => router.back()} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+          <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-3">
+            <h1 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
               {employee.name}
-              <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'} text-xs`}>
+              <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'} text-xs font-bold`}>
                 {employee.is_active ? 'Active' : 'Inactive'}
               </span>
             </h1>
-            <p className="text-muted-foreground text-sm">Employee details and performance analytics</p>
+            <p className="text-slate-500 text-sm font-medium">Employee Profile & Productivity Metrics</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
           <button 
             onClick={handleToggleActive}
-            className={`btn ${employee.is_active ? 'btn-danger' : 'btn-success'}`}
+            className={`btn ${employee.is_active ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
           >
             {employee.is_active ? <><UserX className="w-4 h-4" /> Deactivate</> : <><UserCheck className="w-4 h-4" /> Activate</>}
           </button>
           <button 
             onClick={() => setShowCreateModal(true)}
-            className="btn btn-primary"
+            className="btn btn-primary shadow-lg shadow-indigo-100"
           >
-            <Plus className="w-4 h-4" /> Assign Task
+            <Plus className="w-4 h-4" /> Assign Work
           </button>
         </div>
       </div>
@@ -190,45 +190,45 @@ function EmployeeProfileContent() {
         {/* Left Column: Profile Card & Stats */}
         <div className="space-y-6">
           {/* Profile Card */}
-          <div className="glass rounded-2xl p-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl -mr-16 -mt-16" />
+          <div className="glass rounded-2xl p-6 relative overflow-hidden border border-slate-100">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
             <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-purple-500/20">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-500 flex items-center justify-center text-white text-2xl font-bold shadow-xl shadow-indigo-200">
                 {employee.name.charAt(0).toUpperCase()}
               </div>
               <div>
-                <h3 className="font-bold text-lg">{employee.name}</h3>
-                <p className="text-muted-foreground text-sm flex items-center gap-1.5">
+                <h3 className="font-bold text-lg text-slate-800">{employee.name}</h3>
+                <p className="text-slate-500 text-sm flex items-center gap-1.5 font-medium">
                   <Mail className="w-3.5 h-3.5" /> {employee.email}
                 </p>
               </div>
             </div>
             <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10">
-                <span className="text-sm text-muted-foreground flex items-center gap-2">
-                  <Calendar className="w-4 h-4" /> Joined
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50/50 border border-slate-100">
+                <span className="text-sm text-slate-500 flex items-center gap-2 font-medium">
+                  <Calendar className="w-4 h-4 text-indigo-500" /> Joined
                 </span>
-                <span className="text-sm font-medium">{formatDate(employee.created_at)}</span>
+                <span className="text-sm font-bold text-slate-700">{formatDate(employee.created_at)}</span>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-yellow-400/5 border border-yellow-400/10">
-                <span className="text-sm text-yellow-400/80 flex items-center gap-2">
-                  <Trophy className="w-4 h-4" /> Total Rewards
+              <div className="flex items-center justify-between p-3.5 rounded-xl bg-amber-50/50 border border-amber-100">
+                <span className="text-sm text-amber-600 flex items-center gap-2 font-bold">
+                  <Trophy className="w-4 h-4" /> Rewards Earned
                 </span>
-                <span className="text-sm font-bold text-yellow-400">{employee.reward_points} pts</span>
+                <span className="text-sm font-black text-amber-600">{employee.reward_points} pts</span>
               </div>
             </div>
           </div>
 
           {/* Credentials Card (Admin Only) */}
-          <div className="glass rounded-2xl p-6 border-blue-500/10 bg-blue-500/5">
-            <h3 className="font-bold mb-4 flex items-center gap-2 text-blue-400">
-              <ShieldCheck className="w-4 h-4" /> Login Credentials
+          <div className="glass rounded-2xl p-6 border-indigo-100 bg-indigo-50/30">
+            <h3 className="font-bold mb-4 flex items-center gap-2 text-indigo-700">
+              <ShieldCheck className="w-4 h-4" /> Access Control
             </h3>
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 block">Username / Email</label>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 font-black mb-1.5 block">Login Identifier</label>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-white/5 rounded-lg p-2.5 text-sm font-mono border border-white/10 break-all">
+                  <div className="flex-1 bg-white rounded-lg p-2.5 text-sm font-mono border border-slate-200 break-all text-slate-600">
                     {employee.email}
                   </div>
                   <button 
@@ -236,21 +236,21 @@ function EmployeeProfileContent() {
                       navigator.clipboard.writeText(employee.email);
                       alert('Email copied to clipboard');
                     }}
-                    className="p-2.5 hover:bg-white/10 rounded-lg transition-colors border border-white/10"
+                    className="p-2.5 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200"
                     title="Copy Email"
                   >
-                    <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Copy className="w-3.5 h-3.5 text-slate-400" />
                   </button>
                 </div>
               </div>
               <div>
-                <label className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold mb-1 block">Password</label>
+                <label className="text-[10px] uppercase tracking-wider text-slate-400 font-black mb-1.5 block">Access Token</label>
                 <div className="flex items-center gap-2">
-                  <div className="flex-1 bg-white/5 rounded-lg p-2.5 text-sm font-mono border border-white/10 break-all flex items-center justify-between">
+                  <div className="flex-1 bg-white rounded-lg p-2.5 text-sm font-mono border border-slate-200 break-all flex items-center justify-between text-slate-600">
                     <span>{showPassword ? (employee.raw_password || '********') : '••••••••'}</span>
                     <button 
                       onClick={() => setShowPassword(!showPassword)}
-                      className="text-muted-foreground hover:text-blue-400 transition-colors"
+                      className="text-slate-400 hover:text-indigo-600 transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                     </button>
@@ -260,102 +260,100 @@ function EmployeeProfileContent() {
                       if (employee.raw_password) {
                         navigator.clipboard.writeText(employee.raw_password);
                         alert('Password copied to clipboard');
-                      } else {
-                        alert('No raw password stored for this user');
                       }
                     }}
-                    className="p-2.5 hover:bg-white/10 rounded-lg transition-colors border border-white/10"
+                    className="p-2.5 bg-white hover:bg-slate-50 rounded-lg transition-colors border border-slate-200"
                     title="Copy Password"
                     disabled={!employee.raw_password}
                   >
-                    <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Copy className="w-3.5 h-3.5 text-slate-400" />
                   </button>
                 </div>
-                {!employee.raw_password && (
-                  <p className="text-[9px] text-amber-400/70 mt-1 italic">
-                    Note: Old users created before this update won&apos;t have a visible raw password.
-                  </p>
-                )}
               </div>
             </div>
           </div>
 
           {/* Quick Stats Grid */}
           <div className="grid grid-cols-2 gap-4">
-            <div className="glass rounded-2xl p-4">
-              <div className="flex items-center gap-2 text-green-400 mb-2">
+            <div className="glass rounded-2xl p-5 border border-slate-100">
+              <div className="flex items-center gap-2 text-emerald-600 mb-2">
                 <CheckCircle2 className="w-4 h-4" />
-                <span className="text-xs font-semibold uppercase tracking-wider">Completed</span>
+                <span className="text-[10px] font-black uppercase tracking-widest">Completed</span>
               </div>
-              <p className="text-2xl font-bold">{stats?.tasks?.completed || 0}</p>
+              <p className="text-3xl font-black text-slate-800">{stats?.tasks?.completed || 0}</p>
             </div>
-            <div className="glass rounded-2xl p-4">
-              <div className="flex items-center gap-2 text-blue-400 mb-2">
+            <div className="glass rounded-2xl p-5 border border-slate-100">
+              <div className="flex items-center gap-2 text-amber-600 mb-2">
                 <Clock className="w-4 h-4" />
-                <span className="text-xs font-semibold uppercase tracking-wider">Pending</span>
+                <span className="text-[10px] font-black uppercase tracking-widest">Pending</span>
               </div>
-              <p className="text-2xl font-bold">{stats?.tasks?.pending || 0}</p>
-            </div>
-            <div className="glass rounded-2xl p-4">
-              <div className="flex items-center gap-2 text-purple-400 mb-2">
-                <Activity className="w-4 h-4" />
-                <span className="text-xs font-semibold uppercase tracking-wider">In Progress</span>
-              </div>
-              <p className="text-2xl font-bold">{stats?.tasks?.in_progress || 0}</p>
-            </div>
-            <div className="glass rounded-2xl p-4">
-              <div className="flex items-center gap-2 text-red-400 mb-2">
-                <AlertCircle className="w-4 h-4" />
-                <span className="text-xs font-semibold uppercase tracking-wider">Overdue</span>
-              </div>
-              <p className="text-2xl font-bold">{stats?.tasks?.overdue || 0}</p>
-            </div>
-          </div>
-
-          {/* Recent Activity Log */}
-          <div className="glass rounded-2xl p-6">
-            <h3 className="font-bold mb-4 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-purple-400" /> Recent Activity
-            </h3>
-            <div className="space-y-4">
-              {stats?.recent_activity?.length > 0 ? (
-                stats.recent_activity.map((activity: any) => (
-                  <div key={activity.id} className="relative pl-6 border-l border-white/10 pb-4 last:pb-0">
-                    <div className="absolute left-[-5px] top-1.5 w-2.5 h-2.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(168,85,247,0.5)]" />
-                    <p className="text-sm font-medium">{activity.details}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-[9px] text-muted-foreground uppercase tracking-tight">
-                        {formatPreciseDateTime(activity.timestamp)}
-                      </p>
-                      <span className="text-[9px] text-purple-400 font-bold">•</span>
-                      <p className="text-[9px] text-purple-400/80 font-bold uppercase tracking-tighter">
-                        {timeAgo(activity.timestamp)}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">No recent activity</p>
-              )}
+              <p className="text-3xl font-black text-slate-800">{stats?.tasks?.pending || 0}</p>
             </div>
           </div>
         </div>
 
-        {/* Right Column: Task History */}
+        {/* Right Column: Analytics & Task History */}
         <div className="lg:col-span-2 space-y-6">
-          <div className="glass rounded-2xl overflow-hidden">
-            <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <h3 className="font-bold flex items-center gap-2">
-                <ClipboardList className="w-4 h-4 text-purple-400" /> Task History
+          {/* Analytics Chart */}
+          <div className="glass rounded-2xl p-6 border border-slate-100">
+            <div className="flex items-center gap-2 mb-6">
+              <Activity className="w-5 h-5 text-indigo-500" />
+              <h3 className="font-bold text-slate-800">Task Status Distribution</h3>
+            </div>
+            
+            {stats && stats.tasks && (stats.tasks.total > 0) ? (
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                <div className="w-full md:w-1/2">
+                  <StatusChart 
+                    data={[
+                      { name: 'Completed', value: stats.tasks.completed, color: '#10b981' },
+                      { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
+                      { name: 'In Progress', value: stats.tasks.in_progress, color: '#3b82f6' },
+                      { name: 'Overdue', value: stats.tasks.overdue, color: '#ef4444' },
+                    ].filter(d => d.value > 0)} 
+                    total={stats.tasks.total} 
+                    completed={stats.tasks.completed}
+                    size={220}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4 w-full md:w-1/2">
+                  {[
+                    { label: 'Completed', value: stats.tasks.completed, color: 'bg-emerald-500' },
+                    { label: 'Pending', value: stats.tasks.pending, color: 'bg-amber-500' },
+                    { label: 'In Progress', value: stats.tasks.in_progress, color: 'bg-blue-500' },
+                    { label: 'Overdue', value: stats.tasks.overdue, color: 'bg-rose-500' },
+                  ].map((item) => (
+                    <div key={item.label} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className={`w-2 h-2 rounded-full ${item.color}`} />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
+                      </div>
+                      <p className="text-xl font-black text-slate-900">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-10 text-center">
+                <p className="text-sm text-slate-400 italic">No task data available for analytics.</p>
+              </div>
+            )}
+          </div>
+
+          <div className="glass rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white">
+              <h3 className="font-bold flex items-center gap-2 text-slate-800">
+                <ClipboardList className="w-5 h-5 text-indigo-500" /> Work Assignments
               </h3>
-              <span className="text-xs text-muted-foreground">Total: {tasks.length} tasks</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total: {tasks.length} items</span>
             </div>
             
             <div className="overflow-x-auto">
               <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Task Details</th>
+                    <th className="w-16 text-center">S.No</th>
+                    <th>Work Description</th>
                     <th>Priority</th>
                     <th>Status</th>
                     <th>Deadline</th>
@@ -363,80 +361,80 @@ function EmployeeProfileContent() {
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((task) => (
-                    <Suspense key={task.id} fallback={<tr><td colSpan={5}>Loading task...</td></tr>}>
-                      <tr key={task.id} className="group hover:bg-white/5 transition-colors">
+                  {tasks.map((task, index) => (
+                    <Suspense key={task.id} fallback={<tr><td colSpan={6}>Loading...</td></tr>}>
+                      <tr key={task.id} className="group hover:bg-slate-50 transition-colors">
+                        <td className="text-center font-mono text-xs text-slate-400">{(index + 1).toString().padStart(2, '0')}</td>
                         <td>
-                          <div>
-                            <p className="font-medium">{task.title}</p>
+                          <div className="max-w-md">
+                            <p className="font-medium text-slate-800 leading-relaxed text-sm">{task.work_description}</p>
                             {task.company_name && (
-                              <span className="text-[10px] uppercase tracking-wider text-purple-400 font-semibold mt-1 block">
-                                {task.company_name}
+                              <span className="text-[9px] uppercase tracking-widest text-indigo-500 font-black mt-1.5 block">
+                                Client: {task.company_name}
                               </span>
                             )}
                           </div>
                         </td>
                         <td>
-                          <span className={`text-xs font-semibold uppercase tracking-wider ${getPriorityColor(task.priority)}`}>
+                          <span className={`text-[10px] font-black uppercase tracking-wider ${getPriorityColor(task.priority)}`}>
                             {task.priority}
                           </span>
                         </td>
                         <td>
-                          <span className={`badge ${getStatusColor(task.status)} text-[10px]`}>
+                          <span className={`badge ${getStatusColor(task.status)} text-[10px] font-bold`}>
                             {getStatusLabel(task.status)}
                           </span>
                         </td>
-                        <td className="text-xs text-muted-foreground">
+                        <td className="text-xs text-slate-500 font-medium whitespace-nowrap">
                           {formatDateTime(task.deadline)}
                         </td>
                         <td>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             {task.status === 'pending' && (
-                              <button onClick={() => handleStatusUpdate(task.id, 'in_progress')} className="p-1.5 hover:bg-blue-500/10 rounded-lg transition-colors" title="Start">
-                                <Play className="w-3.5 h-3.5 text-blue-400" />
+                              <button onClick={() => handleStatusUpdate(task.id, 'in_progress')} className="p-2 hover:bg-indigo-50 rounded-lg transition-colors" title="Start">
+                                <Play className="w-4 h-4 text-indigo-500" />
                               </button>
                             )}
                             {(task.status === 'pending' || task.status === 'in_progress' || task.status === 'overdue') && (
-                              <button onClick={() => handleStatusUpdate(task.id, 'completed')} className="p-1.5 hover:bg-green-500/10 rounded-lg transition-colors" title="Complete">
-                                <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                              <button onClick={() => handleStatusUpdate(task.id, 'completed')} className="p-2 hover:bg-emerald-50 rounded-lg transition-colors" title="Complete">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                               </button>
                             )}
-                            <button onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="p-1.5 hover:bg-purple-500/10 rounded-lg transition-colors" title="Remarks">
-                              <MessageSquarePlus className="w-3.5 h-3.5 text-purple-400" />
+                            <button onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="p-2 hover:bg-violet-50 rounded-lg transition-colors" title="Remarks">
+                              <MessageSquarePlus className="w-4 h-4 text-violet-500" />
                             </button>
-                            <button onClick={() => handleDeleteTask(task.id)} className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete">
-                              <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                            <button onClick={() => handleDeleteTask(task.id)} className="p-2 hover:bg-rose-50 rounded-lg transition-colors" title="Delete">
+                              <Trash2 className="w-4 h-4 text-rose-500" />
                             </button>
                           </div>
                         </td>
                       </tr>
                       {expandedTask === task.id && (
                         <tr key={`${task.id}-remarks`}>
-                          <td colSpan={5} className="!p-0">
-                            <div className="bg-purple-500/5 p-4 border-t border-white/5">
-                              <div className="flex items-center gap-2 mb-3">
-                                <MessageSquarePlus className="w-4 h-4 text-purple-400" />
-                                <h4 className="text-sm font-semibold">Remarks</h4>
-                                <button onClick={() => setExpandedTask(null)} className="ml-auto p-1 hover:bg-white/10 rounded-lg transition-colors">
-                                  <ChevronUp className="w-3.5 h-3.5" />
+                          <td colSpan={6} className="!p-0 border-none">
+                            <div className="bg-slate-50/50 p-6 border-y border-slate-100">
+                              <div className="flex items-center gap-2 mb-4">
+                                <MessageSquarePlus className="w-4 h-4 text-indigo-600" />
+                                <h4 className="text-sm font-bold text-slate-800">Remarks History</h4>
+                                <button onClick={() => setExpandedTask(null)} className="ml-auto p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
+                                  <ChevronUp className="w-4 h-4 text-slate-500" />
                                 </button>
                               </div>
-                              <div className="space-y-2 mb-4 max-h-48 overflow-y-auto">
+                              <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                                 {task.remarks.length > 0 ? (
                                   task.remarks.map((r, i) => (
-                                    <div key={i} className="glass rounded-lg p-3">
-                                      <div className="flex items-center justify-between mb-1">
-                                        <span className="text-xs font-medium text-purple-300">{r.user_name}</span>
-                                        <div className="text-right">
-                                          <p className="text-[9px] text-muted-foreground leading-none">{formatPreciseDateTime(r.timestamp)}</p>
-                                          <p className="text-[8px] text-purple-400 font-bold mt-0.5 uppercase tracking-tighter">{timeAgo(r.timestamp)}</p>
-                                        </div>
+                                    <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs font-bold text-indigo-600">{r.user_name}</span>
+                                        <span className="text-[10px] text-slate-400 font-medium">{timeAgo(r.timestamp)}</span>
                                       </div>
-                                      <p className="text-sm">{r.text}</p>
+                                      <p className="text-sm text-slate-700 leading-relaxed">{r.text}</p>
                                     </div>
                                   ))
                                 ) : (
-                                  <p className="text-xs text-muted-foreground">No remarks yet</p>
+                                  <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">
+                                    <p className="text-xs text-slate-400 font-medium italic">No communication logs for this work item.</p>
+                                  </div>
                                 )}
                               </div>
                               <div className="flex gap-2">
@@ -444,11 +442,11 @@ function EmployeeProfileContent() {
                                   type="text"
                                   value={remarkText}
                                   onChange={(e) => setRemarkText(e.target.value)}
-                                  className="input flex-1"
-                                  placeholder="Add a remark..."
+                                  className="input flex-1 h-11"
+                                  placeholder="Type a remark or update..."
                                 />
-                                <button onClick={() => handleAddRemark(task.id)} disabled={submittingRemark || !remarkText.trim()} className="btn btn-primary">
-                                  {submittingRemark ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Send className="w-4 h-4" />}
+                                <button onClick={() => handleAddRemark(task.id)} disabled={submittingRemark || !remarkText.trim()} className="btn btn-primary h-11 px-6">
+                                  {submittingRemark ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> Send</>}
                                 </button>
                               </div>
                             </div>
@@ -459,12 +457,12 @@ function EmployeeProfileContent() {
                   ))}
                   {tasks.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="text-center py-12">
+                      <td colSpan={6} className="text-center py-20 bg-white">
                         <div className="max-w-xs mx-auto">
-                          <ClipboardList className="w-10 h-10 text-muted-foreground/20 mx-auto mb-3" />
-                          <p className="text-muted-foreground text-sm font-medium">No tasks assigned yet</p>
-                          <button onClick={() => setShowCreateModal(true)} className="btn btn-ghost text-purple-400 text-xs mt-2">
-                            <Plus className="w-3 h-3" /> Assign first task
+                          <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                          <p className="text-slate-500 font-bold">No assignments yet</p>
+                          <button onClick={() => setShowCreateModal(true)} className="btn btn-ghost text-indigo-600 text-xs mt-3 font-bold">
+                            <Plus className="w-3.5 h-3.5 mr-1" /> Assign Work
                           </button>
                         </div>
                       </td>
@@ -480,46 +478,38 @@ function EmployeeProfileContent() {
       {/* Create Task Modal */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
-                <ClipboardList className="w-5 h-5 text-purple-400" />
-                <h2 className="text-lg font-semibold">Assign Task to {employee.name}</h2>
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <ClipboardList className="w-6 h-6 text-indigo-600" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Assign Work to {employee.name}</h2>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="text-muted-foreground hover:text-foreground">
-                <Plus className="w-5 h-5 rotate-45" />
+              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-6 h-6" />
               </button>
             </div>
 
-            <form onSubmit={handleCreateTask} className="space-y-4">
+            <form onSubmit={handleCreateTask} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Title</label>
-                <input
-                  type="text"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  className="input"
-                  placeholder="Task title"
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
+                <textarea
+                  value={newTask.work_description}
+                  onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
+                  className="input min-h-32 resize-none p-4 text-base"
+                  placeholder="Clearly describe the work requirements..."
                   required
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Description</label>
-                <textarea
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                  className="input min-h-20 resize-y"
-                  placeholder="Optional description"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Company</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Client / Company</label>
                 <select
                   value={newTask.company_id}
                   onChange={(e) => setNewTask({ ...newTask, company_id: e.target.value })}
-                  className="select"
+                  className="select h-11"
                 >
-                  <option value="">Select Company (optional)</option>
+                  <option value="">Personal / Internal</option>
                   {companies.map((comp) => (
                     <option key={comp.id} value={comp.id}>{comp.name}</option>
                   ))}
@@ -527,11 +517,11 @@ function EmployeeProfileContent() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-2">Priority</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Priority</label>
                   <select
                     value={newTask.priority}
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                    className="select"
+                    className="select h-11"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -540,22 +530,22 @@ function EmployeeProfileContent() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-2">Deadline</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Deadline</label>
                   <input
                     type="datetime-local"
                     value={newTask.deadline}
                     onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
-                    className="input"
+                    className="input h-11"
                     required
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1">
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl">
                   Cancel
                 </button>
-                <button type="submit" disabled={creating} className="btn btn-primary flex-1">
-                  {creating ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Plus className="w-4 h-4" /> Assign</>}
+                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-indigo-100">
+                  {creating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Plus className="w-5 h-5 mr-2" /> Assign Work</>}
                 </button>
               </div>
             </form>
@@ -570,7 +560,7 @@ export default function EmployeeProfilePage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center h-screen">
-        <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     }>
       <EmployeeProfileContent />

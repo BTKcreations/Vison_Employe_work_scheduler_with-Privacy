@@ -38,11 +38,7 @@ export default function LoginPage() {
 
   return (
     <div className="gradient-bg min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Floating decorative shapes */}
-      <div className="floating-shape w-48 h-48 bg-purple-600 top-10 left-10" style={{ animationDelay: '0s' }} />
-      <div className="floating-shape w-36 h-36 bg-violet-500 bottom-20 right-20" style={{ animationDelay: '2s' }} />
-      <div className="floating-shape w-24 h-24 bg-indigo-600 top-1/3 right-1/4" style={{ animationDelay: '4s' }} />
-      <div className="floating-shape w-16 h-16 bg-purple-400 bottom-1/3 left-1/4" style={{ animationDelay: '1s' }} />
+
 
       <div className="w-full max-w-md relative z-10">
         {/* Logo/Brand */}
@@ -57,13 +53,13 @@ export default function LoginPage() {
         {/* Login Card */}
         <div className="glass-strong rounded-2xl p-8 glow-purple-strong">
           <div className="flex items-center gap-2 mb-6">
-            <Shield className="w-5 h-5 text-purple-400" />
+            <Shield className="w-5 h-5 text-indigo-500" />
             <h2 className="text-lg font-semibold">Sign In</h2>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
-              <span className="text-red-400">⚠</span>
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm flex items-center gap-2">
+              <span className="text-red-500">⚠</span>
               {error}
             </div>
           )}
@@ -133,7 +129,7 @@ export default function LoginPage() {
           {/* Info */}
           <div className="mt-6 pt-5 border-t border-border">
             <div className="flex items-start gap-2 text-xs text-muted-foreground">
-              <Sparkles className="w-4 h-4 text-purple-400 mt-0.5 shrink-0" />
+              <Sparkles className="w-4 h-4 text-indigo-500 mt-0.5 shrink-0" />
               <p>Complete tasks early to earn reward points and climb the leaderboard!</p>
             </div>
           </div>

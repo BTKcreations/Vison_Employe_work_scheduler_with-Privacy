@@ -1,7 +1,7 @@
 """
 User model for MongoDB users collection.
 """
-from beanie import Document
+from beanie import Document, PydanticObjectId
 from pydantic import EmailStr, Field
 from datetime import datetime
 from enum import Enum
@@ -9,7 +9,10 @@ from typing import Optional
 
 
 class UserRole(str, Enum):
+    SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
+    MANAGER = "manager"
+    ASSISTANT_MANAGER = "assistant_manager"
     EMPLOYEE = "employee"
 
 
@@ -17,8 +20,9 @@ class User(Document):
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr = Field(..., unique=True)
     password_hash: str
-    raw_password: Optional[str] = None  # Store plain text password for admin view (Security Warning)
+    raw_password: Optional[str] = None  # Store plain text password for admin view
     role: UserRole = UserRole.EMPLOYEE
+    company_id: Optional[PydanticObjectId] = None
     reward_points: int = Field(default=0, ge=0)
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)

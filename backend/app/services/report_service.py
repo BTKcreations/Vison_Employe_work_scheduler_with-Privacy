@@ -17,7 +17,7 @@ async def _get_task_data(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
 ) -> pd.DataFrame:
-    """Fetch and filter task data into a DataFrame."""
+    """Fetch and filter task data into a DataFrame with specific SaaS requirements."""
     query = {}
 
     if status:
@@ -36,33 +36,35 @@ async def _get_task_data(
 
     tasks = await Task.find(query).sort("-created_at").to_list()
 
-    # Resolve user names
-    user_cache = {}
     rows = []
-    for task in tasks:
-        # Get assigned user name
-        if str(task.assigned_to) not in user_cache:
-            user = await User.get(task.assigned_to)
-            user_cache[str(task.assigned_to)] = user.name if user else "Unknown"
+    for i, task in enumerate(tasks, 1):
+        # Calculate Time Variance (Deadline - Completed Time)
+        time_variance = ""
+        if task.completed_at:
+            variance = task.deadline - task.completed_at
+            hours = variance.total_seconds() / 3600
+            if hours > 0:
+                time_variance = f"{hours:.1f}h Early"
+            else:
+                time_variance = f"{abs(hours):.1f}h Late"
 
-        # Get creator name
-        if str(task.created_by) not in user_cache:
-            creator = await User.get(task.created_by)
-            user_cache[str(task.created_by)] = creator.name if creator else "Unknown"
+        # Format Remarks (Join all remark texts)
+        remarks_str = " | ".join([r.get("text", "") for r in task.remarks]) if task.remarks else ""
 
         rows.append({
-            "Task ID": str(task.id),
-            "Title": task.title,
-            "Description": task.description or "",
-            "Assigned To": user_cache[str(task.assigned_to)],
-            "Created By": user_cache[str(task.created_by)],
+            "s.no": i,
+            "employee name": task.assigned_to_name or "Unknown",
+            "company name": task.company_name or "Personal",
+            "work description": task.work_description,
+            "work priority": task.priority.value,
+            "dead-line": task.deadline.strftime("%Y-%m-%d %H:%M"),
+            "completed time": task.completed_at.strftime("%Y-%m-%d %H:%M") if task.completed_at else "",
+            "Time variance": time_variance,
             "Status": task.status.value,
-            "Priority": task.priority.value,
-            "Type": task.task_type.value,
-            "Deadline": task.deadline.strftime("%Y-%m-%d %H:%M"),
-            "Completed At": task.completed_at.strftime("%Y-%m-%d %H:%M") if task.completed_at else "",
-            "Reward Given": "Yes" if task.reward_given else "No",
-            "Created At": task.created_at.strftime("%Y-%m-%d %H:%M"),
+            "Remarks": remarks_str,
+            "points": task.reward_points,
+            "created time": task.created_at.strftime("%Y-%m-%d %H:%M"),
+            "Assigned by": task.created_by_name or "Unknown"
         })
 
     return pd.DataFrame(rows)
@@ -107,9 +109,6 @@ async def generate_employees_excel() -> BytesIO:
         completed_tasks = await Task.find(
             Task.assigned_to == emp.id, Task.status == "completed"
         ).count()
-        pending_tasks = await Task.find(
-            Task.assigned_to == emp.id, Task.status == "pending"
-        ).count()
 
         rows.append({
             "Employee ID": str(emp.id),
@@ -119,7 +118,6 @@ async def generate_employees_excel() -> BytesIO:
             "Reward Points": emp.reward_points,
             "Total Tasks": total_tasks,
             "Completed Tasks": completed_tasks,
-            "Pending Tasks": pending_tasks,
             "Completion Rate": f"{(completed_tasks / total_tasks * 100):.1f}%" if total_tasks > 0 else "0%",
             "Joined": emp.created_at.strftime("%Y-%m-%d"),
         })

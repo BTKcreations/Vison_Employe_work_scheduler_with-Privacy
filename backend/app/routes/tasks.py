@@ -26,7 +26,7 @@ async def create_task(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new task. Admins can assign to anyone; employees create personal tasks."""
-    if current_user.role == UserRole.ADMIN:
+    if current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
         assigned_to = request.assigned_to or str(current_user.id)
         task_type = "assigned" if request.assigned_to else "personal"
     else:
@@ -35,8 +35,7 @@ async def create_task(
         task_type = "personal"
 
     task = await task_service.create_task(
-        title=request.title,
-        description=request.description,
+        work_description=request.work_description,
         assigned_to=assigned_to,
         created_by=str(current_user.id),
         priority=request.priority,
@@ -66,16 +65,16 @@ async def list_tasks(
     current_user: User = Depends(get_current_user),
 ):
     """Get tasks. Admins see all; employees see only their own."""
-    is_admin = current_user.role == UserRole.ADMIN
+    is_management = current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]
     
-    # If not admin, they can only see their own tasks
-    target_user_id = str(current_user.id) if not is_admin else employee_id
+    # If not management, they can only see their own tasks
+    target_user_id = str(current_user.id) if not is_management else employee_id
     
     tasks = await task_service.get_tasks(
         user_id=target_user_id,
         status=status_filter,
         priority=priority,
-        is_admin=is_admin,
+        is_admin=is_management,
     )
 
     # Resolve names with caching
@@ -83,10 +82,15 @@ async def list_tasks(
     company_cache = {}
     result = []
     for task in tasks:
-        for uid in [task.assigned_to, task.created_by]:
-            if str(uid) not in user_cache:
-                user = await User.get(uid)
-                user_cache[str(uid)] = user.name if user else "Unknown"
+        # Resolve Assigned To name
+        if str(task.assigned_to) not in user_cache:
+            user = await User.get(task.assigned_to)
+            user_cache[str(task.assigned_to)] = user.name if user else "Unknown"
+            
+        # Resolve Created By name
+        if str(task.created_by) not in user_cache:
+            creator = await User.get(task.created_by)
+            user_cache[str(task.created_by)] = creator.name if creator else "Unknown"
 
         # Resolve company name
         comp_name = None
@@ -114,13 +118,13 @@ async def update_task(
     current_user: User = Depends(get_current_user),
 ):
     """Update a task. Employees can only update their own tasks."""
+    is_management = current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]
     try:
         task = await task_service.update_task(
             task_id=task_id,
             user_id=str(current_user.id),
-            is_admin=current_user.role == UserRole.ADMIN,
-            title=request.title,
-            description=request.description,
+            is_admin=is_management,
+            work_description=request.work_description,
             status=request.status,
             priority=request.priority,
             deadline=request.deadline,
@@ -152,11 +156,11 @@ async def delete_task(
     task_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Delete a task (admin only)."""
-    if current_user.role != UserRole.ADMIN:
+    """Delete a task (management only)."""
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can delete tasks",
+            detail="Insufficient permissions to delete tasks",
         )
 
     success = await task_service.delete_task(task_id)

@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { DashboardStats } from '@/types';
 import { timeAgo } from '@/lib/utils';
+import UserLink from '@/components/UserLink';
+import StatusChart from '@/components/StatusChart';
 import {
   Users, ClipboardList, CheckCircle2, Clock, AlertTriangle,
   Trophy, TrendingUp, Activity, Award, Star
@@ -36,7 +38,7 @@ export default function AdminDashboard() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -83,8 +85,7 @@ export default function AdminDashboard() {
           return (
             <div
               key={card.label}
-              className="stat-card glass rounded-xl p-4 count-animate"
-              style={{ animationDelay: `${i * 0.1}s` }}
+              className="stat-card glass rounded-xl p-4"
             >
               <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${card.color} flex items-center justify-center mb-3`}>
                 <Icon className="w-5 h-5 text-white" />
@@ -100,35 +101,29 @@ export default function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
         {/* Task Status Distribution */}
         <div className="glass rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-purple-400" />
-            <h2 className="font-semibold">Task Status Distribution</h2>
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-5 h-5 text-indigo-500" />
+              <h2 className="font-semibold text-slate-800">Task Status Distribution</h2>
+            </div>
           </div>
           {taskStatusData.length > 0 ? (
-            <div className="flex items-center gap-6">
-              <ResponsiveContainer width="50%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={taskStatusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={4}
-                    dataKey="value"
-                  >
-                    {taskStatusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                </PieChart>
-              </ResponsiveContainer>
-              <div className="space-y-3">
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="w-full md:w-1/2">
+                <StatusChart 
+                  data={taskStatusData} 
+                  total={stats.tasks.total} 
+                  completed={stats.tasks.completed} 
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3 w-full md:w-1/2">
                 {taskStatusData.map((item) => (
-                  <div key={item.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ background: item.color }} />
-                    <span className="text-sm text-muted-foreground">{item.name}</span>
-                    <span className="text-sm font-semibold ml-auto">{item.value}</span>
+                  <div key={item.name} className="flex flex-col p-3 rounded-2xl bg-slate-50/50 border border-slate-100/50">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.name}</span>
+                    </div>
+                    <span className="text-lg font-black text-slate-900">{item.value}</span>
                   </div>
                 ))}
               </div>
@@ -141,23 +136,24 @@ export default function AdminDashboard() {
         {/* Priority Distribution */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-purple-400" />
+            <Activity className="w-5 h-5 text-indigo-500" />
             <h2 className="font-semibold">Priority Distribution</h2>
           </div>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={priorityData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(139,92,246,0.1)" />
-              <XAxis dataKey="name" tick={{ fill: '#8b7fad', fontSize: 12 }} axisLine={false} />
-              <YAxis tick={{ fill: '#8b7fad', fontSize: 12 }} axisLine={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
               <Tooltip
                 contentStyle={{
-                  background: '#1a1328',
-                  border: '1px solid rgba(139,92,246,0.2)',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
                   borderRadius: '8px',
-                  color: '#f0eef5',
+                  color: '#0f172a',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
                 }}
               />
-              <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+              <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
                 {priorityData.map((_, index) => (
                   <Cell key={`bar-${index}`} fill={COLORS[index]} />
                 ))}
@@ -178,17 +174,24 @@ export default function AdminDashboard() {
           {stats.leaderboard.length > 0 ? (
             <div className="space-y-3">
               {stats.leaderboard.map((emp, i) => (
-                <div key={emp.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-purple-500/5 transition-colors">
+                <div key={emp.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors">
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                    i === 0 ? 'bg-yellow-500/20 text-yellow-400' :
-                    i === 1 ? 'bg-slate-400/20 text-slate-300' :
-                    i === 2 ? 'bg-amber-600/20 text-amber-500' :
-                    'bg-purple-500/10 text-purple-300'
+                    i === 0 ? 'bg-yellow-50 text-yellow-600 border border-yellow-200' :
+                    i === 1 ? 'bg-slate-50 text-slate-600 border border-slate-200' :
+                    i === 2 ? 'bg-amber-50 text-amber-600 border border-amber-200' :
+                    'bg-slate-50 text-slate-500 border border-slate-100'
                   }`}>
                     {i < 3 ? <Star className="w-4 h-4" /> : i + 1}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{emp.name}</p>
+                    <UserLink
+                      id={emp.id}
+                      name={emp.name}
+                      email={emp.email}
+                      reward_points={emp.reward_points}
+                      role="employee"
+                      showAvatar={false}
+                    />
                     <p className="text-xs text-muted-foreground truncate">{emp.email}</p>
                   </div>
                   <div className="flex items-center gap-1 text-sm font-semibold text-yellow-400">
@@ -206,20 +209,25 @@ export default function AdminDashboard() {
         {/* Recent Activity */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-purple-400" />
+            <Activity className="w-5 h-5 text-indigo-500" />
             <h2 className="font-semibold">Recent Activity</h2>
           </div>
           {stats.recent_activity.length > 0 ? (
             <div className="space-y-3">
               {stats.recent_activity.map((activity) => (
-                <div key={activity.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-purple-500/5 transition-colors">
-                  <div className="w-2 h-2 rounded-full bg-purple-400 mt-2 shrink-0" />
+                <div key={activity.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 mt-2 shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm">
-                      <span className="font-medium">{activity.user_name}</span>
+                    <div className="text-sm">
+                      <UserLink
+                        id={activity.user_id}
+                        name={activity.user_name}
+                        showAvatar={false}
+                        textClassName="text-sm font-bold text-slate-900"
+                      />
                       {' '}
                       <span className="text-muted-foreground">{activity.details || activity.action}</span>
-                    </p>
+                    </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{timeAgo(activity.timestamp)}</p>
                   </div>
                 </div>

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import api from '@/lib/api';
 import { Task, Employee, Company } from '@/types';
+import UserLink from '@/components/UserLink';
 import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime } from '@/lib/utils';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Trash2, Award,
@@ -29,7 +30,7 @@ export default function AdminTasksPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
-    title: '', description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '',
+    work_description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '',
   });
 
   // Remarks state
@@ -75,7 +76,7 @@ export default function AdminTasksPage() {
   // Client-side filtering
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
-      if (searchQuery && !task.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+      if (searchQuery && !task.work_description.toLowerCase().includes(searchQuery.toLowerCase())) return false;
       if (statusFilter && task.status !== statusFilter) return false;
       if (priorityFilter && task.priority !== priorityFilter) return false;
       if (employeeFilter && task.assigned_to !== employeeFilter) return false;
@@ -114,7 +115,7 @@ export default function AdminTasksPage() {
       };
       await api.post('/tasks', payload);
       setShowCreateModal(false);
-      setNewTask({ title: '', description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '' });
+      setNewTask({ work_description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '' });
       fetchTasks();
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
@@ -171,7 +172,7 @@ export default function AdminTasksPage() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-bold">Task Management</h1>
-          <p className="text-muted-foreground text-sm mt-1">Assign and track tasks across your team</p>
+          <p className="text-muted-foreground text-sm mt-1">Assign and track work across your team</p>
         </div>
         <button
           id="create-task-btn"
@@ -179,7 +180,7 @@ export default function AdminTasksPage() {
           className="btn btn-primary"
         >
           <Plus className="w-4 h-4" />
-          Assign Task
+          Assign Work
         </button>
       </div>
 
@@ -194,7 +195,7 @@ export default function AdminTasksPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="input pl-10"
-            placeholder="Search tasks by name..."
+            placeholder="Search work by description..."
           />
         </div>
 
@@ -291,7 +292,7 @@ export default function AdminTasksPage() {
           <div className="flex items-center gap-2">
             <Filter className="w-3.5 h-3.5 text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
-              Showing <span className="font-semibold text-foreground">{filteredTasks.length}</span> of {tasks.length} tasks
+              Showing <span className="font-semibold text-foreground">{filteredTasks.length}</span> of {tasks.length} work items
             </span>
           </div>
           {hasActiveFilters && (
@@ -303,39 +304,39 @@ export default function AdminTasksPage() {
       </div>
 
       {/* Tasks Table */}
-      <div className="glass rounded-xl overflow-hidden">
+      <div className="glass rounded-xl">
         <table className="data-table">
           <thead>
             <tr>
-              <th>Task</th>
-              <th>Assigned To</th>
-              <th>Company</th>
-              <th>Priority</th>
-              <th>Status</th>
-              <th>Deadline</th>
-              <th>Reward</th>
+              <th className="w-16">S.No</th>
+              <th>Employee Name</th>
+              <th>Company Name</th>
+              <th>Work Description</th>
+              <th>Work Priority</th>
+              <th>Dead-line</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {filteredTasks.map((task) => (
-              <>
-                <tr key={task.id}>
+            {filteredTasks.map((task, index) => (
+              <Fragment key={task.id}>
+                <tr>
                   <td>
-                    <div>
-                      <p className="font-medium">{task.title}</p>
-                      {task.description && (
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-64">{task.description}</p>
-                      )}
-                    </div>
+                    <span className="text-xs font-mono text-muted-foreground">{(index + 1).toString().padStart(2, '0')}</span>
                   </td>
                   <td>
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center text-white text-xs font-semibold">
-                        {task.assigned_to_name?.charAt(0) || '?'}
-                      </div>
-                      <span className="text-sm">{task.assigned_to_name || 'Unknown'}</span>
-                    </div>
+                    {(() => {
+                      const emp = employees.find(e => e.id === task.assigned_to);
+                      return (
+                        <UserLink
+                          id={task.assigned_to}
+                          name={task.assigned_to_name || 'Unknown'}
+                          email={emp?.email}
+                          reward_points={emp?.reward_points}
+                          role={emp?.role}
+                        />
+                      );
+                    })()}
                   </td>
                   <td>
                     {task.company_name ? (
@@ -344,26 +345,20 @@ export default function AdminTasksPage() {
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </td>
+                  <td className="max-w-md">
+                    <p className="text-sm text-slate-700 leading-relaxed">{task.work_description}</p>
+                  </td>
                   <td>
                     <span className={`font-medium text-sm capitalize ${getPriorityColor(task.priority)}`}>
                       {task.priority}
                     </span>
                   </td>
-                  <td>
-                    <span className={`badge ${getStatusColor(task.status)}`}>
-                      {getStatusLabel(task.status)}
-                    </span>
-                  </td>
-                  <td className="text-sm text-muted-foreground">{formatDateTime(task.deadline)}</td>
-                  <td>
-                    {task.reward_given ? (
-                      <Award className="w-4 h-4 text-yellow-400" />
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </td>
+                  <td className="text-sm text-muted-foreground whitespace-nowrap">{formatDateTime(task.deadline)}</td>
                   <td>
                     <div className="flex items-center gap-1">
+                      <span className={`badge ${getStatusColor(task.status)} mr-2`}>
+                        {getStatusLabel(task.status)}
+                      </span>
                       {task.status === 'pending' && (
                         <button
                           onClick={() => handleStatusUpdate(task.id, 'in_progress')}
@@ -384,12 +379,14 @@ export default function AdminTasksPage() {
                       )}
                       <button
                         onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)}
-                        className="btn btn-ghost text-xs p-1.5"
+                        className="btn btn-ghost text-xs p-1.5 relative"
                         title="Remarks"
                       >
                         <MessageSquarePlus className="w-3.5 h-3.5 text-purple-400" />
                         {task.remarks.length > 0 && (
-                          <span className="text-[10px] text-purple-300">{task.remarks.length}</span>
+                          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-purple-500 text-white text-[8px] flex items-center justify-center font-bold">
+                            {task.remarks.length}
+                          </span>
                         )}
                       </button>
                       <button
@@ -405,11 +402,11 @@ export default function AdminTasksPage() {
                 {/* Expanded Remarks Row */}
                 {expandedTask === task.id && (
                   <tr key={`${task.id}-remarks`}>
-                    <td colSpan={8} className="!p-0">
-                      <div className="bg-purple-500/5 p-4 border-t border-border">
-                        <div className="flex items-center gap-2 mb-3">
-                          <MessageSquarePlus className="w-4 h-4 text-purple-400" />
-                          <h4 className="text-sm font-semibold">Remarks</h4>
+                    <td colSpan={7} className="!p-0 border-none">
+                      <div className="bg-slate-50/80 p-6 border-y border-slate-100 shadow-inner">
+                        <div className="flex items-center gap-2 mb-4">
+                          <MessageSquarePlus className="w-4 h-4 text-purple-600" />
+                          <h4 className="text-sm font-bold text-slate-800">Communication & Remarks</h4>
                           <button
                             onClick={() => setExpandedTask(null)}
                             className="ml-auto btn btn-ghost text-xs p-1"
@@ -419,22 +416,24 @@ export default function AdminTasksPage() {
                         </div>
                         {/* Existing remarks */}
                         {task.remarks.length > 0 ? (
-                          <div className="space-y-2 mb-3 max-h-48 overflow-y-auto">
+                          <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
                             {task.remarks.map((r, i) => (
-                              <div key={i} className="glass rounded-lg p-3">
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs font-medium text-purple-300">{r.user_name}</span>
+                              <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                                <div className="flex items-center justify-between mb-2">
+                                  <span className="text-xs font-bold text-indigo-600">{r.user_name}</span>
                                   <div className="text-right">
-                                    <p className="text-[10px] text-muted-foreground leading-none">{formatPreciseDateTime(r.timestamp)}</p>
-                                    <p className="text-[9px] text-purple-400/70 font-medium mt-0.5 uppercase tracking-tighter">{timeAgo(r.timestamp)}</p>
+                                    <p className="text-[10px] text-slate-400 leading-none font-medium">{formatPreciseDateTime(r.timestamp)}</p>
+                                    <p className="text-[9px] text-indigo-400 font-bold mt-1 uppercase tracking-tighter">{timeAgo(r.timestamp)}</p>
                                   </div>
                                 </div>
-                                <p className="text-sm text-foreground">{r.text}</p>
+                                <p className="text-sm text-slate-700 leading-relaxed">{r.text}</p>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <p className="text-xs text-muted-foreground mb-3">No remarks yet</p>
+                          <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl mb-4">
+                            <p className="text-xs text-slate-400 font-medium italic text-muted-foreground">No remarks found for this work item.</p>
+                          </div>
                         )}
                         {/* Add remark */}
                         <div className="flex gap-2">
@@ -442,8 +441,8 @@ export default function AdminTasksPage() {
                             type="text"
                             value={expandedTask === task.id ? remarkText : ''}
                             onChange={(e) => setRemarkText(e.target.value)}
-                            className="input flex-1"
-                            placeholder="Add a remark..."
+                            className="input flex-1 h-11"
+                            placeholder="Type a remark or update..."
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && !e.shiftKey) {
                                 e.preventDefault();
@@ -454,12 +453,12 @@ export default function AdminTasksPage() {
                           <button
                             onClick={() => handleAddRemark(task.id)}
                             disabled={submittingRemark || !remarkText.trim()}
-                            className="btn btn-primary"
+                            className="btn btn-primary h-11 px-6"
                           >
                             {submittingRemark ? (
                               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                             ) : (
-                              <Send className="w-4 h-4" />
+                              <><Send className="w-4 h-4 mr-2" /> Send</>
                             )}
                           </button>
                         </div>
@@ -467,12 +466,12 @@ export default function AdminTasksPage() {
                     </td>
                   </tr>
                 )}
-              </>
+              </Fragment>
             ))}
             {filteredTasks.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-10 text-muted-foreground">
-                  {hasActiveFilters ? 'No tasks match the current filters' : 'No tasks found. Create your first task!'}
+                <td colSpan={7} className="text-center py-20 text-slate-400">
+                  {hasActiveFilters ? 'No work items match the current filters' : 'No work assigned yet. Create your first task!'}
                 </td>
               </tr>
             )}
@@ -483,83 +482,74 @@ export default function AdminTasksPage() {
       {/* Create Task Modal */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
-                <ClipboardList className="w-5 h-5 text-purple-400" />
-                <h2 className="text-lg font-semibold">Assign New Task</h2>
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <ClipboardList className="w-6 h-6 text-indigo-600" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Assign New Work</h2>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
+              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             {error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
+              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-medium">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="space-y-4">
+            <form onSubmit={handleCreate} className="space-y-5">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Title</label>
-                <input
-                  type="text"
-                  value={newTask.title}
-                  onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
-                  className="input"
-                  placeholder="Task title"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Description</label>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
                 <textarea
-                  value={newTask.description}
-                  onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
-                  className="input min-h-20 resize-y"
-                  placeholder="Optional description"
+                  value={newTask.work_description}
+                  onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
+                  className="input min-h-32 resize-none text-base p-4"
+                  placeholder="Clearly describe the work to be performed..."
+                  required
                 />
               </div>
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Assign To</label>
-                <select
-                  value={newTask.assigned_to}
-                  onChange={(e) => setNewTask({ ...newTask, assigned_to: e.target.value })}
-                  className="select"
-                  required
-                >
-                  <option value="">Select Employee</option>
-                  {employees.filter(e => e.is_active).map((emp) => (
-                    <option key={emp.id} value={emp.id}>{emp.name} ({emp.email})</option>
-                  ))}
-                </select>
-              </div>
-              {/* Company Dropdown */}
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-2">
-                  <span className="flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5" /> Company
-                  </span>
-                </label>
-                <select
-                  value={newTask.company_id}
-                  onChange={(e) => setNewTask({ ...newTask, company_id: e.target.value })}
-                  className="select"
-                >
-                  <option value="">Select Company (optional)</option>
-                  {companies.map((comp) => (
-                    <option key={comp.id} value={comp.id}>{comp.name}</option>
-                  ))}
-                </select>
-              </div>
+              
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-2">Priority</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Assign To</label>
+                  <select
+                    value={newTask.assigned_to}
+                    onChange={(e) => setNewTask({ ...newTask, assigned_to: e.target.value })}
+                    className="select h-11"
+                    required
+                  >
+                    <option value="">Select Employee</option>
+                    {employees.filter(e => e.is_active).map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Company</label>
+                  <select
+                    value={newTask.company_id}
+                    onChange={(e) => setNewTask({ ...newTask, company_id: e.target.value })}
+                    className="select h-11"
+                  >
+                    <option value="">Personal / Internal</option>
+                    {companies.map((comp) => (
+                      <option key={comp.id} value={comp.id}>{comp.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
                   <select
                     value={newTask.priority}
                     onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                    className="select"
+                    className="select h-11"
                   >
                     <option value="low">Low</option>
                     <option value="medium">Medium</option>
@@ -568,25 +558,26 @@ export default function AdminTasksPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-2">Deadline</label>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Dead-line</label>
                   <input
                     type="datetime-local"
                     value={newTask.deadline}
                     onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
-                    className="input"
+                    className="input h-11"
                     required
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1">
+
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl border-slate-200">
                   Cancel
                 </button>
-                <button type="submit" disabled={creating} className="btn btn-primary flex-1">
+                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-indigo-100">
                   {creating ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <><Plus className="w-4 h-4" /> Assign Task</>
+                    <><Plus className="w-5 h-5 mr-2" /> Assign Work</>
                   )}
                 </button>
               </div>

@@ -31,7 +31,7 @@ export default function EmployeeDashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
-        <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
@@ -60,17 +60,17 @@ export default function EmployeeDashboardPage() {
       </div>
 
       {/* Reward Points Card */}
-      <div className="glass rounded-xl p-6 mb-8 bg-gradient-to-r from-yellow-500/10 to-amber-500/5 border border-yellow-500/15 glow-purple">
+      <div className="glass rounded-xl p-6 mb-8 bg-gradient-to-r from-yellow-50 to-amber-50 border border-yellow-200 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground mb-1">Your Reward Points</p>
-            <p className="text-4xl font-bold text-yellow-400">{data.user.reward_points}</p>
+            <p className="text-4xl font-bold text-yellow-600">{data.user.reward_points}</p>
             <p className="text-xs text-muted-foreground mt-2">
               Complete tasks before the deadline to earn points!
             </p>
           </div>
-          <div className="w-16 h-16 rounded-2xl bg-yellow-500/20 flex items-center justify-center">
-            <Trophy className="w-8 h-8 text-yellow-400" />
+          <div className="w-16 h-16 rounded-2xl bg-yellow-100 flex items-center justify-center border border-yellow-200">
+            <Trophy className="w-8 h-8 text-yellow-600" />
           </div>
         </div>
       </div>
@@ -85,7 +85,7 @@ export default function EmployeeDashboardPage() {
         ].map((card, i) => {
           const Icon = card.icon;
           return (
-            <div key={card.label} className="stat-card glass rounded-xl p-4 count-animate" style={{ animationDelay: `${i * 0.1}s` }}>
+            <div key={card.label} className="stat-card glass rounded-xl p-4">
               <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${card.color} flex items-center justify-center mb-3`}>
                 <Icon className="w-5 h-5 text-white" />
               </div>
@@ -101,7 +101,7 @@ export default function EmployeeDashboardPage() {
         {/* Task Progress */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Star className="w-5 h-5 text-purple-400" />
+            <Star className="w-5 h-5 text-indigo-500" />
             <h2 className="font-semibold">Task Progress</h2>
           </div>
           {taskData.length > 0 ? (
@@ -117,6 +117,7 @@ export default function EmployeeDashboardPage() {
                       outerRadius={75}
                       paddingAngle={4}
                       dataKey="value"
+                      isAnimationActive={false}
                     >
                       {taskData.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
@@ -152,20 +153,20 @@ export default function EmployeeDashboardPage() {
         {/* Recent Activity */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-2 mb-4">
-            <Activity className="w-5 h-5 text-purple-400" />
+            <Activity className="w-5 h-5 text-indigo-500" />
             <h2 className="font-semibold">Recent Activity</h2>
           </div>
           {data.recent_activity.length > 0 ? (
             <div className="space-y-3">
               {data.recent_activity.map((activity) => (
-                <div key={activity.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-purple-500/5 transition-colors">
-                  <div className="w-2 h-2 rounded-full bg-purple-400 mt-2 shrink-0" />
+                <div key={activity.id} className="flex items-start gap-3 p-2.5 rounded-lg hover:bg-slate-50 transition-colors">
+                  <div className="w-2 h-2 rounded-full bg-indigo-400 mt-2 shrink-0" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-muted-foreground">{activity.details || activity.action}</p>
                     <div className="flex items-center gap-2 mt-0.5">
                       <p className="text-[10px] text-muted-foreground">{formatPreciseDateTime(activity.timestamp)}</p>
-                      <span className="text-[10px] text-purple-400 font-bold">•</span>
-                      <p className="text-[10px] text-purple-400/80 font-bold uppercase tracking-tighter">{timeAgo(activity.timestamp)}</p>
+                      <span className="text-[10px] text-indigo-500 font-bold">•</span>
+                      <p className="text-[10px] text-indigo-500/80 font-bold uppercase tracking-tighter">{timeAgo(activity.timestamp)}</p>
                     </div>
                   </div>
                 </div>

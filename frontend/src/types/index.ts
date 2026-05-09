@@ -2,10 +2,11 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'employee';
+  role: 'super_admin' | 'admin' | 'manager' | 'assistant_manager' | 'employee';
   reward_points: number;
   is_active: boolean;
   created_at: string;
+  company_id?: string;
 }
 
 export interface RemarkEntry {
@@ -17,8 +18,7 @@ export interface RemarkEntry {
 
 export interface Task {
   id: string;
-  title: string;
-  description: string | null;
+  work_description: string;
   assigned_to: string;
   assigned_to_name: string | null;
   created_by: string;
@@ -29,6 +29,7 @@ export interface Task {
   deadline: string;
   completed_at: string | null;
   reward_given: boolean;
+  reward_points: number;
   company_id: string | null;
   company_name: string | null;
   remarks: RemarkEntry[];
@@ -40,7 +41,27 @@ export interface Company {
   name: string;
   description: string | null;
   is_active: boolean;
+  work_days: string[];
+  work_start_time: string;
+  work_end_time: string;
   created_at: string;
+}
+
+export interface Attendance {
+  id: string;
+  user_id: string;
+  user_name?: string;
+  user_email?: string;
+  user_reward_points?: number;
+  company_id: string;
+  check_in: string;
+  check_out: string | null;
+  location_in: { lat: number; lng: number } | null;
+  location_out: { lat: number; lng: number } | null;
+  address_in: string | null;
+  address_out: string | null;
+  status: string;
+  remarks: string | null;
 }
 
 export interface Employee {
@@ -72,8 +93,7 @@ export interface CreateEmployeeRequest {
 }
 
 export interface CreateTaskRequest {
-  title: string;
-  description?: string;
+  work_description: string;
   assigned_to?: string;
   priority: string;
   deadline: string;
@@ -81,8 +101,7 @@ export interface CreateTaskRequest {
 }
 
 export interface UpdateTaskRequest {
-  title?: string;
-  description?: string;
+  work_description?: string;
   status?: string;
   priority?: string;
   deadline?: string;
