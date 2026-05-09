@@ -57,13 +57,13 @@ async def _get_task_data(
             "company name": task.company_name or "Personal",
             "work description": task.work_description,
             "work priority": task.priority.value,
-            "dead-line": task.deadline.strftime("%Y-%m-%d %H:%M"),
-            "completed time": task.completed_at.strftime("%Y-%m-%d %H:%M") if task.completed_at else "",
+            "dead-line": task.deadline.strftime("%d-%m-%Y %H:%M:%S"),
+            "completed time": task.completed_at.strftime("%d-%m-%Y %H:%M:%S") if task.completed_at else "",
             "Time variance": time_variance,
             "Status": task.status.value,
             "Remarks": remarks_str,
             "points": task.reward_points,
-            "created time": task.created_at.strftime("%Y-%m-%d %H:%M"),
+            "created time": task.created_at.strftime("%d-%m-%Y %H:%M:%S"),
             "Assigned by": task.created_by_name or "Unknown"
         })
 
@@ -119,7 +119,7 @@ async def generate_employees_excel() -> BytesIO:
             "Total Tasks": total_tasks,
             "Completed Tasks": completed_tasks,
             "Completion Rate": f"{(completed_tasks / total_tasks * 100):.1f}%" if total_tasks > 0 else "0%",
-            "Joined": emp.created_at.strftime("%Y-%m-%d"),
+            "Joined": emp.created_at.strftime("%d-%m-%Y %H:%M:%S"),
         })
 
     df = pd.DataFrame(rows)
