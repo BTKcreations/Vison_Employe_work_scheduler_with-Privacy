@@ -49,6 +49,7 @@ export function timeAgo(dateString: string): string {
 export function getStatusColor(status: string): string {
   switch (status) {
     case 'completed': return 'badge-success';
+    case 'completed_late': return 'badge-purple';
     case 'pending': return 'badge-warning';
     case 'in_progress': return 'badge-info';
     case 'overdue': return 'badge-danger';

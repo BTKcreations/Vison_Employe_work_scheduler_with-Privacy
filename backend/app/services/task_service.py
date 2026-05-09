@@ -123,7 +123,11 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
     # Handle completion
     new_status = update_data.get("status")
     if new_status == TaskStatus.COMPLETED and task.status != TaskStatus.COMPLETED:
-        update_data["completed_at"] = datetime.utcnow()
+        now = datetime.utcnow()
+        update_data["completed_at"] = now
+        # If past deadline, set status to COMPLETED_LATE
+        if task.deadline < now:
+            update_data["status"] = TaskStatus.COMPLETED_LATE
 
     update_data["updated_at"] = datetime.utcnow()
     await task.set(update_data)
@@ -131,8 +135,9 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
     # Reload the task
     task = await Task.get(PydanticObjectId(task_id))
 
-    # Check for reward if task was just completed
-    if new_status == TaskStatus.COMPLETED:
+    # Check for reward if task was just completed (only on-time completion gets reward)
+    final_status = update_data.get("status", task.status)
+    if final_status == TaskStatus.COMPLETED:
         await check_and_award_reward(task)
 
         await ActivityLog(
@@ -170,6 +175,7 @@ async def get_task_counts(user_id: Optional[str] = None):
 
     total = await Task.find(base_query).count()
     completed = await Task.find({**base_query, "status": "completed"}).count()
+    completed_late = await Task.find({**base_query, "status": "completed_late"}).count()
     pending = await Task.find({**base_query, "status": "pending"}).count()
     in_progress = await Task.find({**base_query, "status": "in_progress"}).count()
     overdue = await Task.find({**base_query, "status": "overdue"}).count()
@@ -177,6 +183,7 @@ async def get_task_counts(user_id: Optional[str] = None):
     return {
         "total": total,
         "completed": completed,
+        "completed_late": completed_late,
         "pending": pending,
         "in_progress": in_progress,
         "overdue": overdue,

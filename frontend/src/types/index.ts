@@ -23,7 +23,7 @@ export interface Task {
   assigned_to_name: string | null;
   created_by: string;
   created_by_name: string | null;
-  status: 'pending' | 'in_progress' | 'completed' | 'overdue';
+  status: 'pending' | 'in_progress' | 'completed' | 'overdue' | 'completed_late';
   priority: 'low' | 'medium' | 'high' | 'critical';
   task_type: 'assigned' | 'personal';
   deadline: string;
@@ -116,6 +116,7 @@ export interface DashboardStats {
   tasks: {
     total: number;
     completed: number;
+    completed_late: number;
     pending: number;
     in_progress: number;
     overdue: number;
@@ -140,6 +141,7 @@ export interface EmployeeDashboard {
   tasks: {
     total: number;
     completed: number;
+    completed_late: number;
     pending: number;
     in_progress: number;
     overdue: number;

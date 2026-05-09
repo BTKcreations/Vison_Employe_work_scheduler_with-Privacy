@@ -49,6 +49,7 @@ export default function AdminDashboard() {
 
   const taskStatusData = [
     { name: 'Completed', value: stats.tasks.completed, color: '#10b981' },
+    { name: 'Completed Late', value: stats.tasks.completed_late, color: '#818cf8' },
     { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
     { name: 'In Progress', value: stats.tasks.in_progress, color: '#3b82f6' },
     { name: 'Overdue', value: stats.tasks.overdue, color: '#ef4444' },
@@ -65,6 +66,7 @@ export default function AdminDashboard() {
     { label: 'Total Employees', value: stats.employees.total, icon: Users, color: 'from-purple-600 to-violet-500' },
     { label: 'Total Tasks', value: stats.tasks.total, icon: ClipboardList, color: 'from-blue-600 to-cyan-500' },
     { label: 'Completed', value: stats.tasks.completed, icon: CheckCircle2, color: 'from-emerald-600 to-green-500' },
+    { label: 'Completed Late', value: stats.tasks.completed_late, icon: Clock, color: 'from-indigo-600 to-blue-500' },
     { label: 'Pending', value: stats.tasks.pending, icon: Clock, color: 'from-amber-600 to-yellow-500' },
     { label: 'Overdue', value: stats.tasks.overdue, icon: AlertTriangle, color: 'from-red-600 to-rose-500' },
     { label: 'Rewards Given', value: stats.total_rewards_given, icon: Trophy, color: 'from-pink-600 to-rose-400' },

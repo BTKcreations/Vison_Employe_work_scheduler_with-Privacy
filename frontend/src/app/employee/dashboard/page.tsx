@@ -42,6 +42,7 @@ export default function EmployeeDashboardPage() {
 
   const taskData = [
     { name: 'Completed', value: data.tasks.completed, color: '#10b981' },
+    { name: 'Completed Late', value: data.tasks.completed_late, color: '#818cf8' },
     { name: 'Pending', value: data.tasks.pending, color: '#f59e0b' },
     { name: 'In Progress', value: data.tasks.in_progress, color: '#3b82f6' },
     { name: 'Overdue', value: data.tasks.overdue, color: '#ef4444' },
@@ -80,8 +81,8 @@ export default function EmployeeDashboardPage() {
         {[
           { label: 'Total Tasks', value: data.tasks.total, icon: ClipboardList, color: 'from-purple-600 to-violet-500' },
           { label: 'Completed', value: data.tasks.completed, icon: CheckCircle2, color: 'from-emerald-600 to-green-500' },
-          { label: 'In Progress', value: data.tasks.in_progress, icon: Play, color: 'from-blue-600 to-cyan-500' },
-          { label: 'Pending', value: data.tasks.pending, icon: Clock, color: 'from-amber-600 to-yellow-500' },
+          { label: 'Completed Late', value: data.tasks.completed_late, icon: Clock, color: 'from-indigo-600 to-blue-500' },
+          { label: 'Overdue', value: data.tasks.overdue, icon: AlertTriangle, color: 'from-red-600 to-rose-500' },
         ].map((card, i) => {
           const Icon = card.icon;
           return (

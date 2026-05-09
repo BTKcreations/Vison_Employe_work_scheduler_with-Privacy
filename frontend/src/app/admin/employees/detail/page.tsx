@@ -307,6 +307,7 @@ function EmployeeProfileContent() {
                   <StatusChart 
                     data={[
                       { name: 'Completed', value: stats.tasks.completed, color: '#10b981' },
+                      { name: 'Completed Late', value: stats.tasks.completed_late, color: '#818cf8' },
                       { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
                       { name: 'In Progress', value: stats.tasks.in_progress, color: '#3b82f6' },
                       { name: 'Overdue', value: stats.tasks.overdue, color: '#ef4444' },
@@ -319,16 +320,17 @@ function EmployeeProfileContent() {
                 <div className="grid grid-cols-2 gap-4 w-full md:w-1/2">
                   {[
                     { label: 'Completed', value: stats.tasks.completed, color: 'bg-emerald-500' },
+                    { label: 'Completed Late', value: stats.tasks.completed_late, color: 'bg-indigo-500' },
                     { label: 'Pending', value: stats.tasks.pending, color: 'bg-amber-500' },
                     { label: 'In Progress', value: stats.tasks.in_progress, color: 'bg-blue-500' },
                     { label: 'Overdue', value: stats.tasks.overdue, color: 'bg-rose-500' },
                   ].map((item) => (
-                    <div key={item.label} className="p-4 rounded-2xl bg-slate-50/50 border border-slate-100/50">
+                    <div key={item.label} className="p-3 rounded-2xl bg-slate-50/50 border border-slate-100/50">
                       <div className="flex items-center gap-2 mb-1">
                         <div className={`w-2 h-2 rounded-full ${item.color}`} />
-                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
+                        <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">{item.label}</span>
                       </div>
-                      <p className="text-xl font-black text-slate-900">{item.value}</p>
+                      <p className="text-lg font-black text-slate-900">{item.value}</p>
                     </div>
                   ))}
                 </div>

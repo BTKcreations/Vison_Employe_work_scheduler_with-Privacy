@@ -62,7 +62,7 @@ async def _get_task_data(
             "Time variance": time_variance,
             "Status": task.status.value,
             "Remarks": remarks_str,
-            "points": task.reward_points,
+            "points": 1 if task.status == "completed" else 0,
             "created time": task.created_at.strftime("%d-%m-%Y %H:%M:%S"),
             "Assigned by": task.created_by_name or "Unknown"
         })

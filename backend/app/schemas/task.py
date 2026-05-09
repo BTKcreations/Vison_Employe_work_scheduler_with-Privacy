@@ -23,7 +23,7 @@ class CreateTaskRequest(BaseModel):
 
 class UpdateTaskRequest(BaseModel):
     work_description: Optional[str] = Field(None, min_length=1, max_length=2000)
-    status: Optional[str] = Field(None, pattern="^(pending|in_progress|completed|overdue)$")
+    status: Optional[str] = Field(None, pattern="^(pending|in_progress|completed|overdue|completed_late)$")
     priority: Optional[str] = Field(None, pattern="^(low|medium|high|critical)$")
     deadline: Optional[datetime] = None
     remarks: Optional[str] = Field(None, max_length=1000)  # New remark text to append
