@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { Company } from '@/types';
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import {
   Building2, Plus, Search, X, Power, PowerOff, FileText, Calendar, Clock, Loader2, Save
 } from 'lucide-react';
