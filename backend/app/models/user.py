@@ -24,6 +24,8 @@ class User(Document):
     role: UserRole = UserRole.EMPLOYEE
     company_id: Optional[PydanticObjectId] = None
     reward_points: int = Field(default=0, ge=0)
+    mobile: Optional[str] = None
+    alternate_mobile: Optional[str] = None
     is_active: bool = Field(default=True)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None

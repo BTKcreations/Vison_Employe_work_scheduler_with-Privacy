@@ -20,7 +20,9 @@ export default function EmployeesPage() {
     name: '', 
     email: '', 
     password: '', 
-    role: 'employee' 
+    role: 'employee',
+    mobile: '',
+    alternate_mobile: ''
   });
   const [error, setError] = useState('');
 
@@ -46,7 +48,14 @@ export default function EmployeesPage() {
     try {
       await api.post('/admin/employees', newEmployee);
       setShowCreateModal(false);
-      setNewEmployee({ name: '', email: '', password: '', role: 'employee' });
+      setNewEmployee({ 
+        name: '', 
+        email: '', 
+        password: '', 
+        role: 'employee',
+        mobile: '',
+        alternate_mobile: ''
+      });
       fetchEmployees();
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
@@ -252,6 +261,36 @@ export default function EmployeesPage() {
                   </div>
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Mobile Number</label>
+                  <div className="relative">
+                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={newEmployee.mobile}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, mobile: e.target.value })}
+                      className="input pl-10"
+                      placeholder="+91 9876543210"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Alternate Mobile</label>
+                  <div className="relative">
+                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      value={newEmployee.alternate_mobile}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, alternate_mobile: e.target.value })}
+                      className="input pl-10"
+                      placeholder="Optional"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1.5">Email</label>
                 <div className="relative">

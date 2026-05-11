@@ -194,10 +194,12 @@ export default function CompaniesPage() {
           <div className="modal-content max-w-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-2">
-                <Building2 className="w-6 h-6 text-indigo-500" />
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                  <Building2 className="w-6 h-6 text-indigo-600" />
+                </div>
                 <div>
-                  <h2 className="text-xl font-bold">Company Settings</h2>
-                  <p className="text-xs text-muted-foreground">Customize workdays and hours for {editingCompany.name}</p>
+                  <h2 className="text-xl font-bold">Edit Company Details</h2>
+                  <p className="text-xs text-muted-foreground">Manage organization settings and operational hours</p>
                 </div>
               </div>
               <button onClick={() => setShowEditModal(false)} className="text-muted-foreground hover:text-foreground">
@@ -206,31 +208,58 @@ export default function CompaniesPage() {
             </div>
 
             <form onSubmit={handleUpdate} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-5">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Basic Information</h3>
                   <div>
-                    <label className="block text-sm font-semibold mb-2">Company Name</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Company Name</label>
                     <input
                       type="text"
                       value={editingCompany.name}
                       onChange={(e) => setEditingCompany({ ...editingCompany, name: e.target.value })}
-                      className="input"
+                      className="input h-12"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold mb-2">Description</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Description</label>
                     <textarea
                       value={editingCompany.description || ''}
                       onChange={(e) => setEditingCompany({ ...editingCompany, description: e.target.value })}
-                      className="input min-h-24"
+                      className="input min-h-24 py-3"
                     />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Work Type</label>
+                      <select
+                        value={editingCompany.work_type || 'fixed'}
+                        onChange={(e) => setEditingCompany({ ...editingCompany, work_type: e.target.value })}
+                        className="select h-12"
+                      >
+                        <option value="fixed">Fixed Hours</option>
+                        <option value="flexible">Flexible</option>
+                        <option value="remote">Remote</option>
+                      </select>
+                    </div>
+                    {editingCompany.work_type === 'flexible' && (
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Flexible Hrs</label>
+                        <input
+                          type="number"
+                          value={editingCompany.flexible_hours || 8}
+                          onChange={(e) => setEditingCompany({ ...editingCompany, flexible_hours: parseInt(e.target.value) })}
+                          className="input h-12"
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Operational Hours</h3>
                   <div>
-                    <label className="block text-sm font-semibold mb-2">Working Days</label>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Working Days</label>
                     <div className="flex flex-wrap gap-2">
                       {daysOfWeek.map(day => (
                         <button
@@ -238,10 +267,10 @@ export default function CompaniesPage() {
                           type="button"
                           onClick={() => toggleDay(day)}
                           className={cn(
-                            "px-3 py-1.5 rounded-lg text-xs font-medium border transition-all",
+                            "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
                             editingCompany.work_days?.includes(day)
-                              ? "bg-indigo-50 border-indigo-200 text-indigo-700 shadow-sm"
-                              : "bg-white border-border text-muted-foreground hover:border-indigo-200"
+                              ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
+                              : "bg-white border-slate-200 text-slate-400 hover:border-indigo-300"
                           )}
                         >
                           {day.slice(0, 3)}
@@ -251,23 +280,32 @@ export default function CompaniesPage() {
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-sm font-semibold mb-2">Start Time</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Start Time</label>
                       <input
                         type="time"
                         value={editingCompany.work_start_time}
                         onChange={(e) => setEditingCompany({ ...editingCompany, work_start_time: e.target.value })}
-                        className="input"
+                        className="input h-12 font-bold"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-semibold mb-2">End Time</label>
+                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">End Time</label>
                       <input
                         type="time"
                         value={editingCompany.work_end_time}
                         onChange={(e) => setEditingCompany({ ...editingCompany, work_end_time: e.target.value })}
-                        className="input"
+                        className="input h-12 font-bold"
                       />
                     </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Cut-out Time (Grace)</label>
+                    <input
+                      type="time"
+                      value={editingCompany.cut_out_time || '10:00'}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, cut_out_time: e.target.value })}
+                      className="input h-12 font-bold text-rose-500"
+                    />
                   </div>
                 </div>
               </div>

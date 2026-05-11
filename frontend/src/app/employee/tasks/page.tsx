@@ -24,6 +24,11 @@ export default function EmployeeTasksPage() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [remarkText, setRemarkText] = useState('');
   const [submittingRemark, setSubmittingRemark] = useState(false);
+  
+  // Complete Confirmation state
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [confirmingTask, setConfirmingTask] = useState<Task | null>(null);
+  const [isConfirmed, setIsConfirmed] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -81,6 +86,19 @@ export default function EmployeeTasksPage() {
     } catch (err) {
       console.error('Failed to update task:', err);
     }
+  };
+
+  const openCompleteModal = (task: Task) => {
+    setConfirmingTask(task);
+    setIsConfirmed(false);
+    setShowCompleteModal(true);
+  };
+
+  const confirmCompletion = async () => {
+    if (!confirmingTask || !isConfirmed) return;
+    await handleStatusUpdate(confirmingTask.id, 'completed');
+    setShowCompleteModal(false);
+    setConfirmingTask(null);
   };
 
   const handleAddRemark = async (taskId: string) => {
@@ -204,10 +222,18 @@ export default function EmployeeTasksPage() {
                         <Clock className="w-3 h-3" />
                         Due: {formatDateTime(task.deadline)}
                       </span>
-                      {task.status !== 'completed' && (
+                      {task.status !== 'completed' && task.status !== 'completed_late' && (
                         <>
                           <span>•</span>
                           <span className={deadline.class}>{deadline.text}</span>
+                        </>
+                      )}
+                      {task.completed_at && (
+                        <>
+                          <span>•</span>
+                          <span className="text-green-600 font-bold">
+                            Completed: {formatDateTime(task.completed_at)}
+                          </span>
                         </>
                       )}
                       {task.created_by_name && (
@@ -231,7 +257,7 @@ export default function EmployeeTasksPage() {
                     )}
                     {(task.status === 'pending' || task.status === 'in_progress' || task.status === 'overdue') && (
                       <button
-                        onClick={() => handleStatusUpdate(task.id, 'completed')}
+                        onClick={() => openCompleteModal(task)}
                         className={`btn text-xs h-9 px-3 ${task.status === 'overdue' ? 'btn-secondary' : 'btn-primary'}`}
                       >
                         <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> {task.status === 'overdue' ? 'Complete (late)' : 'Complete'}
@@ -421,6 +447,75 @@ export default function EmployeeTasksPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Confirmation Modal */}
+      {showCompleteModal && confirmingTask && (
+        <div className="modal-overlay" onClick={() => setShowCompleteModal(false)}>
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Complete Task</h2>
+              </div>
+              <button onClick={() => setShowCompleteModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Task Description</p>
+                <p className="text-slate-700 font-medium leading-relaxed">{confirmingTask.work_description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Priority</p>
+                  <span className={`text-sm font-black uppercase ${getPriorityColor(confirmingTask.priority)}`}>{confirmingTask.priority}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Deadline</p>
+                  <span className="text-sm font-bold text-slate-700">{formatDateTime(confirmingTask.deadline)}</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={isConfirmed}
+                    onChange={(e) => setIsConfirmed(e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded-lg border-2 border-indigo-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="select-none">
+                    <p className="text-sm font-bold text-indigo-900 group-hover:text-indigo-700 transition-colors">Are you sure?</p>
+                    <p className="text-xs text-indigo-500/80 font-medium mt-0.5">Confirming that this task is fully completed as per requirements.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div className="flex gap-4 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowCompleteModal(false)} 
+                  className="btn btn-secondary flex-1 h-12 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={confirmCompletion} 
+                  disabled={!isConfirmed}
+                  className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-emerald-100/50 disabled:opacity-50 disabled:grayscale"
+                >
+                  Complete Task
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { Employee } from '@/types';
 import {
-  FileBarChart, Download, Filter, FileSpreadsheet, FileText
+  FileBarChart, Download, Filter, FileSpreadsheet, FileText, Loader2
 } from 'lucide-react';
 
 export default function ReportsPage() {
@@ -63,28 +63,30 @@ export default function ReportsPage() {
   };
 
   return (
-    <div>
+    <div className="space-y-8 pb-20">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold">Reports & Export</h1>
-        <p className="text-muted-foreground text-sm mt-1">Generate and download business reports</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Reports & Export</h1>
+          <p className="text-muted-foreground text-sm mt-1">Generate and download business reports</p>
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="glass rounded-xl p-6 mb-8">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-5 h-5 text-purple-400" />
-          <h2 className="font-semibold">Task Report Filters</h2>
+      <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm">
+        <div className="flex items-center gap-2 mb-6">
+          <Filter className="w-5 h-5 text-indigo-500" />
+          <h2 className="font-bold text-slate-800">Task Report Filters</h2>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Status</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Status</label>
             <select
               value={filters.status}
               onChange={(e) => setFilters({ ...filters, status: e.target.value })}
-              className="select"
+              className="select h-11 rounded-xl"
             >
-              <option value="">All</option>
+              <option value="">All Statuses</option>
               <option value="pending">Pending</option>
               <option value="in_progress">In Progress</option>
               <option value="completed">Completed</option>
@@ -92,11 +94,11 @@ export default function ReportsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Employee</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Employee</label>
             <select
               value={filters.employee_id}
               onChange={(e) => setFilters({ ...filters, employee_id: e.target.value })}
-              className="select"
+              className="select h-11 rounded-xl"
             >
               <option value="">All Employees</option>
               {employees.map((emp) => (
@@ -105,35 +107,35 @@ export default function ReportsPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Priority</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Priority</label>
             <select
               value={filters.priority}
               onChange={(e) => setFilters({ ...filters, priority: e.target.value })}
-              className="select"
+              className="select h-11 rounded-xl"
             >
-              <option value="">All</option>
-              <option value="low">Low</option>
+              <option value="">All Priorities</option>
+              <option value="regular">Regular</option>
               <option value="medium">Medium</option>
               <option value="high">High</option>
               <option value="critical">Critical</option>
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Start Date</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">Start Date</label>
             <input
               type="date"
               value={filters.start_date}
               onChange={(e) => setFilters({ ...filters, start_date: e.target.value })}
-              className="input"
+              className="input h-11 rounded-xl"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-muted-foreground mb-1.5">End Date</label>
+            <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1.5 ml-1">End Date</label>
             <input
               type="date"
               value={filters.end_date}
               onChange={(e) => setFilters({ ...filters, end_date: e.target.value })}
-              className="input"
+              className="input h-11 rounded-xl"
             />
           </div>
         </div>
@@ -142,19 +144,20 @@ export default function ReportsPage() {
       {/* Export Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Tasks CSV */}
-        <div className="glass rounded-xl p-6 stat-card">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center mb-4">
-            <FileText className="w-6 h-6 text-white" />
+        <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+          <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-4 border border-blue-100">
+            <FileText className="w-6 h-6 text-blue-600" />
           </div>
-          <h3 className="font-semibold mb-1">Task Report (CSV)</h3>
-          <p className="text-xs text-muted-foreground mb-4">Export filtered task data as a CSV file</p>
+          <h3 className="font-bold text-slate-800 mb-1">Task Report (CSV)</h3>
+          <p className="text-xs text-slate-400 font-medium mb-4">Export filtered task data as a CSV file</p>
           <button
             onClick={() => downloadReport('tasks/csv')}
             disabled={downloading === 'tasks/csv'}
-            className="btn btn-primary w-full"
+            className="btn btn-primary w-full h-11 rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-100"
           >
             {downloading === 'tasks/csv' ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <><Download className="w-4 h-4" /> Download CSV</>
             )}
@@ -162,19 +165,20 @@ export default function ReportsPage() {
         </div>
 
         {/* Tasks Excel */}
-        <div className="glass rounded-xl p-6 stat-card">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-600 to-green-500 flex items-center justify-center mb-4">
-            <FileSpreadsheet className="w-6 h-6 text-white" />
+        <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+          <div className="w-12 h-12 rounded-xl bg-emerald-50 flex items-center justify-center mb-4 border border-emerald-100">
+            <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
           </div>
-          <h3 className="font-semibold mb-1">Task Report (Excel)</h3>
-          <p className="text-xs text-muted-foreground mb-4">Export filtered task data as an Excel file</p>
+          <h3 className="font-bold text-slate-800 mb-1">Task Report (Excel)</h3>
+          <p className="text-xs text-slate-400 font-medium mb-4">Export filtered task data as an Excel file</p>
           <button
             onClick={() => downloadReport('tasks/excel')}
             disabled={downloading === 'tasks/excel'}
-            className="btn btn-primary w-full"
+            className="btn btn-primary w-full h-11 rounded-xl bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-100"
           >
             {downloading === 'tasks/excel' ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <><Download className="w-4 h-4" /> Download Excel</>
             )}
@@ -182,19 +186,20 @@ export default function ReportsPage() {
         </div>
 
         {/* Employee Report */}
-        <div className="glass rounded-xl p-6 stat-card">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-600 to-violet-500 flex items-center justify-center mb-4">
-            <FileBarChart className="w-6 h-6 text-white" />
+        <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+          <div className="w-12 h-12 rounded-xl bg-purple-50 flex items-center justify-center mb-4 border border-purple-100">
+            <FileBarChart className="w-6 h-6 text-purple-600" />
           </div>
-          <h3 className="font-semibold mb-1">Employee Report</h3>
-          <p className="text-xs text-muted-foreground mb-4">Complete employee performance report</p>
+          <h3 className="font-bold text-slate-800 mb-1">Employee Report</h3>
+          <p className="text-xs text-slate-400 font-medium mb-4">Complete employee performance report</p>
           <button
             onClick={() => downloadReport('employees/excel')}
             disabled={downloading === 'employees/excel'}
-            className="btn btn-primary w-full"
+            className="btn btn-primary w-full h-11 rounded-xl bg-purple-600 hover:bg-purple-700 shadow-lg shadow-purple-100"
           >
             {downloading === 'employees/excel' ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <><Download className="w-4 h-4" /> Download Excel</>
             )}

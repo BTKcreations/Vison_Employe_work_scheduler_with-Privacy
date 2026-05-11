@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional, List
 
 
-async def create_employee(name: str, email: str, password: str) -> User:
+async def create_employee(name: str, email: str, password: str, mobile: str = None, alternate_mobile: str = None, role: str = "employee") -> User:
     """Create a new employee user."""
     existing = await User.find_one(User.email == email)
     if existing:
@@ -20,7 +20,9 @@ async def create_employee(name: str, email: str, password: str) -> User:
         email=email,
         password_hash=hash_password(password),
         raw_password=password,
-        role=UserRole.EMPLOYEE,
+        role=role,
+        mobile=mobile,
+        alternate_mobile=alternate_mobile,
     )
     await user.insert()
 
@@ -53,6 +55,17 @@ async def update_employee(employee_id: str, **kwargs) -> Optional[User]:
         return None
 
     update_data = {k: v for k, v in kwargs.items() if v is not None}
+    
+    if "email" in update_data and update_data["email"] != user.email:
+        existing = await User.find_one(User.email == update_data["email"])
+        if existing:
+            raise ValueError("Email already registered to another user")
+
+    if "password" in update_data:
+        password = update_data.pop("password")
+        update_data["password_hash"] = hash_password(password)
+        update_data["raw_password"] = password
+
     if update_data:
         update_data["updated_at"] = datetime.utcnow()
         await user.set(update_data)

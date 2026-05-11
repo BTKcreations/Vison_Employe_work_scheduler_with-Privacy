@@ -9,12 +9,19 @@ class CreateEmployeeRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=6, max_length=100)
+    mobile: Optional[str] = None
+    alternate_mobile: Optional[str] = None
 
 
 class UpdateEmployeeRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=100)
     email: Optional[EmailStr] = None
     is_active: Optional[bool] = None
+    mobile: Optional[str] = None
+    alternate_mobile: Optional[str] = None
+    reward_points: Optional[int] = None
+    role: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=6, max_length=100)
 
 
 class EmployeeResponse(BaseModel):
@@ -26,6 +33,8 @@ class EmployeeResponse(BaseModel):
     is_active: bool
     created_at: str
     raw_password: Optional[str] = None
+    mobile: Optional[str] = None
+    alternate_mobile: Optional[str] = None
 
     @classmethod
     def from_user(cls, user) -> "EmployeeResponse":
@@ -38,4 +47,6 @@ class EmployeeResponse(BaseModel):
             is_active=user.is_active,
             created_at=user.created_at.isoformat() + 'Z',
             raw_password=user.raw_password,
+            mobile=user.mobile,
+            alternate_mobile=user.alternate_mobile,
         )

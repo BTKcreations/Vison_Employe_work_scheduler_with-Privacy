@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.attendance import Attendance
 from app.models.user import User, UserRole
+from app.models.company import Company
 from app.auth.dependencies import get_current_user
 from datetime import datetime
 from typing import List, Optional
@@ -45,12 +46,43 @@ async def check_in(req: AttendanceRequest, current_user: User = Depends(get_curr
     if existing:
         raise HTTPException(status_code=400, detail="You are already checked in.")
 
+    # Determine status (late vs present)
+    status_str = "present"
+    company = await Company.get(current_user.company_id)
+    if company and company.work_start_time:
+        try:
+            # Parse work_start_time (expecting HH:MM or HH:MM AM/PM)
+            # For simplicity, we'll try to match common formats
+            start_time_str = company.work_start_time.upper().replace(" ", "")
+            is_pm = "PM" in start_time_str
+            is_am = "AM" in start_time_str
+            time_parts = start_time_str.replace("AM", "").replace("PM", "").split(":")
+            
+            start_hour = int(time_parts[0])
+            start_min = int(time_parts[1]) if len(time_parts) > 1 else 0
+            
+            if is_pm and start_hour < 12: start_hour += 12
+            if is_am and start_hour == 12: start_hour = 0
+            
+            # Current local time (using UTC + 5:30 as default for this project's context if needed, 
+            # or just comparing hours if we assume server is in same timezone)
+            # Actually, let's use the local time from the user's region if possible.
+            # For now, let's use UTC+5:30 as it seems to be the user's timezone.
+            from datetime import timedelta
+            local_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            
+            if local_now.hour > start_hour or (local_now.hour == start_hour and local_now.minute > start_min):
+                status_str = "late"
+        except Exception as e:
+            print(f"Error calculating late status: {e}")
+
     attendance = Attendance(
         user_id=current_user.id,
         company_id=current_user.company_id or current_user.id,
         location_in={"lat": req.lat, "lng": req.lng},
         address_in=req.address,
-        remarks=req.remarks
+        remarks=req.remarks,
+        status=status_str
     )
     await attendance.insert()
     
@@ -136,3 +168,10 @@ async def get_all_attendance(current_user: User = Depends(get_current_user)):
         res["user_reward_points"] = user_info.get("reward_points", 0)
         res_list.append(res)
     return res_list
+@router.get("/summary")
+async def get_summary(current_user: User = Depends(get_current_user)):
+    """Get attendance summary for all employees (admin only)."""
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+    from app.services import dashboard_service
+    return await dashboard_service.get_all_attendance_summary()

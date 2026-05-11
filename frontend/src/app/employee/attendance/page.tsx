@@ -36,6 +36,10 @@ export default function AttendancePage() {
   useEffect(() => {
     fetchAttendance();
     
+    // Listen for updates from the header toggle
+    const handleUpdate = () => fetchAttendance();
+    window.addEventListener('attendanceUpdated', handleUpdate);
+
     // Get location automatically on mount
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -48,6 +52,8 @@ export default function AttendancePage() {
     } else {
       setError('Geolocation is not supported by your browser.');
     }
+
+    return () => window.removeEventListener('attendanceUpdated', handleUpdate);
   }, [fetchAttendance]);
 
   const handleAction = async (type: 'check-in' | 'check-out') => {
@@ -153,6 +159,29 @@ export default function AttendancePage() {
         )}
       </div>
 
+      {/* Calendar View Card */}
+      <div className="glass rounded-2xl p-6 border border-border shadow-sm">
+        <div className="flex items-center gap-2 mb-6">
+          <Calendar className="w-5 h-5 text-indigo-500" />
+          <h2 className="font-semibold text-slate-800">Attendance Calendar (Last 3 Months)</h2>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {[2, 1, 0].map((monthOffset) => {
+            const date = new Date();
+            date.setMonth(date.getMonth() - monthOffset);
+            return (
+              <MonthCalendar 
+                key={monthOffset} 
+                year={date.getFullYear()} 
+                month={date.getMonth()} 
+                history={history}
+              />
+            );
+          })}
+        </div>
+      </div>
+
       {/* History Table */}
       <div className="glass rounded-2xl overflow-hidden border border-border shadow-sm">
         <div className="p-6 border-b border-border flex items-center justify-between">
@@ -226,6 +255,132 @@ export default function AttendancePage() {
           </table>
         </div>
       </div>
+    </div>
+  );
+}
+
+function MonthCalendar({ year, month, history }: { year: number, month: number, history: Attendance[] }) {
+  const monthName = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDayOfMonth = new Date(year, month, 1).getDay(); // 0 = Sunday
+  
+  const today = new Date();
+  const isCurrentMonth = today.getFullYear() === year && today.getMonth() === month;
+  const lastDayToProcess = isCurrentMonth ? today.getDate() : daysInMonth;
+
+  // Work days (Mon-Fri)
+  const workDays = [1, 2, 3, 4, 5]; // Mon=1, ..., Fri=5
+  const workStartTime = "09:00";
+
+  const stats = {
+    working: 0,
+    present: 0,
+    late: 0,
+    absent: 0,
+    holiday: 0,
+    leave: 0
+  };
+
+  const days = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const date = new Date(year, month, d);
+    const dayOfWeek = date.getDay();
+    const isWorkDay = workDays.includes(dayOfWeek);
+    const isFuture = date > today;
+    const isPastOrToday = date <= today;
+
+    if (isWorkDay && isPastOrToday) {
+      stats.working++;
+    }
+
+    // Find logs for this day
+    const logs = history.filter(log => {
+      const logDate = new Date(log.check_in);
+      return logDate.getFullYear() === year && logDate.getMonth() === month && logDate.getDate() === d;
+    });
+
+    let status: 'present' | 'late' | 'absent' | 'holiday' | 'leave' | 'weekend' | 'none' = 'none';
+    let symbol = '';
+    let colorClass = '';
+
+    if (logs.length > 0) {
+      const firstLog = logs[logs.length - 1]; // Earliest log
+      const checkInTime = new Date(firstLog.check_in).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+      
+      if (checkInTime > workStartTime) {
+        status = 'late';
+        symbol = 'L';
+        colorClass = 'bg-amber-500 text-white';
+        stats.late++;
+        stats.present++;
+      } else {
+        status = 'present';
+        symbol = 'P';
+        colorClass = 'bg-emerald-500 text-white';
+        stats.present++;
+      }
+    } else if (isWorkDay && isPastOrToday) {
+      status = 'absent';
+      symbol = 'A';
+      colorClass = 'bg-rose-500 text-white';
+      stats.absent++;
+    } else if (!isWorkDay) {
+      status = 'weekend';
+      colorClass = 'bg-slate-100 text-slate-400';
+    }
+
+    days.push({ day: d, status, symbol, colorClass, isFuture });
+  }
+
+  return (
+    <div className="flex flex-col">
+      <h3 className="text-center font-bold text-slate-700 mb-4">{monthName}</h3>
+      
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-1 mb-6">
+        {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+          <div key={`${d}-${i}`} className="text-center text-[10px] font-black text-slate-400 py-1">{d}</div>
+        ))}
+        {Array.from({ length: firstDayOfMonth }).map((_, i) => (
+          <div key={`empty-${i}`} />
+        ))}
+        {days.map((d) => (
+          <div 
+            key={d.day} 
+            className={cn(
+              "aspect-square flex flex-col items-center justify-center rounded-lg text-[10px] relative",
+              d.colorClass,
+              d.isFuture && "opacity-20"
+            )}
+          >
+            <span className="font-bold">{d.day}</span>
+            {d.symbol && (
+              <span className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-white text-slate-900 border border-slate-200 flex items-center justify-center font-black scale-75">
+                {d.symbol}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* Stats Table */}
+      <div className="space-y-1.5 bg-slate-50/50 rounded-2xl p-4 border border-slate-100">
+        <StatRow label="Working Days" value={stats.working} color="text-slate-600" />
+        <StatRow label="Present" value={stats.present - stats.late} color="text-emerald-600" />
+        <StatRow label="Late" value={stats.late} color="text-amber-600" />
+        <StatRow label="Absent" value={stats.absent} color="text-rose-600" />
+        <StatRow label="Holidays" value={stats.holiday} color="text-indigo-600" />
+        <StatRow label="Leaves" value={stats.leave} color="text-pink-600" />
+      </div>
+    </div>
+  );
+}
+
+function StatRow({ label, value, color }: { label: string, value: number, color: string }) {
+  return (
+    <div className="flex items-center justify-between text-[11px] font-medium">
+      <span className="text-slate-500">{label}</span>
+      <span className={cn("font-bold", color)}>{value}</span>
     </div>
   );
 }

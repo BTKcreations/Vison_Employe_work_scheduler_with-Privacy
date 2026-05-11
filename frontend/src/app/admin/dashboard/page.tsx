@@ -8,7 +8,7 @@ import UserLink from '@/components/UserLink';
 import StatusChart from '@/components/StatusChart';
 import {
   Users, ClipboardList, CheckCircle2, Clock, AlertTriangle,
-  Trophy, TrendingUp, Activity, Award, Star
+  Trophy, TrendingUp, Activity, Award, Star, Play
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer,
@@ -48,10 +48,10 @@ export default function AdminDashboard() {
   }
 
   const taskStatusData = [
-    { name: 'Completed', value: stats.tasks.completed, color: '#10b981' },
-    { name: 'Completed Late', value: stats.tasks.completed_late, color: '#818cf8' },
-    { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
+    { name: 'Completed', value: stats.tasks.completed - stats.tasks.completed_late, color: '#10b981' },
+    { name: 'Late', value: stats.tasks.completed_late, color: '#818cf8' },
     { name: 'In Progress', value: stats.tasks.in_progress, color: '#3b82f6' },
+    { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
     { name: 'Overdue', value: stats.tasks.overdue, color: '#ef4444' },
   ].filter(d => d.value > 0);
 
@@ -62,14 +62,20 @@ export default function AdminDashboard() {
     { name: 'Regular', count: stats.priority_distribution.regular },
   ];
 
+  const attendanceData = [
+    { name: 'Present', value: stats.attendance_today.present, color: '#10b981' },
+    { name: 'Absent', value: stats.attendance_today.absent, color: '#ef4444' },
+  ];
+
   const statCards = [
     { label: 'Total Employees', value: stats.employees.total, icon: Users, color: 'from-purple-600 to-violet-500' },
     { label: 'Total Tasks', value: stats.tasks.total, icon: ClipboardList, color: 'from-blue-600 to-cyan-500' },
-    { label: 'Completed', value: stats.tasks.completed, icon: CheckCircle2, color: 'from-emerald-600 to-green-500' },
+    { label: 'Completed on Time', value: stats.tasks.completed, icon: CheckCircle2, color: 'from-emerald-600 to-green-500' },
     { label: 'Completed Late', value: stats.tasks.completed_late, icon: Clock, color: 'from-indigo-600 to-blue-500' },
     { label: 'Pending', value: stats.tasks.pending, icon: Clock, color: 'from-amber-600 to-yellow-500' },
+    { label: 'In Progress', value: stats.tasks.in_progress, icon: Play, color: 'from-blue-500 to-indigo-500' },
     { label: 'Overdue', value: stats.tasks.overdue, icon: AlertTriangle, color: 'from-red-600 to-rose-500' },
-    { label: 'Rewards Given', value: stats.total_rewards_given, icon: Trophy, color: 'from-pink-600 to-rose-400' },
+    { label: 'Points Achieved', value: stats.total_rewards_given, icon: Trophy, color: 'from-pink-600 to-rose-400' },
   ];
 
   return (
@@ -81,7 +87,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Stat Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-8 gap-4 mb-8">
         {statCards.map((card, i) => {
           const Icon = card.icon;
           return (
@@ -100,7 +106,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
         {/* Task Status Distribution */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center justify-between mb-6">
@@ -110,22 +116,23 @@ export default function AdminDashboard() {
             </div>
           </div>
           {taskStatusData.length > 0 ? (
-            <div className="flex flex-col md:flex-row items-center gap-8">
-              <div className="w-full md:w-1/2">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-full">
                 <StatusChart 
                   data={taskStatusData} 
                   total={stats.tasks.total} 
-                  completed={stats.tasks.completed} 
+                  completed={stats.tasks.completed}
+                  size={180}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3 w-full md:w-1/2">
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 w-full">
                 {taskStatusData.map((item) => (
-                  <div key={item.name} className="flex flex-col p-3 rounded-2xl bg-slate-50/50 border border-slate-100/50">
-                    <div className="flex items-center gap-2 mb-1">
-                      <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
-                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.name}</span>
+                  <div key={item.name} className="flex flex-col p-2 rounded-xl bg-slate-50/50 border border-slate-100/50">
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <div className="w-1.5 h-1.5 rounded-full" style={{ background: item.color }} />
+                      <span className="text-[8px] font-black uppercase text-slate-400 tracking-wider truncate">{item.name}</span>
                     </div>
-                    <span className="text-lg font-black text-slate-900">{item.value}</span>
+                    <span className="text-sm font-black text-slate-800">{item.value}</span>
                   </div>
                 ))}
               </div>
@@ -139,9 +146,9 @@ export default function AdminDashboard() {
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-2 mb-4">
             <Activity className="w-5 h-5 text-indigo-500" />
-            <h2 className="font-semibold">Priority Distribution</h2>
+            <h2 className="font-semibold text-slate-800">Priority Distribution</h2>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
+          <ResponsiveContainer width="100%" height={200} minWidth={0}>
             <BarChart data={priorityData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
@@ -162,6 +169,59 @@ export default function AdminDashboard() {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+        </div>
+
+        {/* Attendance Today */}
+        <div className="glass rounded-xl p-6">
+          <div className="flex items-center gap-2 mb-6">
+            <Users className="w-5 h-5 text-indigo-500" />
+            <h2 className="font-semibold text-slate-800">Attendance Today</h2>
+          </div>
+          
+          <div className="flex flex-col items-center justify-center">
+            <div className="h-[180px] w-full relative mb-4">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <PieChart>
+                  <Pie
+                    data={attendanceData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={70}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {attendanceData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-2xl font-black text-slate-900">
+                  {stats.attendance_today.total > 0 
+                    ? Math.round((stats.attendance_today.present / stats.attendance_today.total) * 100) 
+                    : 0}%
+                </span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Present</span>
+              </div>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-3 w-full">
+              {attendanceData.map((item) => (
+                <div key={item.name} className="flex flex-col p-3 rounded-2xl bg-slate-50/50 border border-slate-100/50 text-center">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <div className="w-2 h-2 rounded-full" style={{ background: item.color }} />
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{item.name}</span>
+                  </div>
+                  <span className="text-lg font-black text-slate-900">{item.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 

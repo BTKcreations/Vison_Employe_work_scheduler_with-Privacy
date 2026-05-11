@@ -7,7 +7,7 @@ import UserLink from '@/components/UserLink';
 import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime } from '@/lib/utils';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Trash2, Award,
-  MessageSquarePlus, Building2, Send, ChevronUp, Search
+  MessageSquarePlus, Building2, Send, ChevronUp, Search, Pencil, Eye
 } from 'lucide-react';
 
 export default function AdminTasksPage() {
@@ -31,7 +31,17 @@ export default function AdminTasksPage() {
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
     work_description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '',
+    for_all: false
   });
+
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  // View modal
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [viewingTask, setViewingTask] = useState<Task | null>(null);
 
   // Remarks state
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
@@ -122,6 +132,48 @@ export default function AdminTasksPage() {
       setError(axiosError.response?.data?.detail || 'Failed to create task');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleEdit = (task: Task) => {
+    setEditingTask(task);
+    // Convert deadline to datetime-local format (YYYY-MM-DDThh:mm)
+    const date = new Date(task.deadline);
+    const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    
+    setEditingTask({
+      ...task,
+      deadline: localDateTime
+    });
+    setShowEditModal(true);
+  };
+
+  const openViewModal = (task: Task) => {
+    setViewingTask(task);
+    setShowViewModal(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask) return;
+    setUpdating(true);
+    setError('');
+    try {
+      const payload = {
+        work_description: editingTask.work_description,
+        priority: editingTask.priority,
+        deadline: new Date(editingTask.deadline).toISOString(),
+        company_id: editingTask.company_id || undefined,
+      };
+      await api.put(`/tasks/${editingTask.id}`, payload);
+      setShowEditModal(false);
+      setEditingTask(null);
+      fetchTasks();
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { detail?: string } } };
+      setError(axiosError.response?.data?.detail || 'Failed to update task');
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -314,6 +366,7 @@ export default function AdminTasksPage() {
               <th>Work Description</th>
               <th>Work Priority</th>
               <th>Dead-line</th>
+              <th>Completed At</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -344,7 +397,18 @@ export default function AdminTasksPage() {
                     </span>
                   </td>
                   <td className="max-w-md">
-                    <p className="text-sm text-slate-700 leading-relaxed">{task.work_description}</p>
+                    <div 
+                      onClick={() => openViewModal(task)}
+                      className="cursor-pointer hover:bg-slate-50 p-2 -m-2 rounded-lg transition-colors group"
+                      title="Click to view full details"
+                    >
+                      <p className="text-sm text-slate-700 leading-relaxed line-clamp-2 group-hover:text-indigo-600">
+                        {task.work_description}
+                      </p>
+                      {task.work_description.length > 100 && (
+                        <span className="text-[10px] text-indigo-400 font-bold uppercase mt-1 block">Read More...</span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <span className={`font-medium text-sm capitalize ${getPriorityColor(task.priority)}`}>
@@ -352,6 +416,15 @@ export default function AdminTasksPage() {
                     </span>
                   </td>
                   <td className="text-sm text-muted-foreground whitespace-nowrap">{formatDateTime(task.deadline)}</td>
+                  <td className="text-sm text-muted-foreground whitespace-nowrap">
+                    {task.completed_at ? (
+                      <span className="text-green-600 font-medium">
+                        {formatDateTime(task.completed_at)}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">—</span>
+                    )}
+                  </td>
                   <td>
                     <div className="flex items-center gap-1">
                       <span className={`badge ${getStatusColor(task.status)} mr-2`}>
@@ -387,20 +460,27 @@ export default function AdminTasksPage() {
                           </span>
                         )}
                       </button>
-                      <button
-                        onClick={() => handleDelete(task.id)}
-                        className="btn btn-ghost text-xs p-1.5"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                      </button>
+                        <button
+                          onClick={() => handleEdit(task)}
+                          className="btn btn-ghost text-xs p-1.5"
+                          title="Edit"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(task.id)}
+                          className="btn btn-ghost text-xs p-1.5"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                        </button>
                     </div>
                   </td>
                 </tr>
                 {/* Expanded Remarks Row */}
                 {expandedTask === task.id && (
                   <tr key={`${task.id}-remarks`}>
-                    <td colSpan={7} className="!p-0 border-none">
+                    <td colSpan={8} className="!p-0 border-none">
                       <div className="bg-slate-50/80 p-6 border-y border-slate-100 shadow-inner">
                         <div className="flex items-center gap-2 mb-4">
                           <MessageSquarePlus className="w-4 h-4 text-purple-600" />
@@ -468,7 +548,7 @@ export default function AdminTasksPage() {
             ))}
             {filteredTasks.length === 0 && (
               <tr>
-                <td colSpan={7} className="text-center py-20 text-slate-400">
+                <td colSpan={8} className="text-center py-20 text-slate-400">
                   {hasActiveFilters ? 'No work items match the current filters' : 'No work assigned yet. Create your first task!'}
                 </td>
               </tr>
@@ -500,27 +580,28 @@ export default function AdminTasksPage() {
             )}
 
             <form onSubmit={handleCreate} className="space-y-5">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
-                <textarea
-                  value={newTask.work_description}
-                  onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
-                  className="input min-h-32 resize-none text-base p-4"
-                  placeholder="Clearly describe the work to be performed..."
-                  required
-                />
-              </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Assign To</label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-bold text-slate-700 uppercase tracking-wide">Assign To</label>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newTask.for_all}
+                        onChange={(e) => setNewTask({ ...newTask, for_all: e.target.checked })}
+                        className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] font-bold text-indigo-600 uppercase">For All</span>
+                    </label>
+                  </div>
                   <select
                     value={newTask.assigned_to}
                     onChange={(e) => setNewTask({ ...newTask, assigned_to: e.target.value })}
                     className="select h-11"
-                    required
+                    required={!newTask.for_all}
+                    disabled={newTask.for_all}
                   >
-                    <option value="">Select Employee</option>
+                    <option value="">{newTask.for_all ? 'All Active Employees' : 'Select Employee'}</option>
                     {employees.filter(e => e.is_active).map((emp) => (
                       <option key={emp.id} value={emp.id}>{emp.name}</option>
                     ))}
@@ -539,6 +620,17 @@ export default function AdminTasksPage() {
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
+                <textarea
+                  value={newTask.work_description}
+                  onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
+                  className="input min-h-32 resize-none text-base p-4"
+                  placeholder="Clearly describe the work to be performed..."
+                  required
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -583,6 +675,185 @@ export default function AdminTasksPage() {
           </div>
         </div>
       )}
+      {/* Edit Task Modal */}
+      {showEditModal && editingTask && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <Pencil className="w-6 h-6 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Edit Task</h2>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {error && (
+              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-medium">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdate} className="space-y-5">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
+                <textarea
+                  value={editingTask.work_description}
+                  onChange={(e) => setEditingTask({ ...editingTask, work_description: e.target.value })}
+                  className="input min-h-32 resize-none text-base p-4"
+                  placeholder="Clearly describe the work to be performed..."
+                  required
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
+                  <select
+                    value={editingTask.priority}
+                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value as any })}
+                    className="select h-11"
+                  >
+                    <option value="regular">Regular</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Dead-line</label>
+                  <input
+                    type="datetime-local"
+                    value={editingTask.deadline}
+                    onChange={(e) => setEditingTask({ ...editingTask, deadline: e.target.value })}
+                    className="input h-11"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Company</label>
+                <select
+                  value={editingTask.company_id || ''}
+                  onChange={(e) => setEditingTask({ ...editingTask, company_id: e.target.value })}
+                  className="select h-11"
+                >
+                  <option value="">Personal / Internal</option>
+                  {companies.map((comp) => (
+                    <option key={comp.id} value={comp.id}>{comp.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl border-slate-200">
+                  Cancel
+                </button>
+                <button type="submit" disabled={updating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-blue-100 !bg-blue-600 hover:!bg-blue-700 border-none">
+                  {updating ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <><Pencil className="w-4 h-4 mr-2" /> Update Task</>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* View Task Details Modal */}
+      {showViewModal && viewingTask && (
+        <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
+          <div className="modal-content max-w-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                  <ClipboardList className="w-6 h-6 text-indigo-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">Work Details</h2>
+                  <p className="text-xs text-slate-400 font-medium uppercase tracking-widest mt-0.5">Reference: {viewingTask.id.slice(-6).toUpperCase()}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={`badge ${getStatusColor(viewingTask.status)}`}>
+                  {getStatusLabel(viewingTask.status)}
+                </span>
+                <button onClick={() => setShowViewModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors">
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-8">
+              {/* Description */}
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] mb-3">Work Description</label>
+                <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-100">
+                  <p className="text-base text-slate-700 leading-relaxed whitespace-pre-wrap">{viewingTask.work_description}</p>
+                </div>
+              </div>
+
+              {/* Grid info */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Assigned To</label>
+                  <p className="text-sm font-bold text-slate-800">{viewingTask.assigned_to_name}</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Company</label>
+                  <p className="text-sm font-bold text-slate-800">{viewingTask.company_name}</p>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Priority</label>
+                  <span className={`text-sm font-bold uppercase tracking-wide ${getPriorityColor(viewingTask.priority)}`}>
+                    {viewingTask.priority}
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Deadline</label>
+                  <p className="text-sm font-bold text-slate-800">{formatDateTime(viewingTask.deadline)}</p>
+                </div>
+              </div>
+
+              {/* Stats/Dates */}
+              <div className="flex flex-wrap gap-4 pt-4 border-t border-slate-100">
+                <div className="flex items-center gap-2 text-xs text-slate-400 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                  Created: {formatDateTime(viewingTask.created_at)}
+                </div>
+                {viewingTask.completed_at && (
+                  <div className="flex items-center gap-2 text-xs text-green-500 font-bold">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Completed: {formatDateTime(viewingTask.completed_at)}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-10 flex gap-3">
+              <button 
+                onClick={() => {
+                  setShowViewModal(false);
+                  handleEdit(viewingTask);
+                }}
+                className="btn btn-secondary flex-1 h-12 rounded-xl"
+              >
+                <Pencil className="w-4 h-4 mr-2" /> Edit Task
+              </button>
+              <button onClick={() => setShowViewModal(false)} className="btn btn-primary flex-1 h-12 rounded-xl">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+

@@ -6,7 +6,8 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, Users, ClipboardList, FileBarChart,
-  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Bell, Menu, X as CloseIcon
+  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Bell, Menu, X as CloseIcon,
+  Settings, Calendar
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -129,6 +130,34 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <GlobalSearch />
           </div>
           <div className="flex items-center gap-4">
+            {/* Settings Dropdown */}
+            <div className="relative group">
+              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
+                <Settings className="w-5 h-5 text-slate-500" />
+              </button>
+              <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-2 w-48">
+                  <Link 
+                    href="/admin/settings/rules" 
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                      <Zap className="w-3.5 h-3.5" />
+                    </div>
+                    Rules
+                  </Link>
+                  <Link 
+                    href="/admin/settings/holidays" 
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                      <Calendar className="w-3.5 h-3.5" />
+                    </div>
+                    Holidays
+                  </Link>
+                </div>
+              </div>
+            </div>
             <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
               <Bell className="w-5 h-5 text-slate-500" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />

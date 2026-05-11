@@ -9,10 +9,11 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
+import AttendanceToggle from '@/components/AttendanceToggle';
 
 const navItems = [
   { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/attendance', label: 'Attendance', icon: MapPin },
+  { href: '/employee/attendance', label: 'Attendance', icon: MapPin },
   { href: '/employee/tasks', label: 'My Tasks', icon: ClipboardList },
 ];
 
@@ -125,6 +126,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
             <GlobalSearch />
           </div>
           <div className="flex items-center gap-4">
+            <AttendanceToggle />
             <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
               <Bell className="w-5 h-5 text-slate-500" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />

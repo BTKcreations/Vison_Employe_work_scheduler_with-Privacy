@@ -1,2 +1,2 @@
 # Routes package
-from . import auth, employees, tasks, dashboard, reports, companies, attendance, search
+from . import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays

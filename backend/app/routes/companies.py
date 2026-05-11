@@ -18,6 +18,9 @@ class CreateCompanyRequest(BaseModel):
     work_days: Optional[List[str]] = None
     work_start_time: Optional[str] = None
     work_end_time: Optional[str] = None
+    work_type: Optional[str] = "fixed"
+    flexible_hours: Optional[int] = 8
+    cut_out_time: Optional[str] = "10:00"
 
 
 class UpdateCompanyRequest(BaseModel):
@@ -27,6 +30,9 @@ class UpdateCompanyRequest(BaseModel):
     work_days: Optional[List[str]] = None
     work_start_time: Optional[str] = None
     work_end_time: Optional[str] = None
+    work_type: Optional[str] = None
+    flexible_hours: Optional[int] = None
+    cut_out_time: Optional[str] = None
 
 
 class CompanyResponse(BaseModel):
@@ -37,6 +43,9 @@ class CompanyResponse(BaseModel):
     work_days: List[str]
     work_start_time: str
     work_end_time: str
+    work_type: str
+    flexible_hours: int
+    cut_out_time: str
     created_at: str
 
 
@@ -53,6 +62,9 @@ async def list_companies(current_user: User = Depends(get_current_user)):
             work_days=c.work_days,
             work_start_time=c.work_start_time,
             work_end_time=c.work_end_time,
+            work_type=c.work_type,
+            flexible_hours=c.flexible_hours,
+            cut_out_time=c.cut_out_time,
             created_at=c.created_at.isoformat() + 'Z',
         )
         for c in companies
@@ -72,6 +84,9 @@ async def list_all_companies(admin: User = Depends(require_admin)):
             work_days=c.work_days,
             work_start_time=c.work_start_time,
             work_end_time=c.work_end_time,
+            work_type=c.work_type,
+            flexible_hours=c.flexible_hours,
+            cut_out_time=c.cut_out_time,
             created_at=c.created_at.isoformat() + 'Z',
         )
         for c in companies
@@ -96,7 +111,10 @@ async def create_company(
         description=request.description,
         work_days=request.work_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         work_start_time=request.work_start_time or "09:00",
-        work_end_time=request.work_end_time or "18:00"
+        work_end_time=request.work_end_time or "18:00",
+        work_type=request.work_type or "fixed",
+        flexible_hours=request.flexible_hours or 8,
+        cut_out_time=request.cut_out_time or "10:00"
     )
     await company.insert()
 
@@ -108,6 +126,9 @@ async def create_company(
         work_days=company.work_days,
         work_start_time=company.work_start_time,
         work_end_time=company.work_end_time,
+        work_type=company.work_type,
+        flexible_hours=company.flexible_hours,
+        cut_out_time=company.cut_out_time,
         created_at=company.created_at.isoformat() + 'Z',
     )
 
@@ -136,6 +157,9 @@ async def update_company(
         work_days=company.work_days,
         work_start_time=company.work_start_time,
         work_end_time=company.work_end_time,
+        work_type=company.work_type,
+        flexible_hours=company.flexible_hours,
+        cut_out_time=company.cut_out_time,
         created_at=company.created_at.isoformat() + 'Z',
     )
 

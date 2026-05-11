@@ -47,6 +47,9 @@ async def create_employee(
             name=request.name,
             email=request.email,
             password=request.password,
+            mobile=request.mobile,
+            alternate_mobile=request.alternate_mobile,
+            role=request.role,
         )
         return EmployeeResponse.from_user(employee)
     except ValueError as e:
@@ -62,19 +65,29 @@ async def update_employee(
     request: UpdateEmployeeRequest,
     admin: User = Depends(require_admin),
 ):
-    """Update an employee (admin only)."""
-    employee = await user_service.update_employee(
-        employee_id,
-        name=request.name,
-        email=request.email,
-        is_active=request.is_active,
-    )
-    if not employee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Employee not found",
+    try:
+        employee = await user_service.update_employee(
+            employee_id,
+            name=request.name,
+            email=request.email,
+            is_active=request.is_active,
+            mobile=request.mobile,
+            alternate_mobile=request.alternate_mobile,
+            reward_points=request.reward_points,
+            role=request.role,
+            password=request.password,
         )
-    return EmployeeResponse.from_user(employee)
+        if not employee:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Employee not found",
+            )
+        return EmployeeResponse.from_user(employee)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
 
 
 @router.delete("/{employee_id}")

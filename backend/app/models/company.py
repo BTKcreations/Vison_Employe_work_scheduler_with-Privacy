@@ -14,6 +14,9 @@ class Company(Document):
     work_days: list[str] = Field(default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
     work_start_time: str = Field(default="09:00")
     work_end_time: str = Field(default="18:00")
+    work_type: str = Field(default="fixed") # "fixed" or "flexible"
+    flexible_hours: Optional[int] = Field(default=8)
+    cut_out_time: str = Field(default="10:00")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:

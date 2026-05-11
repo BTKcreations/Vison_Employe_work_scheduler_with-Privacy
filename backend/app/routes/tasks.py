@@ -26,23 +26,44 @@ async def create_task(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new task. Admins can assign to anyone; employees create personal tasks."""
-    if current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
-        assigned_to = request.assigned_to or str(current_user.id)
-        task_type = "assigned" if request.assigned_to else "personal"
+    if request.for_all:
+        employees = await User.find(User.role == UserRole.EMPLOYEE, User.is_active == True).to_list()
+        
+        last_task = None
+        for emp in employees:
+            last_task = await task_service.create_task(
+                work_description=request.work_description,
+                assigned_to=str(emp.id),
+                created_by=str(current_user.id),
+                priority=request.priority,
+                deadline=request.deadline,
+                task_type="assigned",
+                company_id=request.company_id,
+            )
+        
+        if not last_task:
+             # Fallback if no employees found
+             raise HTTPException(status_code=400, detail="No active employees found to assign task to.")
+        
+        task = last_task
     else:
-        # Employees can only assign to themselves
-        assigned_to = str(current_user.id)
-        task_type = "personal"
+        if current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+            assigned_to = request.assigned_to or str(current_user.id)
+            task_type = "assigned" if request.assigned_to else "personal"
+        else:
+            # Employees can only assign to themselves
+            assigned_to = str(current_user.id)
+            task_type = "personal"
 
-    task = await task_service.create_task(
-        work_description=request.work_description,
-        assigned_to=assigned_to,
-        created_by=str(current_user.id),
-        priority=request.priority,
-        deadline=request.deadline,
-        task_type=task_type,
-        company_id=request.company_id,
-    )
+        task = await task_service.create_task(
+            work_description=request.work_description,
+            assigned_to=assigned_to,
+            created_by=str(current_user.id),
+            priority=request.priority,
+            deadline=request.deadline,
+            task_type=task_type,
+            company_id=request.company_id,
+        )
 
     # Resolve names
     assigned_user = await User.get(task.assigned_to)

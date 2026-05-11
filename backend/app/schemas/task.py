@@ -19,6 +19,7 @@ class CreateTaskRequest(BaseModel):
     priority: str = Field(default="medium", pattern="^(regular|medium|high|critical)$")
     deadline: datetime
     company_id: Optional[str] = None  # Company ID
+    for_all: bool = False
 
 
 class UpdateTaskRequest(BaseModel):

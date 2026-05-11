@@ -7,6 +7,8 @@ export interface User {
   is_active: boolean;
   created_at: string;
   company_id?: string;
+  mobile?: string;
+  alternate_mobile?: string;
 }
 
 export interface RemarkEntry {
@@ -44,6 +46,9 @@ export interface Company {
   work_days: string[];
   work_start_time: string;
   work_end_time: string;
+  work_type: string;
+  flexible_hours: number;
+  cut_out_time: string;
   created_at: string;
 }
 
@@ -73,6 +78,8 @@ export interface Employee {
   is_active: boolean;
   created_at: string;
   raw_password?: string;
+  mobile?: string;
+  alternate_mobile?: string;
 }
 
 export interface LoginRequest {
@@ -90,6 +97,9 @@ export interface CreateEmployeeRequest {
   name: string;
   email: string;
   password: string;
+  role?: string;
+  mobile?: string;
+  alternate_mobile?: string;
 }
 
 export interface CreateTaskRequest {
@@ -98,6 +108,7 @@ export interface CreateTaskRequest {
   priority: string;
   deadline: string;
   company_id?: string;
+  for_all?: boolean;
 }
 
 export interface UpdateTaskRequest {
@@ -130,6 +141,11 @@ export interface DashboardStats {
   leaderboard: LeaderboardEntry[];
   recent_activity: ActivityEntry[];
   total_rewards_given: number;
+  attendance_today: {
+    present: number;
+    absent: number;
+    total: number;
+  };
 }
 
 export interface EmployeeDashboard {
