@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { Search, Calendar, Filter, Users, Download, Loader2, ArrowRight, History, Clock } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { cn, ensureUTC } from '@/lib/utils';
 import Link from 'next/link';
 
 interface AttendanceSummary {
@@ -136,7 +136,7 @@ export default function AttendanceManagementPage() {
                 {emp.history.map((day, idx) => (
                   <div key={idx} className="flex flex-col items-center gap-1.5">
                     <span className="text-[9px] font-black text-slate-400 uppercase tracking-tighter">
-                      {new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' })}
+                      {new Date(ensureUTC(day.date)).toLocaleDateString('en-US', { weekday: 'short' })}
                     </span>
                     <div 
                       className={cn(
@@ -145,12 +145,12 @@ export default function AttendanceManagementPage() {
                           ? 'bg-emerald-500 text-white shadow-emerald-100' 
                           : 'bg-rose-500 text-white shadow-rose-100'
                       )}
-                      title={`${day.status.toUpperCase()} - ${new Date(day.date).toLocaleDateString()}`}
+                      title={`${day.status.toUpperCase()} - ${new Date(ensureUTC(day.date)).toLocaleDateString()}`}
                     >
                       {day.status === 'present' ? 'P' : 'A'}
                     </div>
                     <span className="text-[9px] font-bold text-slate-400">
-                      {new Date(day.date).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
+                      {new Date(ensureUTC(day.date)).toLocaleDateString('en-US', { day: '2-digit', month: 'short' })}
                     </span>
                   </div>
                 ))}

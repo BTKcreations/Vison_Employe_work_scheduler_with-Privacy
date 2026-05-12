@@ -4,6 +4,7 @@ Report service - generates CSV and Excel reports using Pandas and OpenPyXL.
 import pandas as pd
 from io import BytesIO
 from app.models.task import Task
+from app.models.attendance import Attendance
 from app.models.user import User, UserRole
 from beanie import PydanticObjectId
 from datetime import datetime
@@ -131,5 +132,73 @@ async def generate_employees_excel() -> BytesIO:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Employees", index=False)
+    output.seek(0)
+    return output
+
+
+async def generate_attendance_excel(
+    user_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> BytesIO:
+    """Generate Excel file of attendance data."""
+    query = {}
+    if user_id:
+        query["user_id"] = PydanticObjectId(user_id)
+    
+    if start_date:
+        query["check_in"] = {"$gte": datetime.fromisoformat(start_date)}
+    if end_date:
+        if "check_in" in query:
+            query["check_in"]["$lte"] = datetime.fromisoformat(end_date)
+        else:
+            query["check_in"] = {"$lte": datetime.fromisoformat(end_date)}
+
+    records = await Attendance.find(query).sort("-check_in").to_list()
+
+    # Pre-fetch user names if needed
+    user_map = {}
+    if not user_id:
+        user_ids = list(set([r.user_id for r in records]))
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
+
+    rows = []
+    for i, rec in enumerate(records, 1):
+        # Calculate duration if checked out
+        duration_str = ""
+        if rec.check_out:
+            diff = rec.check_out - rec.check_in
+            hours = diff.total_seconds() / 3600
+            duration_str = f"{hours:.2f}h"
+
+        row = {
+            "S.No": i,
+            "Date": rec.check_in.strftime("%d-%m-%Y"),
+        }
+
+        if not user_id:
+            user_info = user_map.get(rec.user_id, {"name": "Unknown", "email": "Unknown"})
+            row["Employee Name"] = user_info["name"]
+            row["Email"] = user_info["email"]
+
+        row.update({
+            "Check In": rec.check_in.strftime("%H:%M:%S"),
+            "Check Out": rec.check_out.strftime("%H:%M:%S") if rec.check_out else "N/A",
+            "Duration": duration_str,
+            "Status": rec.status.upper(),
+            "Address (In)": rec.address_in or "",
+            "Address (Out)": rec.address_out or "",
+            "Remarks": rec.remarks or ""
+        })
+        rows.append(row)
+
+    df = pd.DataFrame(rows)
+    # Convert all column names to UPPERCASE
+    df.columns = [str(c).upper() for c in df.columns]
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Attendance", index=False)
     output.seek(0)
     return output

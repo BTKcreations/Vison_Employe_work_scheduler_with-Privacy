@@ -10,11 +10,25 @@ from app.database.connection import init_db
 from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays
 
 
+import asyncio
+from app.services import recurrence_service
+
+async def run_periodic_tasks():
+    """Background loop for recurring tasks."""
+    while True:
+        try:
+            await recurrence_service.process_recurrence()
+        except Exception as e:
+            print(f"Error in background task: {e}")
+        await asyncio.sleep(3600) # Check every hour
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan - initialize DB on startup."""
+    """Application lifespan - initialize DB and background tasks."""
     await init_db()
+    bg_task = asyncio.create_task(run_periodic_tasks())
     yield
+    bg_task.cancel()
 
 
 app = FastAPI(

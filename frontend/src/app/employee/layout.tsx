@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Bell, Menu
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Bell, Menu, BarChart
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -15,6 +15,7 @@ const navItems = [
   { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/employee/attendance', label: 'Attendance', icon: MapPin },
   { href: '/employee/tasks', label: 'My Tasks', icon: ClipboardList },
+  { href: '/employee/reports', label: 'Reports', icon: BarChart },
 ];
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {

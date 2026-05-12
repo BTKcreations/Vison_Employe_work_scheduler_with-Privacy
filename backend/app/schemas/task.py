@@ -13,13 +13,25 @@ class RemarkEntry(BaseModel):
     timestamp: str
 
 
+class RecurrenceRuleSchema(BaseModel):
+    type: str  # daily, weekly, monthly
+    interval: int = 1
+    weekdays: Optional[List[int]] = None
+    month_day: Optional[int] = None
+    end_type: str = "never"  # never, count, date
+    end_value: Optional[str] = None
+
 class CreateTaskRequest(BaseModel):
     work_description: str = Field(..., min_length=1, max_length=2000)
-    assigned_to: Optional[str] = None  # Employee ID; None = personal task
+    assigned_to: Optional[str] = None  # Single employee
+    assigned_to_list: Optional[List[str]] = None  # Multiple employees
     priority: str = Field(default="medium", pattern="^(regular|medium|high|critical)$")
     deadline: datetime
-    company_id: Optional[str] = None  # Company ID
+    company_id: Optional[str] = None  # Single company
+    company_id_list: Optional[List[str]] = None  # Multiple companies
     for_all: bool = False
+    is_recurrent: bool = False
+    recurrence: Optional[RecurrenceRuleSchema] = None
 
 
 class UpdateTaskRequest(BaseModel):

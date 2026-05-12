@@ -3,11 +3,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { Task, Company } from '@/types';
-import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo } from '@/lib/utils';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Award, Clock,
-  Building2, MessageSquarePlus, Send, ChevronUp
+  Building2, MessageSquarePlus, Send, ChevronUp, Pencil, MessageSquare
 } from 'lucide-react';
+import { cn, formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime } from '@/lib/utils';
 
 export default function EmployeeTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -25,10 +25,16 @@ export default function EmployeeTasksPage() {
   const [remarkText, setRemarkText] = useState('');
   const [submittingRemark, setSubmittingRemark] = useState(false);
   
+  // Edit modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [updating, setUpdating] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
   // Complete Confirmation state
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [confirmingTask, setConfirmingTask] = useState<Task | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
+  const [completionRemark, setCompletionRemark] = useState('');
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -96,9 +102,60 @@ export default function EmployeeTasksPage() {
 
   const confirmCompletion = async () => {
     if (!confirmingTask || !isConfirmed) return;
-    await handleStatusUpdate(confirmingTask.id, 'completed');
-    setShowCompleteModal(false);
-    setConfirmingTask(null);
+    try {
+      // If there's a completion remark, send it first or along with status
+      if (completionRemark.trim()) {
+        await api.put(`/tasks/${confirmingTask.id}`, { 
+          status: 'completed',
+          remarks: completionRemark.trim() 
+        });
+      } else {
+        await handleStatusUpdate(confirmingTask.id, 'completed');
+      }
+      setShowCompleteModal(false);
+      setConfirmingTask(null);
+      setCompletionRemark('');
+      fetchTasks();
+    } catch (err) {
+      console.error('Failed to complete task:', err);
+    }
+  };
+
+  const handleEdit = (task: Task) => {
+    setEditingTask(task);
+    // Convert deadline to datetime-local format
+    const date = new Date(task.deadline);
+    const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    
+    setEditingTask({
+      ...task,
+      deadline: localDateTime
+    });
+    setShowEditModal(true);
+  };
+
+  const handleUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask) return;
+    setUpdating(true);
+    setError('');
+    try {
+      const payload = {
+        work_description: editingTask.work_description,
+        priority: editingTask.priority,
+        deadline: new Date(editingTask.deadline).toISOString(),
+        company_id: editingTask.company_id || undefined,
+      };
+      await api.put(`/tasks/${editingTask.id}`, payload);
+      setShowEditModal(false);
+      setEditingTask(null);
+      fetchTasks();
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { detail?: string } } };
+      setError(axiosError.response?.data?.detail || 'Failed to update task');
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const handleAddRemark = async (taskId: string) => {
@@ -268,18 +325,42 @@ export default function EmployeeTasksPage() {
                         setExpandedTask(isExpanded ? null : task.id);
                         setRemarkText('');
                       }}
-                      className={`btn btn-ghost text-xs h-9 w-9 p-0 flex items-center justify-center relative ${isExpanded ? 'bg-indigo-50 text-indigo-600' : ''}`}
-                      title="Remarks"
+                      className={cn(
+                        "h-10 w-10 rounded-xl flex items-center justify-center relative transition-all border shadow-sm",
+                        isExpanded 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-100' 
+                          : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'
+                      )}
+                      title="Remarks & Communication"
                     >
-                      <MessageSquarePlus className="w-4 h-4" />
-                      {task.remarks.length > 0 && (
-                        <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-500 text-white text-[8px] flex items-center justify-center font-bold">
+                      <MessageSquarePlus className={cn("w-5 h-5", isExpanded ? "text-white" : "text-purple-600")} />
+                      {task.remarks.length > 0 && !isExpanded && (
+                        <span className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[10px] flex items-center justify-center font-black shadow-sm border-2 border-white">
                           {task.remarks.length}
                         </span>
                       )}
                     </button>
+                    {task.task_type === 'personal' && (
+                      <button
+                        onClick={() => handleEdit(task)}
+                        className="h-10 w-10 rounded-xl flex items-center justify-center text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 transition-all shadow-sm"
+                        title="Edit Task"
+                      >
+                        <Pencil className="w-5 h-5 text-blue-600" />
+                      </button>
+                    )}
                   </div>
                 </div>
+                
+                {/* Latest Remark Snippet */}
+                {!isExpanded && task.remarks.length > 0 && (
+                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-start gap-2">
+                    <MessageSquare className="w-3.5 h-3.5 text-indigo-400 mt-0.5 shrink-0" />
+                    <p className="text-[11px] text-slate-500 line-clamp-1 italic">
+                      <span className="font-bold not-italic">{task.remarks[task.remarks.length-1].user_name}:</span> {task.remarks[task.remarks.length-1].text}
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Expanded Remarks */}
@@ -302,7 +383,10 @@ export default function EmployeeTasksPage() {
                         <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
                           <div className="flex items-center justify-between mb-2">
                             <span className="text-xs font-bold text-indigo-600">{r.user_name}</span>
-                            <span className="text-[10px] text-slate-400 font-medium">{timeAgo(r.timestamp)}</span>
+                            <div className="text-right">
+                              <p className="text-[10px] text-slate-400 leading-none font-medium">{formatPreciseDateTime(r.timestamp)}</p>
+                              <p className="text-[9px] text-indigo-400 font-bold mt-1 uppercase tracking-tighter">{timeAgo(r.timestamp)}</p>
+                            </div>
                           </div>
                           <p className="text-sm text-slate-700 leading-relaxed">{r.text}</p>
                         </div>
@@ -413,7 +497,7 @@ export default function EmployeeTasksPage() {
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Priority</label>
                   <select
                     value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })}
                     className="select h-11"
                   >
                     <option value="regular">Regular</option>
@@ -499,6 +583,16 @@ export default function EmployeeTasksPage() {
                 </label>
               </div>
 
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Closing Remark (Optional)</label>
+                <textarea
+                  value={completionRemark}
+                  onChange={(e) => setCompletionRemark(e.target.value)}
+                  className="input min-h-20 resize-none p-3 text-sm"
+                  placeholder="Any final notes about the completion..."
+                />
+              </div>
+
               <div className="flex gap-4 pt-2">
                 <button 
                   type="button" 
@@ -516,6 +610,97 @@ export default function EmployeeTasksPage() {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Task Modal */}
+      {showEditModal && editingTask && (
+        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center">
+                  <Pencil className="w-6 h-6 text-blue-600" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Edit Personal Task</h2>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            {error && (
+              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-medium">
+                {error}
+              </div>
+            )}
+
+            <form onSubmit={handleUpdate} className="space-y-5">
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
+                <textarea
+                  value={editingTask.work_description}
+                  onChange={(e) => setEditingTask({ ...editingTask, work_description: e.target.value })}
+                  className="input min-h-32 resize-none text-base p-4"
+                  placeholder="Clearly describe the work to be performed..."
+                  required
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
+                  <select
+                    value={editingTask.priority}
+                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value as Task['priority'] })}
+                    className="select h-11"
+                  >
+                    <option value="regular">Regular</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Dead-line</label>
+                  <input
+                    type="datetime-local"
+                    value={editingTask.deadline}
+                    onChange={(e) => setEditingTask({ ...editingTask, deadline: e.target.value })}
+                    className="input h-11"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Company</label>
+                <select
+                  value={editingTask.company_id || ''}
+                  onChange={(e) => setEditingTask({ ...editingTask, company_id: e.target.value })}
+                  className="select h-11"
+                >
+                  <option value="">Personal / Internal</option>
+                  {companies.map((comp) => (
+                    <option key={comp.id} value={comp.id}>{comp.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl border-slate-200">
+                  Cancel
+                </button>
+                <button type="submit" disabled={updating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-blue-100 !bg-blue-600 hover:!bg-blue-700 border-none">
+                  {updating ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <><Pencil className="w-4 h-4 mr-2" /> Update Task</>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -47,6 +47,7 @@ class Task(Document):
     remarks: List[dict] = Field(default_factory=list)  # [{"user_id": str, "user_name": str, "text": str, "timestamp": str}]
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
+    recurring_task_id: Optional[PydanticObjectId] = None
 
     class Settings:
         name = "tasks"

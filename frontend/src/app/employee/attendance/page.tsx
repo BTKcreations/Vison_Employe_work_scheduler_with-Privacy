@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { Attendance } from '@/types';
 import { MapPin, Clock, LogIn, LogOut, History, Calendar, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
-import { formatDateTime, formatPreciseDateTime, cn } from '@/lib/utils';
+import { formatDateTime, formatPreciseDateTime, cn, ensureUTC } from '@/lib/utils';
 
 export default function AttendancePage() {
   const { user } = useAuth();
@@ -210,19 +210,19 @@ export default function AttendancePage() {
               {history.map((log) => (
                 <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-6 py-4 font-medium">
-                    {new Date(log.check_in).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    {new Date(ensureUTC(log.check_in)).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <LogIn className="w-3.5 h-3.5 text-emerald-500" />
-                      {new Date(log.check_in).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                      {new Date(ensureUTC(log.check_in)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     {log.check_out ? (
                       <div className="flex items-center gap-2">
                         <LogOut className="w-3.5 h-3.5 text-rose-500" />
-                        {new Date(log.check_out).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(ensureUTC(log.check_out)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     ) : (
                       <span className="text-amber-500 font-medium">Active Session</span>
@@ -295,7 +295,7 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
 
     // Find logs for this day
     const logs = history.filter(log => {
-      const logDate = new Date(log.check_in);
+      const logDate = new Date(ensureUTC(log.check_in));
       return logDate.getFullYear() === year && logDate.getMonth() === month && logDate.getDate() === d;
     });
 
@@ -305,7 +305,7 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
 
     if (logs.length > 0) {
       const firstLog = logs[logs.length - 1]; // Earliest log
-      const checkInTime = new Date(firstLog.check_in).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
+      const checkInTime = new Date(ensureUTC(firstLog.check_in)).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
       
       if (checkInTime > workStartTime) {
         status = 'late';

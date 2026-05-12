@@ -19,6 +19,7 @@ async def create_task(
     deadline: datetime,
     task_type: str = "assigned",
     company_id: Optional[str] = None,
+    recurring_task_id: Optional[PydanticObjectId] = None,
 ) -> Task:
     """Create a new task."""
     assigned_user = await User.get(PydanticObjectId(assigned_to))
@@ -36,6 +37,7 @@ async def create_task(
         deadline=deadline,
         company_id=PydanticObjectId(company_id) if company_id else None,
         company_name=company.name if company else None,
+        recurring_task_id=recurring_task_id,
     )
     await task.insert()
 

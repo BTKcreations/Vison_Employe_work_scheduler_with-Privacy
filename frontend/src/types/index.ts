@@ -105,10 +105,21 @@ export interface CreateEmployeeRequest {
 export interface CreateTaskRequest {
   work_description: string;
   assigned_to?: string;
+  assigned_to_list?: string[];
   priority: string;
   deadline: string;
   company_id?: string;
+  company_id_list?: string[];
   for_all?: boolean;
+  is_recurrent?: boolean;
+  recurrence?: {
+    type: string;
+    interval: number;
+    weekdays?: number[];
+    month_day?: number;
+    end_type: string;
+    end_value?: string;
+  };
 }
 
 export interface UpdateTaskRequest {

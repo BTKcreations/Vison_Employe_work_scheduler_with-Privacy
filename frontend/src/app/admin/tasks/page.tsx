@@ -4,11 +4,122 @@ import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import api from '@/lib/api';
 import { Task, Employee, Company } from '@/types';
 import UserLink from '@/components/UserLink';
-import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime } from '@/lib/utils';
+import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime, cn } from '@/lib/utils';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Trash2, Award,
-  MessageSquarePlus, Building2, Send, ChevronUp, Search, Pencil, Eye
+  MessageSquarePlus, Building2, Send, ChevronUp, Search, Pencil, Eye,
+  RefreshCcw, CalendarDays, Users2, Building, ChevronDown, Check
 } from 'lucide-react';
+
+interface MultiSelectProps {
+  label: string;
+  icon: any;
+  options: { id: string; name: string; subtext?: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange, placeholder, disabled }: MultiSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+
+  const filteredOptions = options.filter(opt => 
+    opt.name.toLowerCase().includes(search.toLowerCase()) || 
+    (opt.subtext && opt.subtext.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const selectedNames = options
+    .filter(opt => selectedIds.includes(opt.id))
+    .map(opt => opt.name);
+
+  return (
+    <div className="space-y-2 relative">
+      <label className="flex items-center gap-2 text-sm font-bold text-slate-700 uppercase tracking-wide">
+        <Icon className="w-4 h-4 text-indigo-500" />
+        {label}
+      </label>
+      
+      <button
+        type="button"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        className={cn(
+          "w-full flex items-center justify-between px-4 py-3 bg-white border rounded-xl transition-all text-left",
+          isOpen ? "border-indigo-500 ring-2 ring-indigo-50" : "border-slate-200 hover:border-slate-300",
+          disabled && "opacity-50 cursor-not-allowed bg-slate-50"
+        )}
+        disabled={disabled}
+      >
+        <div className="flex-1 truncate">
+          {selectedNames.length > 0 ? (
+            <span className="text-sm font-semibold text-slate-700">
+              {selectedNames.join(', ')}
+            </span>
+          ) : (
+            <span className="text-sm text-slate-400">{placeholder || 'Select items...'}</span>
+          )}
+        </div>
+        <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isOpen && "rotate-180")} />
+      </button>
+
+      {isOpen && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+            <div className="p-3 border-b border-slate-100">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  className="w-full pl-9 pr-4 py-2 bg-slate-50 border-none rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            
+            <div className="max-h-48 overflow-y-auto p-2 custom-scrollbar">
+              {filteredOptions.length > 0 ? (
+                filteredOptions.map(opt => {
+                  const isSelected = selectedIds.includes(opt.id);
+                  return (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => {
+                        const newIds = isSelected 
+                          ? selectedIds.filter(id => id !== opt.id)
+                          : [...selectedIds, opt.id];
+                        onChange(newIds);
+                      }}
+                      className={cn(
+                        "w-full flex items-center justify-between p-2 rounded-lg transition-colors text-left group",
+                        isSelected ? "bg-indigo-50" : "hover:bg-slate-50"
+                      )}
+                    >
+                      <div className="flex flex-col">
+                        <span className={cn("text-xs font-bold", isSelected ? "text-indigo-600" : "text-slate-700")}>
+                          {opt.name}
+                        </span>
+                        {opt.subtext && <span className="text-[10px] text-slate-400 font-medium">{opt.subtext}</span>}
+                      </div>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                    </button>
+                  );
+                })
+              ) : (
+                <div className="py-8 text-center text-[10px] text-slate-400 font-bold uppercase italic">No results found</div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function AdminTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -30,8 +141,22 @@ export default function AdminTasksPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
-    work_description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '',
-    for_all: false
+    work_description: '', 
+    assigned_to_list: [] as string[], 
+    priority: 'medium' as Task['priority'], 
+    deadline: '', 
+    company_id_list: [] as string[],
+    for_all: false,
+    is_recurrent: false
+  });
+
+  const [recurrence, setRecurrence] = useState({
+    type: 'daily',
+    interval: 1,
+    weekdays: [] as number[],
+    month_day: 1,
+    end_type: 'never',
+    end_value: ''
   });
 
   // Edit modal
@@ -119,13 +244,26 @@ export default function AdminTasksPage() {
     setError('');
     try {
       const payload = {
-        ...newTask,
+        work_description: newTask.work_description,
+        priority: newTask.priority,
         deadline: new Date(newTask.deadline).toISOString(),
-        company_id: newTask.company_id || undefined,
+        assigned_to_list: newTask.assigned_to_list,
+        company_id_list: newTask.company_id_list,
+        for_all: newTask.for_all,
+        is_recurrent: newTask.is_recurrent,
+        recurrence: newTask.is_recurrent ? recurrence : undefined
       };
       await api.post('/tasks', payload);
       setShowCreateModal(false);
-      setNewTask({ work_description: '', assigned_to: '', priority: 'medium', deadline: '', company_id: '' });
+      setNewTask({ 
+        work_description: '', 
+        assigned_to_list: [], 
+        priority: 'medium', 
+        deadline: '', 
+        company_id_list: [], 
+        for_all: false, 
+        is_recurrent: false 
+      });
       fetchTasks();
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
@@ -578,89 +716,241 @@ export default function AdminTasksPage() {
                 {error}
               </div>
             )}
+            <form onSubmit={handleCreate} className="space-y-6">
+              {/* Assignment Section */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Employees Dropdown */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                        <Users2 className="w-3.5 h-3.5 text-indigo-500" />
+                        Target Employees
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setNewTask(prev => ({ ...prev, for_all: !prev.for_all }))}
+                        className={cn(
+                          "text-[9px] font-black px-2 py-0.5 rounded-full border transition-all uppercase tracking-tight",
+                          newTask.for_all ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-slate-400 border-slate-200 hover:border-indigo-300"
+                        )}
+                      >
+                        {newTask.for_all ? 'Scope: ALL' : 'Scope: Specific'}
+                      </button>
+                    </div>
 
-            <form onSubmit={handleCreate} className="space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-bold text-slate-700 uppercase tracking-wide">Assign To</label>
-                    <label className="flex items-center gap-1.5 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newTask.for_all}
-                        onChange={(e) => setNewTask({ ...newTask, for_all: e.target.checked })}
-                        className="w-3.5 h-3.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
-                      />
-                      <span className="text-[10px] font-bold text-indigo-600 uppercase">For All</span>
-                    </label>
+                    <MultiSelectDropdown
+                      label=""
+                      icon={() => null} // Icon already in header
+                      options={employees.filter(e => e.is_active).map(e => ({ id: e.id, name: e.name, subtext: e.email }))}
+                      selectedIds={newTask.assigned_to_list}
+                      onChange={(ids) => setNewTask(prev => ({ ...prev, assigned_to_list: ids }))}
+                      placeholder={newTask.for_all ? "Automatically assigned to all" : "Select employees..."}
+                      disabled={newTask.for_all}
+                    />
                   </div>
-                  <select
-                    value={newTask.assigned_to}
-                    onChange={(e) => setNewTask({ ...newTask, assigned_to: e.target.value })}
-                    className="select h-11"
-                    required={!newTask.for_all}
-                    disabled={newTask.for_all}
-                  >
-                    <option value="">{newTask.for_all ? 'All Active Employees' : 'Select Employee'}</option>
-                    {employees.filter(e => e.is_active).map((emp) => (
-                      <option key={emp.id} value={emp.id}>{emp.name}</option>
-                    ))}
-                  </select>
+
+                  {/* Companies Dropdown */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                        <Building className="w-3.5 h-3.5 text-indigo-500" />
+                        Target Companies
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const allIds = companies.map(c => c.id);
+                          const isAllSelected = newTask.company_id_list.length === allIds.length;
+                          setNewTask(prev => ({ 
+                            ...prev, 
+                            company_id_list: isAllSelected ? [] : allIds 
+                          }));
+                        }}
+                        className={cn(
+                          "text-[9px] font-black px-2 py-0.5 rounded-full border transition-all uppercase tracking-tight",
+                          newTask.company_id_list.length === companies.length && companies.length > 0
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" 
+                            : "bg-white text-slate-400 border-slate-200 hover:border-indigo-300"
+                        )}
+                      >
+                        {newTask.company_id_list.length === companies.length && companies.length > 0 ? 'ALL SELECTED' : 'SELECT ALL'}
+                      </button>
+                    </div>
+                    <MultiSelectDropdown
+                      label=""
+                      icon={() => null}
+                      options={companies.map(c => ({ id: c.id, name: c.name }))}
+                      selectedIds={newTask.company_id_list}
+                      onChange={(ids) => setNewTask(prev => ({ ...prev, company_id_list: ids }))}
+                      placeholder="Select companies..."
+                    />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Company</label>
-                  <select
-                    value={newTask.company_id}
-                    onChange={(e) => setNewTask({ ...newTask, company_id: e.target.value })}
-                    className="select h-11"
-                  >
-                    <option value="">Personal / Internal</option>
-                    {companies.map((comp) => (
-                      <option key={comp.id} value={comp.id}>{comp.name}</option>
-                    ))}
-                  </select>
-                </div>
+
+                {newTask.for_all && (
+                  <div className="p-3 bg-indigo-50/50 border border-indigo-100 rounded-xl flex items-center gap-3 text-indigo-600 animate-in fade-in slide-in-from-top-1">
+                    <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase tracking-tight">Broadcast mode: This task will be duplicated for every active employee.</span>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
-                <textarea
-                  value={newTask.work_description}
-                  onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
-                  className="input min-h-32 resize-none text-base p-4"
-                  placeholder="Clearly describe the work to be performed..."
-                  required
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
+              {/* Task Details */}
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
-                  <select
-                    value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
-                    className="select h-11"
-                  >
-                    <option value="regular">Regular</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Dead-line</label>
-                  <input
-                    type="datetime-local"
-                    value={newTask.deadline}
-                    onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
-                    className="input h-11"
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Description</label>
+                  <textarea
+                    value={newTask.work_description}
+                    onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
+                    className="input min-h-24 resize-none text-sm p-4"
+                    placeholder="Clearly describe the work to be performed..."
                     required
                   />
                 </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
+                    <select
+                      value={newTask.priority}
+                      onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })}
+                      className="select h-11"
+                    >
+                      <option value="regular">Regular</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Dead-line</label>
+                    <input
+                      type="datetime-local"
+                      value={newTask.deadline}
+                      onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
+                      className="input h-11"
+                      required
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Recurrence Section */}
+              <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center border border-indigo-100">
+                      <RefreshCcw className="w-6 h-6 text-indigo-600 animate-spin-slow" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">Recurrent Schedule</h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Auto-generate Tasks</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      className="sr-only peer"
+                      checked={newTask.is_recurrent}
+                      onChange={(e) => setNewTask(prev => ({ ...prev, is_recurrent: e.target.checked }))}
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+
+                {newTask.is_recurrent && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">Repeat Interval</label>
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="number" 
+                            min="1"
+                            value={recurrence.interval}
+                            onChange={(e) => setRecurrence(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
+                            className="input h-10 w-20 text-center"
+                          />
+                          <select 
+                            value={recurrence.type}
+                            onChange={(e) => setRecurrence(prev => ({ ...prev, type: e.target.value }))}
+                            className="select h-10"
+                          >
+                            <option value="daily">Day(s)</option>
+                            <option value="weekly">Week(s)</option>
+                            <option value="monthly">Month(s)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {recurrence.type === 'weekly' && (
+                        <div>
+                          <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">On Specific Days</label>
+                          <div className="flex flex-wrap gap-1">
+                            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => {
+                              const val = idx;
+                              const isSelected = recurrence.weekdays.includes(val);
+                              return (
+                                <button
+                                  key={idx}
+                                  type="button"
+                                  onClick={() => {
+                                    const list = isSelected 
+                                      ? recurrence.weekdays.filter(d => d !== val)
+                                      : [...recurrence.weekdays, val];
+                                    setRecurrence(prev => ({ ...prev, weekdays: list }));
+                                  }}
+                                  className={cn(
+                                    "w-8 h-8 rounded-lg text-[10px] font-black transition-all",
+                                    isSelected ? "bg-indigo-600 text-white" : "bg-white text-slate-400 border border-slate-200"
+                                  )}
+                                >
+                                  {day}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">End Condition</label>
+                        <select 
+                          value={recurrence.end_type}
+                          onChange={(e) => setRecurrence(prev => ({ ...prev, end_type: e.target.value }))}
+                          className="select h-10"
+                        >
+                          <option value="never">Never</option>
+                          <option value="count">After occurrences</option>
+                          <option value="date">On specific date</option>
+                        </select>
+                      </div>
+                      {recurrence.end_type !== 'never' && (
+                        <div>
+                          <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">
+                            {recurrence.end_type === 'count' ? 'Limit (Occurrences)' : 'Termination Date'}
+                          </label>
+                          <input 
+                            type={recurrence.end_type === 'count' ? 'number' : 'date'}
+                            value={recurrence.end_value}
+                            onChange={(e) => setRecurrence(prev => ({ ...prev, end_value: e.target.value }))}
+                            className="input h-10"
+                            placeholder={recurrence.end_type === 'count' ? 'e.g. 10' : ''}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl border-slate-200">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl">
                   Cancel
                 </button>
                 <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-indigo-100">
@@ -714,7 +1004,7 @@ export default function AdminTasksPage() {
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
                   <select
                     value={editingTask.priority}
-                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value as any })}
+                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value as Task['priority'] })}
                     className="select h-11"
                   >
                     <option value="regular">Regular</option>

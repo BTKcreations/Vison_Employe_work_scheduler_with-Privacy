@@ -718,7 +718,7 @@ function EmployeeProfileContent() {
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Priority</label>
                   <select
                     value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })}
                     className="select h-11"
                   >
                     <option value="regular">Regular</option>
@@ -939,7 +939,7 @@ function EmployeeProfileContent() {
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Priority</label>
                   <select
                     value={editingTask.priority}
-                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value })}
+                    onChange={(e) => setEditingTask({ ...editingTask, priority: e.target.value as Task['priority'] })}
                     className="select h-11"
                   >
                     <option value="regular">Regular</option>

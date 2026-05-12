@@ -99,54 +99,74 @@ export default function EmployeeDashboardPage() {
 
       {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Task Progress */}
-        <div className="glass rounded-xl p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <Star className="w-5 h-5 text-indigo-500" />
-            <h2 className="font-semibold">Task Progress</h2>
+        {/* Task Progress / Status Distribution */}
+        <div className="glass rounded-2xl p-8 border border-slate-200/60 shadow-xl shadow-slate-200/20">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
+                <Star className="w-5 h-5 text-indigo-500" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-slate-800">Task Performance</h2>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Status Distribution</p>
+              </div>
+            </div>
           </div>
+
           {taskData.length > 0 ? (
-            <div className="flex items-center gap-6">
-              <div className="relative">
-                <ResponsiveContainer width={160} height={160}>
-                  <PieChart>
-                    <Pie
-                      data={taskData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={55}
-                      outerRadius={75}
-                      paddingAngle={4}
-                      dataKey="value"
-                      isAnimationActive={false}
-                    >
-                      {taskData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="absolute inset-0 flex items-center justify-center">
+            <div className="space-y-10">
+              <div className="relative flex justify-center py-6">
+                <div className="w-80 h-80">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <PieChart>
+                      <Pie
+                        data={taskData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={110}
+                        outerRadius={145}
+                        paddingAngle={10}
+                        dataKey="value"
+                        stroke="none"
+                        cornerRadius={15}
+                      >
+                        {taskData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center">
-                    <p className="text-2xl font-bold">{completionRate}%</p>
-                    <p className="text-[10px] text-muted-foreground">Complete</p>
+                    <p className="text-6xl font-black text-slate-800 tracking-tighter">{completionRate}%</p>
+                    <p className="text-[12px] font-black text-slate-400 uppercase tracking-widest mt-2">Success Rate</p>
                   </div>
                 </div>
               </div>
-              <div className="space-y-3">
-                {taskData.map((item) => (
-                  <div key={item.name} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full" style={{ background: item.color }} />
-                    <span className="text-sm text-muted-foreground">{item.name}</span>
-                    <span className="text-sm font-semibold ml-auto">{item.value}</span>
+
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                {[
+                  { name: 'Completed', value: data.tasks.completed, color: '#10b981', bg: 'bg-emerald-50/50' },
+                  { name: 'Pending', value: data.tasks.pending, color: '#f59e0b', bg: 'bg-amber-50/50' },
+                  { name: 'In Progress', value: data.tasks.in_progress, color: '#3b82f6', bg: 'bg-blue-50/50' },
+                  { name: 'Overdue', value: data.tasks.overdue, color: '#ef4444', bg: 'bg-rose-50/50' },
+                  { name: 'Late', value: data.tasks.completed_late, color: '#818cf8', bg: 'bg-indigo-50/50' },
+                ].map((item) => (
+                  <div key={item.name} className={cn("p-3 rounded-xl border border-slate-100 transition-all hover:shadow-md hover:shadow-slate-100", item.bg)}>
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="w-2 h-2 rounded-full shadow-sm" style={{ background: item.color }} />
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">{item.name}</span>
+                    </div>
+                    <p className="text-lg font-black text-slate-800">{item.value}</p>
                   </div>
                 ))}
               </div>
             </div>
           ) : (
-            <div className="text-center py-10">
-              <ClipboardList className="w-10 h-10 text-muted-foreground mx-auto mb-2" />
-              <p className="text-muted-foreground text-sm">No tasks yet</p>
+            <div className="text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+              <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-3" />
+              <p className="text-slate-400 text-sm font-medium">No tasks recorded for this period</p>
             </div>
           )}
         </div>

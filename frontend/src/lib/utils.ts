@@ -5,8 +5,14 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export function ensureUTC(dateString: string): string {
+  if (!dateString) return dateString;
+  if (dateString.includes('Z') || dateString.includes('+')) return dateString;
+  return `${dateString}Z`;
+}
+
 export function formatDate(dateString: string): string {
-  return new Date(dateString).toLocaleDateString('en-US', {
+  return new Date(ensureUTC(dateString)).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -14,7 +20,7 @@ export function formatDate(dateString: string): string {
 }
 
 export function formatDateTime(dateString: string): string {
-  return new Date(dateString).toLocaleString('en-US', {
+  return new Date(ensureUTC(dateString)).toLocaleString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric',
@@ -24,18 +30,24 @@ export function formatDateTime(dateString: string): string {
 }
 
 export function formatPreciseDateTime(dateString: string): string {
-  const date = new Date(dateString);
+  const date = new Date(ensureUTC(dateString));
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
-  const hours = String(date.getHours()).padStart(2, '0');
+  
+  let hours = date.getHours();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  const hoursStr = String(hours).padStart(2, '0');
   const minutes = String(date.getMinutes()).padStart(2, '0');
   const seconds = String(date.getSeconds()).padStart(2, '0');
-  return `${day}/${month}/${year} ${hours}:${minutes}:${seconds}`;
+  
+  return `${day}/${month}/${year} ${hoursStr}:${minutes}:${seconds} ${ampm}`;
 }
 
 export function timeAgo(dateString: string): string {
-  const date = new Date(dateString);
+  const date = new Date(ensureUTC(dateString));
   const now = new Date();
   const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
   
