@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { EmployeeDashboard } from '@/types';
-import { timeAgo, formatPreciseDateTime } from '@/lib/utils';
+import { timeAgo, formatPreciseDateTime, cn } from '@/lib/utils';
 import {
   ClipboardList, CheckCircle2, Clock, AlertTriangle, Play,
   Trophy, Star, Activity
