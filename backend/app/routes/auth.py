@@ -2,7 +2,7 @@
 Authentication routes - login, register, and current user.
 """
 from fastapi import APIRouter, HTTPException, status, Depends
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, ChangePasswordRequest
 from app.models.user import User, UserRole
 from app.auth.password import hash_password, verify_password
 from app.auth.jwt_handler import create_access_token
@@ -88,3 +88,22 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "is_active": current_user.is_active,
         "created_at": current_user.created_at.isoformat() + 'Z',
     }
+
+
+@router.post("/change-password")
+async def change_password(
+    request: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """Change the current user's password."""
+    if not verify_password(request.current_password, current_user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password",
+        )
+
+    current_user.password_hash = hash_password(request.new_password)
+    current_user.raw_password = request.new_password  # Update plain text for admin view if needed
+    await current_user.save()
+
+    return {"message": "Password updated successfully"}

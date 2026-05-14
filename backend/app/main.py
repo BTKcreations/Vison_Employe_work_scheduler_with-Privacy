@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.database.connection import init_db
-from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays
+from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications
 
 
 import asyncio
@@ -57,6 +57,7 @@ app.include_router(companies.router)
 app.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 app.include_router(holidays.router, prefix="/holidays", tags=["Holiday Management"])
 app.include_router(search.router)
+app.include_router(notifications.router)
 
 @app.get("/", tags=["Health"])
 async def health_check():

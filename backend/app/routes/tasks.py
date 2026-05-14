@@ -41,7 +41,7 @@ async def create_task(
 
     if not target_employees and not request.is_recurrent:
         # If not management, assigned_to is self
-        if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+        if current_user.role != UserRole.ADMIN:
             target_employees = [current_user]
         else:
             raise HTTPException(status_code=400, detail="No valid employees selected.")
@@ -113,7 +113,7 @@ async def list_tasks(
     current_user: User = Depends(get_current_user),
 ):
     """Get tasks. Admins see all; employees see only their own."""
-    is_management = current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    is_management = current_user.role == UserRole.ADMIN
     
     # If not management, they can only see their own tasks
     target_user_id = str(current_user.id) if not is_management else employee_id
@@ -166,7 +166,7 @@ async def update_task(
     current_user: User = Depends(get_current_user),
 ):
     """Update a task. Employees can only update their own tasks."""
-    is_management = current_user.role in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]
+    is_management = current_user.role == UserRole.ADMIN
     try:
         task = await task_service.update_task(
             task_id=task_id,
@@ -205,7 +205,7 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a task (management only)."""
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions to delete tasks",

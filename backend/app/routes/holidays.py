@@ -27,16 +27,13 @@ class HolidayResponse(BaseModel):
 @router.get("", response_model=List[HolidayResponse])
 async def list_holidays(current_user: User = Depends(get_current_user)):
     """List holidays for the user's company."""
-    if current_user.role == UserRole.SUPER_ADMIN:
-        holidays = await Holiday.find_all().sort("date").to_list()
-    else:
-        # Show global holidays (company_id=None) and company-specific holidays
-        global_holidays = await Holiday.find(Holiday.company_id == None).to_list()
-        company_holidays = []
-        if current_user.company_id:
-            company_holidays = await Holiday.find(Holiday.company_id == current_user.company_id).to_list()
-        
-        holidays = sorted(global_holidays + company_holidays, key=lambda x: x.date)
+    # Show global holidays (company_id=None) and company-specific holidays
+    global_holidays = await Holiday.find(Holiday.company_id == None).to_list()
+    company_holidays = []
+    if current_user.company_id:
+        company_holidays = await Holiday.find(Holiday.company_id == current_user.company_id).to_list()
+    
+    holidays = sorted(global_holidays + company_holidays, key=lambda x: x.date)
     
     return [
         HolidayResponse(
@@ -51,7 +48,7 @@ async def list_holidays(current_user: User = Depends(get_current_user)):
 @router.post("", response_model=HolidayResponse, status_code=status.HTTP_201_CREATED)
 async def create_holiday(req: HolidayRequest, current_user: User = Depends(get_current_user)):
     """Create a new holiday."""
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
     company_id = PydanticObjectId(req.company_id) if req.company_id else current_user.company_id
@@ -74,7 +71,7 @@ async def create_holiday(req: HolidayRequest, current_user: User = Depends(get_c
 @router.delete("/{holiday_id}")
 async def delete_holiday(holiday_id: str, current_user: User = Depends(get_current_user)):
     """Delete a holiday."""
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
     holiday = await Holiday.get(PydanticObjectId(holiday_id))

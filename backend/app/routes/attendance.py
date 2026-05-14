@@ -140,13 +140,10 @@ async def get_my_attendance(current_user: User = Depends(get_current_user)):
 @router.get("/all", response_model=List[AttendanceResponse])
 async def get_all_attendance(current_user: User = Depends(get_current_user)):
     """Retrieve attendance logs for management with user names."""
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Unauthorized access to attendance logs.")
     
-    if current_user.role == UserRole.SUPER_ADMIN:
-        logs = await Attendance.find_all().sort(-Attendance.check_in).to_list()
-    else:
-        logs = await Attendance.find(Attendance.company_id == current_user.company_id).sort(-Attendance.check_in).to_list()
+    logs = await Attendance.find(Attendance.company_id == current_user.company_id).sort(-Attendance.check_in).to_list()
     
     # Fetch all user names in one go to be efficient
     user_ids = list(set([log.user_id for log in logs]))
@@ -171,7 +168,7 @@ async def get_all_attendance(current_user: User = Depends(get_current_user)):
 @router.get("/summary")
 async def get_summary(current_user: User = Depends(get_current_user)):
     """Get attendance summary for all employees (admin only)."""
-    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER]:
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Unauthorized")
     from app.services import dashboard_service
     return await dashboard_service.get_all_attendance_summary()

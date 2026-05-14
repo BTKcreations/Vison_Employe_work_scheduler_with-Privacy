@@ -65,7 +65,7 @@ export default function Home() {
               Productivity with <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-500">Precision</span> & Rewards.
             </h1>
             <p className="text-xl text-slate-600 leading-relaxed">
-              TaskReward transforms your organization into a high-performance engine. Track attendance with live geolocation, gamify tasks, and manage 5-tier hierarchies in one sleek interface.
+              TaskReward transforms your organization into a high-performance engine. Track attendance with live geolocation, gamify tasks, and manage roles in one sleek interface.
             </p>
             <div className="flex flex-col sm:flex-row items-center gap-4 pt-4">
               <Link href="/login" className="btn btn-primary btn-lg w-full sm:w-auto px-10 py-4.5 text-lg rounded-2xl shadow-2xl shadow-indigo-200">
@@ -148,8 +148,8 @@ export default function Home() {
                 bg: "bg-emerald-50" 
               },
               { 
-                title: "5-Tier RBAC", 
-                desc: "Precise permissions from Super Admin to Assistant Manager and Employee.",
+                title: "RBAC Security", 
+                desc: "Precise permissions ensuring data privacy between Admin and Employee roles.",
                 icon: Shield, 
                 color: "text-rose-600", 
                 bg: "bg-rose-50" 
@@ -175,16 +175,13 @@ export default function Home() {
             <div className="grid lg:grid-cols-2 gap-20 items-center">
               <div className="space-y-8">
                 <div className="space-y-4">
-                  <h2 className="text-5xl font-extrabold text-slate-900 leading-tight">Complex Hierarchies Made Simple.</h2>
+                  <h2 className="text-5xl font-extrabold text-slate-900 leading-tight">Streamlined Roles.</h2>
                   <p className="text-xl text-slate-600 leading-relaxed">TaskReward scales with your ambition. Manage hundreds of employees across departments with optimized management portals.</p>
                 </div>
                 
                 <div className="space-y-5">
                   {[
-                    "Super Admin: Global SaaS & Tenant Control",
-                    "Admin: Organization-wide Management",
-                    "Manager: Team-level Performance Tracking",
-                    "Assistant Manager: Operational Support",
+                    "Admin: Full Organization Management",
                     "Employee: Personal Tasks & Attendance"
                   ].map((role, i) => (
                     <div key={i} className="flex items-center gap-4 group">
@@ -201,7 +198,7 @@ export default function Home() {
                   <div className="bg-white p-8 rounded-[2rem] shadow-lg border border-slate-100 translate-y-12 hover:-translate-y-2 transition-all duration-500">
                     <Users2 className="w-10 h-10 text-indigo-500 mb-6" />
                     <h4 className="text-lg font-bold">Team Visibility</h4>
-                    <p className="text-xs text-slate-500 mt-2 leading-relaxed font-medium">Managers get real-time insights into their direct reports' productivity.</p>
+                    <p className="text-xs text-slate-500 mt-2 leading-relaxed font-medium">Admins get real-time insights into team productivity.</p>
                   </div>
                   <div className="bg-white p-8 rounded-[2rem] shadow-lg border border-slate-100 translate-y-12 hover:-translate-y-2 transition-all duration-500">
                     <Smartphone className="w-10 h-10 text-emerald-500 mb-6" />

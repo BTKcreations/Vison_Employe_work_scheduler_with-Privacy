@@ -9,10 +9,7 @@ from typing import Optional
 
 
 class UserRole(str, Enum):
-    SUPER_ADMIN = "super_admin"
     ADMIN = "admin"
-    MANAGER = "manager"
-    ASSISTANT_MANAGER = "assistant_manager"
     EMPLOYEE = "employee"
 
 

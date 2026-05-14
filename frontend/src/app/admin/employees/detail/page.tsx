@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { Employee, Task, Company } from '@/types';
 import StatusChart from '@/components/StatusChart';
+import EmptyState from '@/components/EmptyState';
 import { 
   formatDate, formatDateTime, getStatusColor, getStatusLabel, 
   getPriorityColor, timeAgo, formatPreciseDateTime 
@@ -13,7 +14,7 @@ import {
   Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle, 
   ClipboardList, Activity, ArrowLeft, Plus, UserX, UserCheck,
   MessageSquarePlus, Play, Trash2, ChevronUp, Send,
-  Eye, EyeOff, Copy, ShieldCheck, X, Phone, PhoneCall, Pencil
+  Eye, EyeOff, Copy, ShieldCheck, X, Phone, PhoneCall, Pencil, Award, Power, Lock, User, Shield
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { cn } from '@/lib/utils';
@@ -48,6 +49,11 @@ function EmployeeProfileContent() {
   const [showAttendanceModal, setShowAttendanceModal] = useState(false);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -247,7 +253,93 @@ function EmployeeProfileContent() {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-12">
-      {/* Top Navigation & Actions */}
+      {showAttendanceModal ? (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          {/* Attendance Calendar View */}
+          <div className="flex flex-col gap-8">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+              <div className="flex items-center gap-6">
+                <button 
+                  onClick={() => setShowAttendanceModal(false)} 
+                  className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-500 hover:text-indigo-600 hover:scale-110 active:scale-95"
+                >
+                  <ArrowLeft className="w-6 h-6" />
+                </button>
+                <div className="w-16 h-16 rounded-2xl bg-emerald-50 flex items-center justify-center shadow-lg shadow-emerald-100/50">
+                  <Calendar className="w-8 h-8 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
+                    {employee.name}
+                    <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'} text-xs font-bold`}>
+                      {employee.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </h2>
+                  <div className="text-sm text-slate-400 font-bold uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    Attendance Calendar - Last 3 Months Review
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Select Year</span>
+                    <select 
+                      className="select h-12 w-28 text-sm font-bold rounded-xl border-2 border-slate-100 hover:border-indigo-500 transition-all shadow-sm"
+                      value={selectedYear}
+                      onChange={(e) => setSelectedYear(Number(e.target.value))}
+                    >
+                      {[2024, 2025, 2026, 2027].map(y => (
+                        <option key={y} value={y}>{y}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Select Month</span>
+                    <select 
+                      className="select h-12 w-40 text-sm font-bold rounded-xl border-2 border-slate-100 hover:border-indigo-500 transition-all shadow-sm"
+                      value={selectedMonth}
+                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                    >
+                      {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, i) => (
+                        <option key={m} value={i}>{m}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowAttendanceModal(false)} 
+                  className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-slate-500 transition-all hover:rotate-90"
+                  title="Close Calendar"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            <div className="glass rounded-3xl p-8 border border-slate-100">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-12 lg:gap-16">
+                {[2, 1, 0].map((offset) => {
+                  const date = new Date(selectedYear, selectedMonth, 1);
+                  date.setMonth(date.getMonth() - offset);
+                  return (
+                    <MonthCalendar 
+                      key={offset} 
+                      year={date.getFullYear()} 
+                      month={date.getMonth()} 
+                      history={stats?.attendance_history_detailed || []}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="animate-in fade-in duration-500 space-y-8">
+          {/* Top Navigation & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500">
@@ -399,9 +491,7 @@ function EmployeeProfileContent() {
               </div>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-center p-10">
-              <p className="text-xs text-slate-400 italic">No task metrics.</p>
-            </div>
+            <EmptyState title="No task metrics" description="This employee hasn't been assigned any work yet." variant="small" className="flex-1" />
           )}
         </div>
 
@@ -412,9 +502,9 @@ function EmployeeProfileContent() {
             <h3 className="font-bold text-slate-800">Priority Distribution</h3>
           </div>
           
-          {stats?.priority_distribution ? (
+          {mounted && stats?.priority_distribution ? (
             <div className="flex-1 min-h-[220px] w-full mt-2">
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                 <BarChart
                   data={[
                     { name: 'Critical', value: stats.priority_distribution.critical, color: '#8b5cf6' },
@@ -466,9 +556,7 @@ function EmployeeProfileContent() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-center p-10">
-              <p className="text-xs text-slate-400 italic">No priority data.</p>
-            </div>
+            <EmptyState title="No priority data" description="Assigned tasks will show up here." variant="small" className="flex-1" icon={ShieldCheck} />
           )}
         </div>
       </div>
@@ -666,19 +754,23 @@ function EmployeeProfileContent() {
             </div>
           </div>
         </div>
-
+          </div>
+        )}
       {/* Create Task Modal */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
           <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                  <ClipboardList className="w-6 h-6 text-indigo-600" />
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
+                  <ClipboardList className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900">Assign Work to {employee.name}</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Assign Work</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Member: {employee.name}</p>
+                </div>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setShowCreateModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -738,11 +830,11 @@ function EmployeeProfileContent() {
                   />
                 </div>
               </div>
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl border-slate-200">
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-2xl font-bold border-slate-200 text-slate-500">
                   Cancel
                 </button>
-                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-indigo-100">
+                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
                   {creating ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   ) : (
@@ -759,17 +851,20 @@ function EmployeeProfileContent() {
       {showViewModal && viewingTask && (
         <div className="modal-overlay" onClick={() => setShowViewModal(false)}>
           <div className="modal-content max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center">
-                  <ClipboardList className="w-6 h-6 text-indigo-600" />
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
+                  <ClipboardList className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-slate-900">Work Details</h2>
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-widest mt-0.5">Reference ID: {viewingTask.id.slice(-8).toUpperCase()}</p>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Work Details</h2>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-0.5 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    Reference: {viewingTask.id.slice(-8).toUpperCase()}
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setShowViewModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-colors">
+              <button onClick={() => setShowViewModal(false)} className="w-12 h-12 rounded-2xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600 border border-transparent hover:border-slate-200">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -812,9 +907,9 @@ function EmployeeProfileContent() {
               <div className="flex gap-3 pt-2">
                 <button 
                   onClick={() => setShowViewModal(false)}
-                  className="btn btn-primary flex-1 h-12 rounded-xl"
+                  className="btn btn-primary w-full h-14 rounded-2xl font-black text-sm uppercase tracking-widest bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-200"
                 >
-                  Close View
+                  Close Assignment
                 </button>
               </div>
             </div>
@@ -822,91 +917,21 @@ function EmployeeProfileContent() {
         </div>
       )}
 
-      {/* Attendance Calendar Modal */}
-      {showAttendanceModal && (
-        <div className="fixed inset-0 z-[100] bg-white animate-in fade-in duration-300">
-          <div className="h-full flex flex-col p-8 md:p-12 overflow-y-auto">
-            <div className="flex items-center justify-between mb-12">
-              <div className="flex items-center gap-6">
-                <div className="w-20 h-20 rounded-[2rem] bg-emerald-50 flex items-center justify-center shadow-xl shadow-emerald-100/50">
-                  <Calendar className="w-10 h-10 text-emerald-600" />
-                </div>
-                <div>
-                  <h2 className="text-4xl font-black text-slate-900 tracking-tight">Attendance Calendar</h2>
-                  <p className="text-sm text-slate-400 font-bold uppercase tracking-[0.3em] mt-2 flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Last 3 Months Review for {employee.name}
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-3">
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Select Year</span>
-                    <select 
-                      className="select h-14 w-32 text-base font-bold rounded-2xl border-2 border-slate-100 hover:border-indigo-500 transition-all shadow-sm"
-                      value={selectedYear}
-                      onChange={(e) => setSelectedYear(Number(e.target.value))}
-                    >
-                      {[2024, 2025, 2026, 2027].map(y => (
-                        <option key={y} value={y}>{y}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Select Month</span>
-                    <select 
-                      className="select h-14 w-48 text-base font-bold rounded-2xl border-2 border-slate-100 hover:border-indigo-500 transition-all shadow-sm"
-                      value={selectedMonth}
-                      onChange={(e) => setSelectedMonth(Number(e.target.value))}
-                    >
-                      {["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].map((m, i) => (
-                        <option key={m} value={i}>{m}</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setShowAttendanceModal(false)} 
-                  className="w-14 h-14 rounded-2xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-slate-500 transition-all hover:rotate-90"
-                >
-                  <X className="w-8 h-8" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1">
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-12 lg:gap-16">
-                {[2, 1, 0].map((offset) => {
-                  const date = new Date(selectedYear, selectedMonth, 1);
-                  date.setMonth(date.getMonth() - offset);
-                  return (
-                    <MonthCalendar 
-                      key={offset} 
-                      year={date.getFullYear()} 
-                      month={date.getMonth()} 
-                      history={stats?.attendance_history_detailed || []}
-                    />
-                  );
-                })}
-            </div>
-          </div>
-        </div>
-      </div>
-      )}
       {/* Edit Task Modal */}
       {showEditModal && editingTask && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center">
-                  <Pencil className="w-6 h-6 text-amber-600" />
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-100">
+                  <Pencil className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900">Edit Assignment</h2>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Edit Assignment</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">Reference: {editingTask.id.slice(-8).toUpperCase()}</p>
+                </div>
               </div>
-              <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setShowEditModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -979,116 +1004,157 @@ function EmployeeProfileContent() {
       {/* Edit Profile Modal */}
       {showEditProfileModal && editEmployeeData && (
         <div className="modal-overlay" onClick={() => setShowEditProfileModal(false)}>
-          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                  <UserCheck className="w-6 h-6 text-indigo-600" />
+          <div className="modal-content max-w-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
+                  <UserCheck className="w-6 h-6 text-white" />
                 </div>
-                <h2 className="text-xl font-bold text-slate-900">Edit Profile Details</h2>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight">Update Profile</h2>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-0.5">Editing: {employee.name}</p>
+                </div>
               </div>
-              <button onClick={() => setShowEditProfileModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+              <button onClick={() => setShowEditProfileModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600">
                 <X className="w-6 h-6" />
               </button>
             </div>
 
-            <form onSubmit={handleUpdateProfile} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleUpdateProfile} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Full Name</label>
-                  <input
-                    type="text"
-                    value={editEmployeeData.name}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, name: e.target.value })}
-                    className="input h-11"
-                    required
-                  />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Full Name</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editEmployeeData.name}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, name: e.target.value })}
+                      className="input input-with-icon h-12 rounded-2xl"
+                      required
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Email Address</label>
-                  <input
-                    type="email"
-                    value={editEmployeeData.email}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, email: e.target.value })}
-                    className="input h-11"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Mobile Number</label>
-                  <input
-                    type="text"
-                    value={editEmployeeData.mobile}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, mobile: e.target.value })}
-                    className="input h-11"
-                    placeholder="Primary contact"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Alt Mobile</label>
-                  <input
-                    type="text"
-                    value={editEmployeeData.alternate_mobile}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, alternate_mobile: e.target.value })}
-                    className="input h-11"
-                    placeholder="Secondary contact"
-                  />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Email Address</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Mail className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="email"
+                      value={editEmployeeData.email}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, email: e.target.value })}
+                      className="input input-with-icon h-12 rounded-2xl"
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Reward Points</label>
-                  <input
-                    type="number"
-                    value={editEmployeeData.reward_points}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, reward_points: parseInt(e.target.value) })}
-                    className="input h-11"
-                    required
-                  />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Mobile Number</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Phone className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editEmployeeData.mobile}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, mobile: e.target.value })}
+                      className="input input-with-icon h-12 rounded-2xl"
+                      placeholder="Primary contact"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Status</label>
-                  <select
-                    value={editEmployeeData.is_active.toString()}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, is_active: e.target.value === 'true' })}
-                    className="select h-11"
-                  >
-                    <option value="true">Active</option>
-                    <option value="false">Inactive</option>
-                  </select>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Alt Mobile</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <PhoneCall className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editEmployeeData.alternate_mobile}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, alternate_mobile: e.target.value })}
+                      className="input input-with-icon h-12 rounded-2xl"
+                      placeholder="Secondary contact"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">Employment Role</label>
-                  <select
-                    value={editEmployeeData.role}
-                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, role: e.target.value })}
-                    className="select h-11"
-                  >
-                    <option value="employee">Standard Employee</option>
-                    <option value="admin">Administrator</option>
-                  </select>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Reward Points</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Award className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="number"
+                      value={editEmployeeData.reward_points}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, reward_points: parseInt(e.target.value) })}
+                      className="input input-with-icon h-12 rounded-2xl font-bold text-indigo-600"
+                      required
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-1 uppercase tracking-wide">New Password</label>
-                  <div className="relative">
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Account Status</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Power className="w-4 h-4" />
+                    </div>
+                    <select
+                      value={editEmployeeData.is_active.toString()}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, is_active: e.target.value === 'true' })}
+                      className="select input-with-icon h-12 rounded-2xl"
+                    >
+                      <option value="true">Active Account</option>
+                      <option value="false">Inactive / Suspended</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Employment Role</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Shield className="w-4 h-4" />
+                    </div>
+                    <select
+                      value={editEmployeeData.role}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, role: e.target.value })}
+                      className="select input-with-icon h-12 rounded-2xl"
+                    >
+                      <option value="employee">Employee</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Change Password</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Lock className="w-4 h-4" />
+                    </div>
                     <input
                       type={showPassword ? "text" : "password"}
                       value={editEmployeeData.password}
                       onChange={(e) => setEditEmployeeData({ ...editEmployeeData, password: e.target.value })}
-                      className="input h-11 pr-10"
-                      placeholder="Leave blank to keep current"
+                      className="input input-with-icon pr-12 h-12 rounded-2xl"
+                      placeholder="••••••••"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1096,13 +1162,13 @@ function EmployeeProfileContent() {
                 </div>
               </div>
 
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowEditProfileModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl">
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={() => setShowEditProfileModal(false)} className="btn btn-secondary flex-1 h-14 rounded-2xl font-bold border-slate-200 text-slate-500">
                   Cancel
                 </button>
-                <button type="submit" disabled={updatingProfile} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl">
+                <button type="submit" disabled={updatingProfile} className="btn btn-primary flex-1 h-14 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
                   {updatingProfile ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
                   ) : (
                     <>Update Profile</>
                   )}

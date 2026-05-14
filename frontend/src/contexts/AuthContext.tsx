@@ -8,9 +8,6 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAdmin: boolean;
-  isSuperAdmin: boolean;
-  isManager: boolean;
-  isAssistantManager: boolean;
   isEmployee: boolean;
   canManageAttendance: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -67,12 +64,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading,
-        isSuperAdmin: role === 'super_admin',
-        isAdmin: role === 'admin' || role === 'super_admin',
-        isManager: role === 'manager',
-        isAssistantManager: role === 'assistant_manager',
+        isAdmin: role === 'admin',
         isEmployee: role === 'employee',
-        canManageAttendance: ['super_admin', 'admin', 'manager'].includes(role || ''),
+        canManageAttendance: role === 'admin',
         login,
         logout,
       }}

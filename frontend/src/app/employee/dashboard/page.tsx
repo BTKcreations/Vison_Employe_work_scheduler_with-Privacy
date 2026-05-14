@@ -9,10 +9,16 @@ import {
   Trophy, Star, Activity
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
+import EmptyState from '@/components/EmptyState';
 
 export default function EmployeeDashboardPage() {
   const [data, setData] = useState<EmployeeDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -117,25 +123,27 @@ export default function EmployeeDashboardPage() {
             <div className="space-y-10">
               <div className="relative flex justify-center py-6">
                 <div className="w-80 h-80">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                    <PieChart>
-                      <Pie
-                        data={taskData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={110}
-                        outerRadius={145}
-                        paddingAngle={10}
-                        dataKey="value"
-                        stroke="none"
-                        cornerRadius={15}
-                      >
-                        {taskData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                    </PieChart>
-                  </ResponsiveContainer>
+                  {mounted && (
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                      <PieChart>
+                        <Pie
+                          data={taskData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={110}
+                          outerRadius={145}
+                          paddingAngle={10}
+                          dataKey="value"
+                          stroke="none"
+                          cornerRadius={15}
+                        >
+                          {taskData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  )}
                 </div>
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center">
@@ -164,10 +172,7 @@ export default function EmployeeDashboardPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-20 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
-              <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-              <p className="text-slate-400 text-sm font-medium">No tasks recorded for this period</p>
-            </div>
+            <EmptyState title="No tasks recorded" description="Assigned work will appear here once you start." icon={ClipboardList} />
           )}
         </div>
 
@@ -194,7 +199,7 @@ export default function EmployeeDashboardPage() {
               ))}
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm text-center py-10">No recent activity</p>
+            <EmptyState title="No activity" description="Recent actions will show up here." variant="small" />
           )}
         </div>
       </div>

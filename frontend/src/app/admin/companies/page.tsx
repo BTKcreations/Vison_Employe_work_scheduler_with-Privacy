@@ -192,17 +192,20 @@ export default function CompaniesPage() {
       {showEditModal && editingCompany && (
         <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal-content max-w-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-2">
-                <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                  <Building2 className="w-6 h-6 text-indigo-600" />
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
+                  <Building2 className="w-7 h-7 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold">Edit Company Details</h2>
-                  <p className="text-xs text-muted-foreground">Manage organization settings and operational hours</p>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Company Profile</h2>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-0.5 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
+                    Organization Settings
+                  </p>
                 </div>
               </div>
-              <button onClick={() => setShowEditModal(false)} className="text-muted-foreground hover:text-foreground">
+              <button onClick={() => setShowEditModal(false)} className="w-12 h-12 rounded-2xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600 border border-transparent hover:border-slate-200">
                 <X className="w-6 h-6" />
               </button>
             </div>
@@ -310,12 +313,12 @@ export default function CompaniesPage() {
                 </div>
               </div>
 
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary flex-1">
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary flex-1 h-14 rounded-2xl font-bold border-slate-200 text-slate-500">
                   Cancel
                 </button>
-                <button type="submit" disabled={saving} className="btn btn-primary flex-1">
-                  {saving ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : <><Save className="w-4 h-4" /> Save Changes</>}
+                <button type="submit" disabled={saving} className="btn btn-primary flex-1 h-14 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
+                  {saving ? <Loader2 className="w-6 h-6 animate-spin mx-auto" /> : <><Save className="w-5 h-5" /> Save Changes</>}
                 </button>
               </div>
             </form>
@@ -326,31 +329,51 @@ export default function CompaniesPage() {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-semibold">Add New Company</h2>
-              <button onClick={() => setShowCreateModal(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
+                  <Building2 className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Add Company</h2>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">New organization</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCreateModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600">
+                <X className="w-6 h-6" />
               </button>
             </div>
-            <form onSubmit={handleCreate} className="space-y-4">
-              <input
-                type="text"
-                placeholder="Company Name"
-                className="input"
-                value={newCompany.name}
-                onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
-                required
-              />
-              <textarea
-                placeholder="Description"
-                className="input min-h-24"
-                value={newCompany.description}
-                onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })}
-              />
-              <button type="submit" disabled={creating} className="btn btn-primary w-full">
-                {creating ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : "Create Company"}
-              </button>
+            
+            <form onSubmit={handleCreate} className="space-y-6">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Company Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Acme Corp"
+                  className="input h-12 rounded-2xl"
+                  value={newCompany.name}
+                  onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Description</label>
+                <textarea
+                  placeholder="Tell us about this company..."
+                  className="input min-h-32 rounded-2xl py-4"
+                  value={newCompany.description}
+                  onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-2xl font-bold border-slate-200 text-slate-500">
+                  Cancel
+                </button>
+                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
+                  {creating ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Create Company"}
+                </button>
+              </div>
             </form>
           </div>
         </div>

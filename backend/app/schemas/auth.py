@@ -30,3 +30,8 @@ class UserResponse(BaseModel):
     reward_points: int
     is_active: bool
     created_at: str
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=6)
+    new_password: str = Field(..., min_length=6, max_length=100)

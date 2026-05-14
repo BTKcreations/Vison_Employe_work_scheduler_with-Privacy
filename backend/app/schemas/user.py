@@ -9,6 +9,7 @@ class CreateEmployeeRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr
     password: str = Field(..., min_length=6, max_length=100)
+    role: Optional[str] = "employee"
     mobile: Optional[str] = None
     alternate_mobile: Optional[str] = None
 

@@ -5,11 +5,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Bell, Menu, BarChart
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, BarChart
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
+import NotificationBell from '@/components/NotificationBell';
 import AttendanceToggle from '@/components/AttendanceToggle';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { Key } from 'lucide-react';
 
 const navItems = [
   { href: '/employee/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -23,6 +26,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -128,10 +132,25 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
           </div>
           <div className="flex items-center gap-4">
             <AttendanceToggle />
-            <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
-              <Bell className="w-5 h-5 text-slate-500" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
-            </button>
+            <NotificationBell />
+            <div className="relative group">
+              <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
+                <Key className="w-5 h-5 text-slate-500" />
+              </button>
+              <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-2 w-48">
+                  <button 
+                    onClick={() => setShowChangePassword(true)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-rose-50 flex items-center justify-center">
+                      <Key className="w-3.5 h-3.5" />
+                    </div>
+                    Change Password
+                  </button>
+                </div>
+              </div>
+            </div>
             <div className="h-8 w-px bg-border mx-1" />
             <div className="flex items-center gap-2 text-right hidden sm:block">
               <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
@@ -147,6 +166,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
           {children}
         </div>
       </main>
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </div>
   );
 }

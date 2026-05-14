@@ -11,6 +11,7 @@ from app.models.company import Company
 from app.models.attendance import Attendance
 from app.models.holiday import Holiday
 from app.models.recurring_task import RecurrenceRule
+from app.models.notification import Notification
 
 
 async def init_db():
@@ -22,7 +23,7 @@ async def init_db():
 
         await init_beanie(
             database=database,
-            document_models=[User, Task, ActivityLog, Company, Attendance, Holiday, RecurrenceRule]
+            document_models=[User, Task, ActivityLog, Company, Attendance, Holiday, RecurrenceRule, Notification]
         )
         print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
     except Exception as e:

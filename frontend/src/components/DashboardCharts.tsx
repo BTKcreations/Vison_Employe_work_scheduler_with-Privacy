@@ -1,13 +1,15 @@
 'use client';
 
 import { 
-  TrendingUp, Activity, Users 
+  TrendingUp, Activity, Users, ClipboardList 
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid
 } from 'recharts';
+import { useState, useEffect } from 'react';
 import StatusChart from './StatusChart';
+import EmptyState from './EmptyState';
 
 const COLORS = ['#8b5cf6', '#f59e0b', '#3b82f6', '#ef4444'];
 
@@ -16,6 +18,12 @@ interface DashboardChartsProps {
 }
 
 export default function DashboardCharts({ stats }: DashboardChartsProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const taskStatusData = [
     { name: 'Completed', value: stats.tasks.completed - stats.tasks.completed_late, color: '#10b981' },
     { name: 'Late', value: stats.tasks.completed_late, color: '#818cf8' },
@@ -49,12 +57,14 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         {taskStatusData.length > 0 ? (
           <div className="flex flex-col items-center gap-4">
             <div className="w-full">
-              <StatusChart 
-                data={taskStatusData} 
-                total={stats.tasks.total} 
-                completed={stats.tasks.completed}
-                size={180}
-              />
+              {mounted && (
+                <StatusChart 
+                  data={taskStatusData} 
+                  total={stats.tasks.total} 
+                  completed={stats.tasks.completed}
+                  size={180}
+                />
+              )}
             </div>
             <div className="grid grid-cols-2 lg:grid-cols-5 gap-2 w-full">
               {taskStatusData.map((item) => (
@@ -69,7 +79,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
             </div>
           </div>
         ) : (
-          <p className="text-muted-foreground text-sm text-center py-10">No tasks yet</p>
+          <EmptyState title="No tasks recorded" description="Start assigning work to see metrics" variant="small" icon={ClipboardList} />
         )}
       </div>
 
@@ -79,27 +89,29 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
           <Activity className="w-5 h-5 text-indigo-500" />
           <h2 className="font-semibold text-slate-800">Priority Distribution</h2>
         </div>
-        <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
-          <BarChart data={priorityData}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-            <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
-            <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
-            <Tooltip
-              contentStyle={{
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                color: '#0f172a',
-                boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-              }}
-            />
-            <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
-              {priorityData.map((_, index) => (
-                <Cell key={`bar-${index}`} fill={COLORS[index]} />
-              ))}
-            </Bar>
-          </BarChart>
-        </ResponsiveContainer>
+        {mounted && (
+          <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
+            <BarChart data={priorityData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
+              <YAxis tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
+              <Tooltip
+                contentStyle={{
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '8px',
+                  color: '#0f172a',
+                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                }}
+              />
+              <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
+                {priorityData.map((_, index) => (
+                  <Cell key={`bar-${index}`} fill={COLORS[index]} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       {/* Attendance Today */}
@@ -111,26 +123,28 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         
         <div className="flex flex-col items-center justify-center">
           <div className="h-[180px] w-full relative mb-4">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-              <PieChart>
-                <Pie
-                  data={attendanceData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={70}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {attendanceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            {mounted && (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <PieChart>
+                  <Pie
+                    data={attendanceData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={70}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {attendanceData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-2xl font-black text-slate-900">
                 {stats.attendance_today.total > 0 

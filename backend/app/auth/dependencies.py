@@ -65,22 +65,10 @@ class RoleChecker:
 async def require_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
-    """Ensure the current user is an admin or super admin."""
-    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+    """Ensure the current user is an admin."""
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
-        )
-    return current_user
-
-
-async def require_super_admin(
-    current_user: User = Depends(get_current_user),
-) -> User:
-    """Ensure the current user is a super admin."""
-    if current_user.role != UserRole.SUPER_ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Super Admin access required",
         )
     return current_user

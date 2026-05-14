@@ -6,6 +6,7 @@ from app.models.user import User
 from app.models.company import Company
 from app.models.activity_log import ActivityLog
 from app.services.reward_service import check_and_award_reward
+from app.models.notification import Notification
 from beanie import PydanticObjectId
 from datetime import datetime
 from typing import Optional, List
@@ -47,6 +48,16 @@ async def create_task(
         task_id=task.id,
         details=f"Work '{work_description[:50]}...' assigned to {assigned_user.name if assigned_user else 'Unknown'}",
     ).insert()
+    
+    # Notify employee if assigned by someone else
+    if str(assigned_to) != str(created_by):
+        await Notification(
+            user_id=PydanticObjectId(assigned_to),
+            sender_id=PydanticObjectId(created_by),
+            title="New Task Assigned",
+            message=f"You have been assigned a new task: {work_description[:100]}",
+            type="task_assigned"
+        ).insert()
 
     return task
 
@@ -139,15 +150,26 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
 
     # Check for reward if task was just completed (only on-time completion gets reward)
     final_status = update_data.get("status", task.status)
-    if final_status == TaskStatus.COMPLETED:
-        await check_and_award_reward(task)
+    if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE] and task.status not in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE]:
+        if final_status == TaskStatus.COMPLETED:
+            await check_and_award_reward(task)
 
         await ActivityLog(
             user_id=task.assigned_to,
             action="task_completed",
             task_id=task.id,
-            details=f"Work '{task.work_description[:50]}...' completed",
+            details=f"Work '{task.work_description[:50]}...' completed ({final_status})",
         ).insert()
+
+        # Notify creator if completed by employee
+        if task.created_by != task.assigned_to:
+            await Notification(
+                user_id=task.created_by,
+                sender_id=task.assigned_to,
+                title="Task Completed",
+                message=f"{task.assigned_to_name} completed the task: {task.work_description[:100]}",
+                type="task_completed"
+            ).insert()
 
     return task
 

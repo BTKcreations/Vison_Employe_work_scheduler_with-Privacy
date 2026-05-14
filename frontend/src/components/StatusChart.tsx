@@ -1,6 +1,7 @@
 'use client';
 
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { useState, useEffect } from 'react';
 
 interface StatusData {
   name: string;
@@ -17,6 +18,13 @@ interface StatusChartProps {
 
 export default function StatusChart({ data, total, completed, size = 240 }: StatusChartProps) {
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return <div style={{ height: size }} />;
 
   return (
     <div className="relative flex items-center justify-center w-full">

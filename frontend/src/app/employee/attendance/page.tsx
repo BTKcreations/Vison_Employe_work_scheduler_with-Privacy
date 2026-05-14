@@ -77,6 +77,8 @@ export default function AttendancePage() {
         setCurrentSession(null);
       }
       fetchAttendance();
+      // Notify other components (like Navbar Toggle)
+      window.dispatchEvent(new Event('attendanceUpdated'));
     } catch (err: any) {
       setError(err.response?.data?.detail || `Failed to ${type}.`);
     } finally {

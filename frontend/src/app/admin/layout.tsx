@@ -6,11 +6,14 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, Users, ClipboardList, FileBarChart,
-  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Bell, Menu, X as CloseIcon,
+  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Menu, X as CloseIcon,
   Settings, Calendar
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
+import NotificationBell from '@/components/NotificationBell';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
+import { Key } from 'lucide-react';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -23,12 +26,13 @@ const navItems = [
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, isAdmin, isManager, isAssistantManager, logout } = useAuth();
+  const { user, isLoading, isAdmin, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
-  const canAccess = isAdmin || isManager || isAssistantManager;
+  const canAccess = isAdmin;
 
   useEffect(() => {
     if (!isLoading && (!user || !canAccess)) {
@@ -130,6 +134,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <GlobalSearch />
           </div>
           <div className="flex items-center gap-4">
+            <NotificationBell />
             {/* Settings Dropdown */}
             <div className="relative group">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
@@ -155,13 +160,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
                     Holidays
                   </Link>
+                  <button 
+                    onClick={() => setShowChangePassword(true)}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-rose-50 flex items-center justify-center">
+                      <Key className="w-3.5 h-3.5" />
+                    </div>
+                    Password
+                  </button>
                 </div>
               </div>
             </div>
-            <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">
-              <Bell className="w-5 h-5 text-slate-500" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-white" />
-            </button>
             <div className="h-8 w-px bg-border mx-1" />
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
@@ -174,6 +184,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           {children}
         </div>
       </main>
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </div>
   );
 }

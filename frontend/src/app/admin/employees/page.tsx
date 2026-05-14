@@ -6,7 +6,7 @@ import { Employee } from '@/types';
 import UserLink from '@/components/UserLink';
 import { formatDate } from '@/lib/utils';
 import {
-  Users, Plus, Search, UserCheck, UserX, Trophy, X, Mail, Lock, User, Eye, Shield, Briefcase, Loader2
+  Users, Plus, Search, UserCheck, UserX, Trophy, X, Mail, Lock, User, Eye, Shield, Briefcase, Loader2, UserPlus, Phone, PhoneCall
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -82,10 +82,8 @@ export default function EmployeesPage() {
 
   const getRoleBadge = (role: string) => {
     switch (role) {
-      case 'super_admin': return 'bg-purple-100 text-purple-700 border-purple-200';
       case 'admin': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
-      case 'manager': return 'bg-blue-100 text-blue-700 border-blue-200';
-      case 'assistant_manager': return 'bg-sky-100 text-sky-700 border-sky-200';
+      case 'employee': return 'bg-emerald-100 text-emerald-700 border-emerald-200';
       default: return 'bg-slate-100 text-slate-700 border-slate-200';
     }
   };
@@ -209,82 +207,92 @@ export default function EmployeesPage() {
       {/* Create Employee Modal */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-500" />
-                <h2 className="text-lg font-semibold">Add Team Member</h2>
+          <div className="modal-content max-w-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
+                  <UserPlus className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-black text-slate-900 tracking-tight">Add Team Member</h2>
+                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-0.5">Registration form</p>
+                </div>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="text-muted-foreground hover:text-foreground">
-                <X className="w-5 h-5" />
+              <button onClick={() => setShowCreateModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600">
+                <X className="w-6 h-6" />
               </button>
             </div>
 
             {error && (
-              <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
+              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-bold animate-in fade-in slide-in-from-top-1">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleCreate} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <form onSubmit={handleCreate} className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Full Name</label>
-                  <div className="relative">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Full Name</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <User className="w-4 h-4" />
+                    </div>
                     <input
                       type="text"
                       value={newEmployee.name}
                       onChange={(e) => setNewEmployee({ ...newEmployee, name: e.target.value })}
-                      className="input pl-10"
+                      className="input input-with-icon h-12 rounded-2xl"
                       placeholder="John Doe"
                       required
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Role</label>
-                  <div className="relative">
-                    <Shield className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Employment Role</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Shield className="w-4 h-4" />
+                    </div>
                     <select
                       value={newEmployee.role}
                       onChange={(e) => setNewEmployee({ ...newEmployee, role: e.target.value })}
-                      className="input pl-10 appearance-none"
+                      className="select input-with-icon h-12 rounded-2xl"
                       required
                     >
                       <option value="employee">Employee</option>
-                      <option value="assistant_manager">Assistant Manager</option>
-                      <option value="manager">Manager</option>
                       <option value="admin">Admin</option>
-                      <option value="super_admin">Super Admin</option>
                     </select>
                   </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Mobile Number</label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Mobile Number</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Phone className="w-4 h-4" />
+                    </div>
                     <input
                       type="text"
                       value={newEmployee.mobile}
                       onChange={(e) => setNewEmployee({ ...newEmployee, mobile: e.target.value })}
-                      className="input pl-10"
+                      className="input input-with-icon h-12 rounded-2xl"
                       placeholder="+91 9876543210"
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-muted-foreground mb-1.5">Alternate Mobile</label>
-                  <div className="relative">
-                    <Briefcase className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Alternate Mobile</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <PhoneCall className="w-4 h-4" />
+                    </div>
                     <input
                       type="text"
                       value={newEmployee.alternate_mobile}
                       onChange={(e) => setNewEmployee({ ...newEmployee, alternate_mobile: e.target.value })}
-                      className="input pl-10"
+                      className="input input-with-icon h-12 rounded-2xl"
                       placeholder="Optional"
                     />
                   </div>
@@ -292,43 +300,49 @@ export default function EmployeesPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Email</label>
-                <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Email Address</label>
+                <div className="relative group">
+                  <div className="input-icon-container">
+                    <Mail className="w-4 h-4" />
+                  </div>
                   <input
                     type="email"
                     value={newEmployee.email}
                     onChange={(e) => setNewEmployee({ ...newEmployee, email: e.target.value })}
-                    className="input pl-10"
+                    className="input input-with-icon h-12 rounded-2xl"
                     placeholder="john@company.com"
                     required
                   />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1.5">Password</label>
-                <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Security Password</label>
+                <div className="relative group">
+                  <div className="input-icon-container">
+                    <Lock className="w-4 h-4" />
+                  </div>
                   <input
                     type="password"
                     value={newEmployee.password}
                     onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
-                    className="input pl-10"
+                    className="input input-with-icon h-12 rounded-2xl"
                     placeholder="Min. 6 characters"
                     required
                     minLength={6}
                   />
                 </div>
               </div>
-              <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1">
+
+              <div className="flex gap-4 pt-6">
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-14 rounded-2xl font-bold border-slate-200 text-slate-500">
                   Cancel
                 </button>
-                <button type="submit" disabled={creating} className="btn btn-primary flex-1">
+                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-14 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
                   {creating ? (
-                    <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                    <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                   ) : (
-                    <><Plus className="w-4 h-4" /> Create Member</>
+                    <><Plus className="w-5 h-5" /> Create Member</>
                   )}
                 </button>
               </div>

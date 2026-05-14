@@ -28,6 +28,12 @@ export default function AttendanceToggle() {
 
   useEffect(() => {
     fetchStatus();
+    
+    // Listen for updates from other components
+    const handleUpdate = () => fetchStatus();
+    window.addEventListener('attendanceUpdated', handleUpdate);
+    
+    return () => window.removeEventListener('attendanceUpdated', handleUpdate);
   }, [fetchStatus]);
 
   const startAction = () => {

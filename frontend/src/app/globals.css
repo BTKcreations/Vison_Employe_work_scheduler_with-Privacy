@@ -325,6 +325,34 @@ body {
   color: #94a3b8;
 }
 
+/* ── Input with Icon ── */
+.input-with-icon {
+  padding-left: 3.75rem !important;
+}
+
+.input-icon-container {
+  position: absolute;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2.25rem;
+  height: 2.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.75rem;
+  background: #f8fafc;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.group:focus-within .input-icon-container {
+  background: #eef2ff;
+  color: #6366f1;
+}
+
 /* Textarea variant */
 textarea.input {
   resize: vertical;
@@ -371,23 +399,27 @@ input[type="time"] {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.4);
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  animation: fadeIn 0.3s ease-out;
 }
 .modal-content {
   background: #ffffff;
-  border: 1px solid #e2e8f0 !important;
-  border-radius: 1rem;
-  padding: 1.5rem;
-  width: 100%;
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  border-radius: 1.5rem;
+  padding: 2rem;
+  width: 95%;
   max-width: 500px;
   max-height: 90vh;
   overflow-y: auto;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5),
-              0 0 40px rgba(139, 92, 246, 0.08);
+  box-shadow: 
+    0 20px 50px -12px rgba(0, 0, 0, 0.15),
+    0 0 40px rgba(99, 102, 241, 0.05);
+  animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ── Floating shapes ── */
@@ -416,4 +448,18 @@ input[type="time"] {
   z-index: 100;
 }
 
-/* Animations removed for faster workflow */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { 
+    opacity: 0;
+    transform: scale(0.95) translateY(10px);
+  }
+  to { 
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
