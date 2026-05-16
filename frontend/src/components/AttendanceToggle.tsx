@@ -48,12 +48,24 @@ export default function AttendanceToggle() {
           setLocation(loc);
           performAction(loc);
         },
-        (err) => {
-          console.error('Location error:', err);
-          setError('Location permission required.');
+        (geoError) => {
+          console.error('Location error:', geoError.code, geoError.message);
+          switch (geoError.code) {
+            case geoError.PERMISSION_DENIED:
+              setError('Location permission denied. Please allow access in browser settings.');
+              break;
+            case geoError.POSITION_UNAVAILABLE:
+              setError('Location unavailable. Check your GPS settings.');
+              break;
+            case geoError.TIMEOUT:
+              setError('Location timed out. Check your connection.');
+              break;
+            default:
+              setError('Unable to get location.');
+          }
           setStatus('error');
         },
-        { enableHighAccuracy: true, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
       );
     } else {
       setError('Geolocation not supported.');

@@ -28,7 +28,7 @@ export default function StatusChart({ data, total, completed, size = 240 }: Stat
 
   return (
     <div className="relative flex items-center justify-center w-full">
-      <ResponsiveContainer width="100%" height={size} minWidth={0} minHeight={0}>
+      <ResponsiveContainer width="100%" height={size} debounce={100}>
         <PieChart>
           <Pie
             data={data}

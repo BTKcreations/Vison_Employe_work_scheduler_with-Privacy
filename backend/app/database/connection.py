@@ -12,6 +12,7 @@ from app.models.attendance import Attendance
 from app.models.holiday import Holiday
 from app.models.recurring_task import RecurrenceRule
 from app.models.notification import Notification
+from app.models.category import Category
 
 
 async def init_db():
@@ -23,10 +24,12 @@ async def init_db():
 
         await init_beanie(
             database=database,
-            document_models=[User, Task, ActivityLog, Company, Attendance, Holiday, RecurrenceRule, Notification]
+            document_models=[User, Task, ActivityLog, Company, Attendance, Holiday, RecurrenceRule, Notification, Category]
         )
         print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
     except Exception as e:
         print(f"[ERROR] Failed to connect to MongoDB: {str(e)}")
-        # We don't raise the error here to allow the app to start and show a health check
-        # even if DB is down, which helps in debugging 502 vs 500 errors.
+        # Raise the error to prevent the app from starting in a broken state.
+        # This will cause the container/process to restart, which is often 
+        # preferred in production (fail-fast).
+        raise e

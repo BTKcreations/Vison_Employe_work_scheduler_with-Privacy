@@ -6,12 +6,12 @@ import api from '@/lib/api';
 import { Employee, Task, Company } from '@/types';
 import StatusChart from '@/components/StatusChart';
 import EmptyState from '@/components/EmptyState';
-import { 
-  formatDate, formatDateTime, getStatusColor, getStatusLabel, 
-  getPriorityColor, timeAgo, formatPreciseDateTime 
+import {
+  formatDate, formatDateTime, getStatusColor, getStatusLabel,
+  getPriorityColor, timeAgo, formatPreciseDateTime
 } from '@/lib/utils';
 import {
-  Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle, 
+  Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle,
   ClipboardList, Activity, ArrowLeft, Plus, UserX, UserCheck,
   MessageSquarePlus, Play, Trash2, ChevronUp, Send,
   Eye, EyeOff, Copy, ShieldCheck, X, Phone, PhoneCall, Pencil, Award, Power, Lock, User, Shield
@@ -129,7 +129,13 @@ function EmployeeProfileContent() {
     if (!id || !editEmployeeData) return;
     setUpdatingProfile(true);
     try {
-      await api.put(`/admin/employees/${id}`, editEmployeeData);
+      // Filter out empty password to avoid 422 validation error (min_length=6)
+      const payload = { ...editEmployeeData };
+      if (!payload.password || payload.password.trim() === '') {
+        delete payload.password;
+      }
+
+      await api.put(`/admin/employees/${id}`, payload);
       setShowEditProfileModal(false);
       fetchData();
     } catch (err: any) {
@@ -150,6 +156,8 @@ function EmployeeProfileContent() {
         priority: editingTask.priority,
         deadline: new Date(editingTask.deadline).toISOString(),
         company_id: editingTask.company_id || undefined,
+        category_ids: editingTask.category_ids,
+        assigned_to: editingTask.assigned_to,
       };
       await api.put(`/tasks/${editingTask.id}`, payload);
       setShowEditModal(false);
@@ -259,8 +267,8 @@ function EmployeeProfileContent() {
           <div className="flex flex-col gap-8">
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
               <div className="flex items-center gap-6">
-                <button 
-                  onClick={() => setShowAttendanceModal(false)} 
+                <button
+                  onClick={() => setShowAttendanceModal(false)}
                   className="p-3 hover:bg-slate-100 rounded-2xl transition-all text-slate-500 hover:text-indigo-600 hover:scale-110 active:scale-95"
                 >
                   <ArrowLeft className="w-6 h-6" />
@@ -281,12 +289,12 @@ function EmployeeProfileContent() {
                   </div>
                 </div>
               </div>
-              
+
               <div className="flex items-center gap-6">
                 <div className="flex items-center gap-3">
                   <div className="flex flex-col">
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Select Year</span>
-                    <select 
+                    <select
                       className="select h-12 w-28 text-sm font-bold rounded-xl border-2 border-slate-100 hover:border-indigo-500 transition-all shadow-sm"
                       value={selectedYear}
                       onChange={(e) => setSelectedYear(Number(e.target.value))}
@@ -298,7 +306,7 @@ function EmployeeProfileContent() {
                   </div>
                   <div className="flex flex-col">
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Select Month</span>
-                    <select 
+                    <select
                       className="select h-12 w-40 text-sm font-bold rounded-xl border-2 border-slate-100 hover:border-indigo-500 transition-all shadow-sm"
                       value={selectedMonth}
                       onChange={(e) => setSelectedMonth(Number(e.target.value))}
@@ -309,8 +317,8 @@ function EmployeeProfileContent() {
                     </select>
                   </div>
                 </div>
-                <button 
-                  onClick={() => setShowAttendanceModal(false)} 
+                <button
+                  onClick={() => setShowAttendanceModal(false)}
                   className="w-12 h-12 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-600 flex items-center justify-center text-slate-500 transition-all hover:rotate-90"
                   title="Close Calendar"
                 >
@@ -325,10 +333,10 @@ function EmployeeProfileContent() {
                   const date = new Date(selectedYear, selectedMonth, 1);
                   date.setMonth(date.getMonth() - offset);
                   return (
-                    <MonthCalendar 
-                      key={offset} 
-                      year={date.getFullYear()} 
-                      month={date.getMonth()} 
+                    <MonthCalendar
+                      key={offset}
+                      year={date.getFullYear()}
+                      month={date.getMonth()}
                       history={stats?.attendance_history_detailed || []}
                     />
                   );
@@ -340,422 +348,436 @@ function EmployeeProfileContent() {
       ) : (
         <div className="animate-in fade-in duration-500 space-y-8">
           {/* Top Navigation & Actions */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500">
-            <ArrowLeft className="w-5 h-5" />
-          </button>
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
-              {employee.name}
-              <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'} text-xs font-bold`}>
-                {employee.is_active ? 'Active' : 'Inactive'}
-              </span>
-            </h1>
-            <p className="text-slate-500 text-sm font-medium">Employee Profile & Productivity Metrics</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={handleToggleActive}
-            className={`btn ${employee.is_active ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
-          >
-            {employee.is_active ? <><UserX className="w-4 h-4" /> Deactivate</> : <><UserCheck className="w-4 h-4" /> Activate</>}
-          </button>
-          <button 
-            onClick={handleEditProfile}
-            className="btn bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
-          >
-            <Pencil className="w-4 h-4" /> Edit Details
-          </button>
-          <button 
-            onClick={() => setShowCreateModal(true)}
-            className="btn btn-primary shadow-lg shadow-indigo-100"
-          >
-            <Plus className="w-4 h-4" /> Assign Work
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* 1. Profile Card */}
-        <div className="glass rounded-2xl p-6 relative overflow-hidden border border-slate-100 flex flex-col h-full">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
-          <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-500 flex items-center justify-center text-white text-xl font-bold shadow-xl shadow-indigo-200">
-              {employee.name.charAt(0).toUpperCase()}
-            </div>
-            <div>
-              <h3 className="font-bold text-lg text-slate-800">{employee.name}</h3>
-              <p className="text-[10px] uppercase tracking-[0.2em] text-indigo-500 font-black mt-0.5">
-                {employee.role.replace('_', ' ')}
-              </p>
-            </div>
-          </div>
-          
-          <div className="space-y-3 flex-1">
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
-              <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
-                <Mail className="w-3.5 h-3.5 text-indigo-400" /> Email
-              </span>
-              <span className="text-xs font-bold text-slate-700 truncate max-w-[140px]">{employee.email}</span>
-            </div>
-            
-            {employee.mobile && (
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
-                <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
-                  <Phone className="w-3.5 h-3.5 text-emerald-400" /> Mobile
-                </span>
-                <span className="text-xs font-bold text-slate-700">{employee.mobile}</span>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <button onClick={() => router.back()} className="p-2 hover:bg-slate-100 rounded-lg transition-colors text-slate-500">
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div>
+                <h1 className="text-2xl font-bold flex items-center gap-3 text-slate-900">
+                  {employee.name}
+                  <span className={`badge ${employee.is_active ? 'badge-success' : 'badge-danger'} text-xs font-bold`}>
+                    {employee.is_active ? 'Active' : 'Inactive'}
+                  </span>
+                </h1>
+                <p className="text-slate-500 text-sm font-medium">Employee Profile & Productivity Metrics</p>
               </div>
-            )}
-
-            {employee.alternate_mobile && (
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
-                <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
-                  <PhoneCall className="w-3.5 h-3.5 text-blue-400" /> Alt Mobile
-                </span>
-                <span className="text-xs font-bold text-slate-700">{employee.alternate_mobile}</span>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-100">
-              <span className="text-xs text-amber-600 flex items-center gap-2 font-bold">
-                <Trophy className="w-4 h-4" /> Rewards
-              </span>
-              <span className="text-xs font-black text-amber-600">{employee.reward_points} pts</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleToggleActive}
+                className={`btn ${employee.is_active ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
+              >
+                {employee.is_active ? <><UserX className="w-4 h-4" /> Deactivate</> : <><UserCheck className="w-4 h-4" /> Activate</>}
+              </button>
+              <button
+                onClick={handleEditProfile}
+                className="btn bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
+              >
+                <Pencil className="w-4 h-4" /> Edit Details
+              </button>
+              <button
+                onClick={() => setShowCreateModal(true)}
+                className="btn btn-primary shadow-lg shadow-indigo-100"
+              >
+                <Plus className="w-4 h-4" /> Assign Work
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* 2. Task Status Distribution */}
-        <div className="glass rounded-2xl p-6 border border-slate-100 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-2 mb-6">
-            <Activity className="w-5 h-5 text-indigo-500" />
-            <h3 className="font-bold text-slate-800">Task Status Distribution</h3>
-          </div>
-          
-          {stats?.tasks?.total > 0 ? (
-            <div className="flex flex-col gap-6 flex-1">
-              <div className="flex justify-center items-center h-40">
-                <StatusChart 
-                  data={[
-                    { name: 'Completed', value: stats.tasks.completed - stats.tasks.completed_late, color: '#10b981' },
-                    { name: 'Late', value: stats.tasks.completed_late, color: '#818cf8' },
-                    { name: 'In Progress', value: stats.tasks.in_progress, color: '#3b82f6' },
-                    { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
-                    { name: 'Overdue', value: stats.tasks.overdue, color: '#ef4444' },
-                  ].filter(d => d.value > 0)} 
-                  total={stats.tasks.total} 
-                  completed={stats.tasks.completed}
-                  size={140}
-                />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* 1. Profile Card */}
+            <div className="glass rounded-2xl p-6 relative overflow-hidden border border-slate-100 flex flex-col h-full">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-500/5 rounded-full blur-3xl -mr-16 -mt-16" />
+              <div className="flex items-center gap-4 mb-6">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-500 flex items-center justify-center text-white text-xl font-bold shadow-xl shadow-indigo-200">
+                  {employee.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg text-slate-800">{employee.name}</h3>
+                  <p className="text-[10px] uppercase tracking-[0.2em] text-indigo-500 font-black mt-0.5">
+                    {employee.role.replace('_', ' ')}
+                  </p>
+                </div>
               </div>
-              
-              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Completed</p>
-                  </div>
-                  <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.completed - stats.tasks.completed_late}</p>
+
+              <div className="space-y-3 flex-1">
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
+                  <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
+                    <Mail className="w-3.5 h-3.5 text-indigo-400" /> Email
+                  </span>
+                  <span className="text-xs font-bold text-slate-700 truncate max-w-[140px]">{employee.email}</span>
                 </div>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
-                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Late</p>
+
+                {employee.mobile && (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
+                    <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
+                      <Phone className="w-3.5 h-3.5 text-emerald-400" /> Mobile
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">{employee.mobile}</span>
                   </div>
-                  <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.completed_late}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">In Progress</p>
+                )}
+
+                {employee.alternate_mobile && (
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
+                    <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
+                      <PhoneCall className="w-3.5 h-3.5 text-blue-400" /> Alt Mobile
+                    </span>
+                    <span className="text-xs font-bold text-slate-700">{employee.alternate_mobile}</span>
                   </div>
-                  <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.in_progress}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Pending</p>
-                  </div>
-                  <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.pending}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
-                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Overdue</p>
-                  </div>
-                  <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.overdue}</p>
+                )}
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-100">
+                  <span className="text-xs text-amber-600 flex items-center gap-2 font-bold">
+                    <Trophy className="w-4 h-4" /> Rewards
+                  </span>
+                  <span className="text-xs font-black text-amber-600">{employee.reward_points} pts</span>
                 </div>
               </div>
             </div>
-          ) : (
-            <EmptyState title="No task metrics" description="This employee hasn't been assigned any work yet." variant="small" className="flex-1" />
-          )}
-        </div>
 
-        {/* 3. Priority Distribution */}
-        <div className="glass rounded-2xl p-6 border border-slate-100 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow">
-          <div className="flex items-center gap-2 mb-6">
-            <ShieldCheck className="w-5 h-5 text-indigo-500" />
-            <h3 className="font-bold text-slate-800">Priority Distribution</h3>
+            {/* 2. Task Status Distribution */}
+            <div className="glass rounded-2xl p-6 border border-slate-100 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-6">
+                <Activity className="w-5 h-5 text-indigo-500" />
+                <h3 className="font-bold text-slate-800">Task Status Distribution</h3>
+              </div>
+
+              {stats?.tasks?.total > 0 ? (
+                <div className="flex flex-col gap-6 flex-1">
+                  <div className="flex justify-center items-center h-40">
+                    <StatusChart
+                      data={[
+                        { name: 'Completed', value: stats.tasks.completed - stats.tasks.completed_late, color: '#10b981' },
+                        { name: 'Late', value: stats.tasks.completed_late, color: '#818cf8' },
+                        { name: 'In Progress', value: stats.tasks.in_progress, color: '#3b82f6' },
+                        { name: 'Pending', value: stats.tasks.pending, color: '#f59e0b' },
+                        { name: 'Overdue', value: stats.tasks.overdue, color: '#ef4444' },
+                      ].filter(d => d.value > 0)}
+                      total={stats.tasks.total}
+                      completed={stats.tasks.completed}
+                      size={140}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Completed</p>
+                      </div>
+                      <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.completed - stats.tasks.completed_late}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-indigo-400" />
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Late</p>
+                      </div>
+                      <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.completed_late}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">In Progress</p>
+                      </div>
+                      <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.in_progress}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Pending</p>
+                      </div>
+                      <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.pending}</p>
+                    </div>
+                    <div className="p-3 rounded-xl bg-slate-50 border border-slate-100/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                        <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Overdue</p>
+                      </div>
+                      <p className="text-lg font-black text-slate-800 leading-none">{stats.tasks.overdue}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <EmptyState title="No task metrics" description="This employee hasn't been assigned any work yet." variant="small" className="flex-1" />
+              )}
+            </div>
+
+            {/* 3. Priority Distribution */}
+            <div className="glass rounded-2xl p-6 border border-slate-100 flex flex-col h-full shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center gap-2 mb-6">
+                <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                <h3 className="font-bold text-slate-800">Priority Distribution</h3>
+              </div>
+
+              {mounted && stats?.priority_distribution ? (
+                <div className="h-[220px] w-full mt-2">
+                  <ResponsiveContainer width="100%" height="100%" debounce={100}>
+                    <BarChart
+                      data={[
+                        { name: 'Critical', value: stats.priority_distribution.critical, color: '#8b5cf6' },
+                        { name: 'High', value: stats.priority_distribution.high, color: '#f59e0b' },
+                        { name: 'Medium', value: stats.priority_distribution.medium, color: '#3b82f6' },
+                        { name: 'Regular', value: stats.priority_distribution.regular, color: '#ef4444' },
+                      ]}
+                      margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
+                      barSize={45}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis
+                        dataKey="name"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fontSize: 10, fontWeight: 600, fill: '#cbd5e1' }}
+                      />
+                      <Tooltip
+                        cursor={{ fill: '#f8fafc' }}
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl shadow-xl border border-slate-100">
+                                <p className="text-[10px] font-black uppercase text-slate-400 mb-1">{data.name}</p>
+                                <p className="text-lg font-black text-slate-800">{data.value} <span className="text-xs font-bold text-slate-400">Tasks</span></p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                        {[
+                          { name: 'Critical', color: '#8b5cf6' },
+                          { name: 'High', color: '#f59e0b' },
+                          { name: 'Medium', color: '#3b82f6' },
+                          { name: 'Regular', color: '#ef4444' },
+                        ].map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <EmptyState title="No priority data" description="Assigned tasks will show up here." variant="small" className="flex-1" icon={ShieldCheck} />
+              )}
+            </div>
           </div>
-          
-          {mounted && stats?.priority_distribution ? (
-            <div className="flex-1 min-h-[220px] w-full mt-2">
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <BarChart
-                  data={[
-                    { name: 'Critical', value: stats.priority_distribution.critical, color: '#8b5cf6' },
-                    { name: 'High', value: stats.priority_distribution.high, color: '#f59e0b' },
-                    { name: 'Medium', value: stats.priority_distribution.medium, color: '#3b82f6' },
-                    { name: 'Regular', value: stats.priority_distribution.regular, color: '#ef4444' },
-                  ]}
-                  margin={{ top: 10, right: 10, left: -25, bottom: 5 }}
-                  barSize={45}
+
+          {/* Attendance History Row */}
+          <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-32 -mt-32" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center">
+                  <Calendar className="w-6 h-6 text-emerald-600" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800">Attendance Tracker</h3>
+                  <p className="text-xs text-slate-400 font-medium">Monitoring activity for the last 5 business days</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 bg-white/50 p-2 rounded-2xl border border-slate-100 shadow-inner">
+                  {stats?.attendance_history?.map((day: any, i: number) => (
+                    <div
+                      key={i}
+                      className={cn(
+                        "w-10 h-10 rounded-xl flex flex-col items-center justify-center text-[8px] font-black transition-transform hover:scale-110",
+                        day.status === 'present' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-rose-500 text-white shadow-lg shadow-rose-100'
+                      )}
+                      title={`${day.status.toUpperCase()} - ${formatDate(day.date)}`}
+                    >
+                      <span className="opacity-60">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' }).charAt(0)}</span>
+                      <span className="text-[12px]">{day.status === 'present' ? 'P' : 'A'}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <button
+                  onClick={() => setShowAttendanceModal(true)}
+                  className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all hover:scale-105"
+                  title="Full Attendance Calendar"
                 >
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis 
-                    dataKey="name" 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }} 
-                  />
-                  <YAxis 
-                    axisLine={false} 
-                    tickLine={false} 
-                    tick={{ fontSize: 10, fontWeight: 600, fill: '#cbd5e1' }} 
-                  />
-                  <Tooltip 
-                    cursor={{ fill: '#f8fafc' }}
-                    content={({ active, payload }) => {
-                      if (active && payload && payload.length) {
-                        const data = payload[0].payload;
-                        return (
-                          <div className="bg-white/95 backdrop-blur-md p-3 rounded-xl shadow-xl border border-slate-100">
-                            <p className="text-[10px] font-black uppercase text-slate-400 mb-1">{data.name}</p>
-                            <p className="text-lg font-black text-slate-800">{data.value} <span className="text-xs font-bold text-slate-400">Tasks</span></p>
-                          </div>
-                        );
-                      }
-                      return null;
-                    }}
-                  />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    {[
-                      { name: 'Critical', color: '#8b5cf6' },
-                      { name: 'High', color: '#f59e0b' },
-                      { name: 'Medium', color: '#3b82f6' },
-                      { name: 'Regular', color: '#ef4444' },
-                    ].map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <EmptyState title="No priority data" description="Assigned tasks will show up here." variant="small" className="flex-1" icon={ShieldCheck} />
-          )}
-        </div>
-      </div>
-
-      {/* Attendance History Row */}
-      <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -mr-32 -mt-32" />
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 flex items-center justify-center">
-              <Calendar className="w-6 h-6 text-emerald-600" />
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-800">Attendance Tracker</h3>
-              <p className="text-xs text-slate-400 font-medium">Monitoring activity for the last 5 business days</p>
+                  <Calendar className="w-6 h-6" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-white/50 p-2 rounded-2xl border border-slate-100 shadow-inner">
-              {stats?.attendance_history?.map((day: any, i: number) => (
-                <div 
-                  key={i} 
-                  className={cn(
-                    "w-10 h-10 rounded-xl flex flex-col items-center justify-center text-[8px] font-black transition-transform hover:scale-110",
-                    day.status === 'present' ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-rose-500 text-white shadow-lg shadow-rose-100'
-                  )}
-                  title={`${day.status.toUpperCase()} - ${formatDate(day.date)}`}
-                >
-                  <span className="opacity-60">{new Date(day.date).toLocaleDateString('en-US', { weekday: 'short' }).charAt(0)}</span>
-                  <span className="text-[12px]">{day.status === 'present' ? 'P' : 'A'}</span>
-                </div>
-              ))}
-            </div>
+          <div className="space-y-6">
 
-            <button 
-              onClick={() => setShowAttendanceModal(true)}
-              className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all hover:scale-105"
-              title="Full Attendance Calendar"
-            >
-              <Calendar className="w-6 h-6" />
-            </button>
-          </div>
-        </div>
-      </div>
+            <div className="glass rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white">
+                <h3 className="font-bold flex items-center gap-2 text-slate-800">
+                  <ClipboardList className="w-5 h-5 text-indigo-500" /> Work Assignments
+                </h3>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total: {tasks.length} items</span>
+              </div>
 
-      <div className="space-y-6">
-
-          <div className="glass rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-white">
-              <h3 className="font-bold flex items-center gap-2 text-slate-800">
-                <ClipboardList className="w-5 h-5 text-indigo-500" /> Work Assignments
-              </h3>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total: {tasks.length} items</span>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th className="w-16 text-center">S.No</th>
-                    <th className="min-w-[150px]">Company Name</th>
-                    <th className="min-w-[300px]">Work Description</th>
-                    <th>Priority</th>
-                    <th>Status</th>
-                    <th>Deadline</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {tasks.map((task, index) => (
-                    <Suspense key={task.id} fallback={<tr><td colSpan={6}>Loading...</td></tr>}>
-                      <tr key={task.id} className="group hover:bg-slate-50 transition-colors">
-                        <td className="text-center font-mono text-xs text-slate-400">{(index + 1).toString().padStart(2, '0')}</td>
-                        <td>
-                          <span className={`text-[10px] font-black uppercase tracking-widest ${task.company_name === 'Personal / Internal' ? 'text-slate-400' : 'text-indigo-500'}`}>
-                            {task.company_name}
-                          </span>
-                        </td>
-                        <td>
-                          <div 
-                            className="cursor-pointer group/desc max-w-lg"
-                            onClick={() => openViewModal(task)}
-                          >
-                            <p className="font-medium text-slate-800 leading-relaxed text-sm line-clamp-2 group-hover/desc:text-indigo-600 transition-colors">
-                              {task.work_description}
-                            </p>
-                          </div>
-                        </td>
-                        <td>
-                          <span className={`text-[10px] font-black uppercase tracking-wider ${getPriorityColor(task.priority)}`}>
-                            {task.priority}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="flex flex-col gap-1">
-                            <span className={`badge ${getStatusColor(task.status)} text-[10px] font-bold w-fit`}>
-                              {getStatusLabel(task.status)}
+              <div className="overflow-x-auto">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th className="w-16 text-center">S.No</th>
+                      <th className="min-w-[150px]">Company Name</th>
+                      <th className="min-w-[300px]">Work Description</th>
+                      <th>Priority</th>
+                      <th>Category</th>
+                      <th>Status</th>
+                      <th>Deadline</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.map((task, index) => (
+                      <Suspense key={task.id} fallback={<tr><td colSpan={6}>Loading...</td></tr>}>
+                        <tr key={task.id} className="group hover:bg-slate-50 transition-colors">
+                          <td className="text-center font-mono text-xs text-slate-400">{(index + 1).toString().padStart(2, '0')}</td>
+                          <td>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${task.company_name === 'Personal / Internal' ? 'text-slate-400' : 'text-indigo-500'}`}>
+                              {task.company_name}
                             </span>
-                            {task.completed_at && (
-                              <span className="text-[9px] text-emerald-600 font-bold italic">
-                                Done: {formatDateTime(task.completed_at)}
+                          </td>
+                          <td>
+                            <div
+                              className="cursor-pointer group/desc max-w-lg"
+                              onClick={() => openViewModal(task)}
+                            >
+                              <p className="font-medium text-slate-800 leading-relaxed text-sm line-clamp-2 group-hover/desc:text-indigo-600 transition-colors">
+                                {task.work_description}
+                              </p>
+                            </div>
+                          </td>
+                          <td>
+                            <span className={`text-[10px] font-black uppercase tracking-wider ${getPriorityColor(task.priority)}`}>
+                              {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="flex flex-wrap gap-1">
+                              {task.category_names && task.category_names.length > 0 ? (
+                                task.category_names.map((cat, i) => (
+                                  <span key={i} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[9px] font-bold border border-indigo-100 whitespace-nowrap">
+                                    {cat}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-[10px] text-slate-300 italic font-medium">None</span>
+                              )}
+                            </div>
+                          </td>
+                          <td>
+                            <div className="flex flex-col gap-1">
+                              <span className={`badge ${getStatusColor(task.status)} text-[10px] font-bold w-fit`}>
+                                {getStatusLabel(task.status).charAt(0).toUpperCase() + getStatusLabel(task.status).slice(1)}
                               </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="text-xs text-slate-500 font-medium whitespace-nowrap">
-                          {formatDateTime(task.deadline)}
-                        </td>
-                        <td>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {task.status === 'pending' && (
-                              <button onClick={() => handleStatusUpdate(task.id, 'in_progress')} className="p-2 hover:bg-indigo-50 rounded-lg transition-colors" title="Start">
-                                <Play className="w-4 h-4 text-indigo-500" />
-                              </button>
-                            )}
-                            {(task.status === 'pending' || task.status === 'in_progress' || task.status === 'overdue') && (
-                              <button onClick={() => handleStatusUpdate(task.id, 'completed')} className="p-2 hover:bg-emerald-50 rounded-lg transition-colors" title="Complete">
-                                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                              </button>
-                            )}
-                             <button onClick={() => handleEditTask(task)} className="p-2 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
+                              {task.completed_at && (
+                                <span className="text-[9px] text-emerald-600 font-bold italic">
+                                  Done: {formatDateTime(task.completed_at)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-xs text-slate-500 font-medium whitespace-nowrap">
+                            {formatDateTime(task.deadline)}
+                          </td>
+                          <td>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {task.status === 'pending' && (
+                                <button onClick={() => handleStatusUpdate(task.id, 'in_progress')} className="p-2 hover:bg-indigo-50 rounded-lg transition-colors" title="Start">
+                                  <Play className="w-4 h-4 text-indigo-500" />
+                                </button>
+                              )}
+                              {(task.status === 'pending' || task.status === 'in_progress' || task.status === 'overdue') && (
+                                <button onClick={() => handleStatusUpdate(task.id, 'completed')} className="p-2 hover:bg-emerald-50 rounded-lg transition-colors" title="Complete">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                                </button>
+                              )}
+                              <button onClick={() => handleEditTask(task)} className="p-2 hover:bg-amber-50 rounded-lg transition-colors" title="Edit">
                                 <Pencil className="w-4 h-4 text-amber-500" />
                               </button>
-                            <button onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="p-2 hover:bg-violet-50 rounded-lg transition-colors" title="Remarks">
-                              <MessageSquarePlus className="w-4 h-4 text-violet-500" />
-                            </button>
-                            <button onClick={() => handleDeleteTask(task.id)} className="p-2 hover:bg-rose-50 rounded-lg transition-colors" title="Delete">
-                              <Trash2 className="w-4 h-4 text-rose-500" />
+                              <button onClick={() => setExpandedTask(expandedTask === task.id ? null : task.id)} className="p-2 hover:bg-violet-50 rounded-lg transition-colors" title="Remarks">
+                                <MessageSquarePlus className="w-4 h-4 text-violet-500" />
+                              </button>
+                              <button onClick={() => handleDeleteTask(task.id)} className="p-2 hover:bg-rose-50 rounded-lg transition-colors" title="Delete">
+                                <Trash2 className="w-4 h-4 text-rose-500" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {expandedTask === task.id && (
+                          <tr key={`${task.id}-remarks`}>
+                            <td colSpan={6} className="!p-0 border-none">
+                              <div className="bg-slate-50/50 p-6 border-y border-slate-100">
+                                <div className="flex items-center gap-2 mb-4">
+                                  <MessageSquarePlus className="w-4 h-4 text-indigo-600" />
+                                  <h4 className="text-sm font-bold text-slate-800">Remarks History</h4>
+                                  <button onClick={() => setExpandedTask(null)} className="ml-auto p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
+                                    <ChevronUp className="w-4 h-4 text-slate-500" />
+                                  </button>
+                                </div>
+                                <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
+                                  {task.remarks.length > 0 ? (
+                                    task.remarks.map((r, i) => (
+                                      <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-xs font-bold text-indigo-600">{r.user_name}</span>
+                                          <span className="text-[10px] text-slate-400 font-medium">{timeAgo(r.timestamp)}</span>
+                                        </div>
+                                        <p className="text-sm text-slate-700 leading-relaxed">{r.text}</p>
+                                      </div>
+                                    ))
+                                  ) : (
+                                    <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">
+                                      <p className="text-xs text-slate-400 font-medium italic">No communication logs for this work item.</p>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    value={remarkText}
+                                    onChange={(e) => setRemarkText(e.target.value)}
+                                    className="input flex-1 h-11"
+                                    placeholder="Type a remark or update..."
+                                  />
+                                  <button onClick={() => handleAddRemark(task.id)} disabled={submittingRemark || !remarkText.trim()} className="btn btn-primary h-11 px-6">
+                                    {submittingRemark ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> Send</>}
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Suspense>
+                    ))}
+                    {tasks.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="text-center py-20 bg-white">
+                          <div className="max-w-xs mx-auto">
+                            <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                            <p className="text-slate-500 font-bold">No assignments yet</p>
+                            <button onClick={() => setShowCreateModal(true)} className="btn btn-ghost text-indigo-600 text-xs mt-3 font-bold">
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Assign Work
                             </button>
                           </div>
                         </td>
                       </tr>
-                      {expandedTask === task.id && (
-                        <tr key={`${task.id}-remarks`}>
-                          <td colSpan={6} className="!p-0 border-none">
-                            <div className="bg-slate-50/50 p-6 border-y border-slate-100">
-                              <div className="flex items-center gap-2 mb-4">
-                                <MessageSquarePlus className="w-4 h-4 text-indigo-600" />
-                                <h4 className="text-sm font-bold text-slate-800">Remarks History</h4>
-                                <button onClick={() => setExpandedTask(null)} className="ml-auto p-1.5 hover:bg-slate-200 rounded-lg transition-colors">
-                                  <ChevronUp className="w-4 h-4 text-slate-500" />
-                                </button>
-                              </div>
-                              <div className="space-y-3 mb-4 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                                {task.remarks.length > 0 ? (
-                                  task.remarks.map((r, i) => (
-                                    <div key={i} className="bg-white rounded-xl p-4 border border-slate-200 shadow-sm">
-                                      <div className="flex items-center justify-between mb-2">
-                                        <span className="text-xs font-bold text-indigo-600">{r.user_name}</span>
-                                        <span className="text-[10px] text-slate-400 font-medium">{timeAgo(r.timestamp)}</span>
-                                      </div>
-                                      <p className="text-sm text-slate-700 leading-relaxed">{r.text}</p>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <div className="text-center py-6 border-2 border-dashed border-slate-200 rounded-xl">
-                                    <p className="text-xs text-slate-400 font-medium italic">No communication logs for this work item.</p>
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={remarkText}
-                                  onChange={(e) => setRemarkText(e.target.value)}
-                                  className="input flex-1 h-11"
-                                  placeholder="Type a remark or update..."
-                                />
-                                <button onClick={() => handleAddRemark(task.id)} disabled={submittingRemark || !remarkText.trim()} className="btn btn-primary h-11 px-6">
-                                  {submittingRemark ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Send className="w-4 h-4 mr-2" /> Send</>}
-                                </button>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </Suspense>
-                  ))}
-                  {tasks.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="text-center py-20 bg-white">
-                        <div className="max-w-xs mx-auto">
-                          <ClipboardList className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                          <p className="text-slate-500 font-bold">No assignments yet</p>
-                          <button onClick={() => setShowCreateModal(true)} className="btn btn-ghost text-indigo-600 text-xs mt-3 font-bold">
-                            <Plus className="w-3.5 h-3.5 mr-1" /> Assign Work
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
-          </div>
-        )}
+      )}
       {/* Create Task Modal */}
       {showCreateModal && (
         <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
@@ -877,22 +899,46 @@ function EmployeeProfileContent() {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Priority</h3>
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3" /> Priority
+                  </h3>
                   <span className={`text-sm font-black uppercase ${getPriorityColor(viewingTask.priority)}`}>{viewingTask.priority}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Status</h3>
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 flex items-center gap-1.5">
+                    <Activity className="w-3 h-3" /> Status
+                  </h3>
                   <span className={`badge ${getStatusColor(viewingTask.status)} font-bold`}>{getStatusLabel(viewingTask.status)}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Deadline</h3>
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 flex items-center gap-1.5">
+                    <Calendar className="w-3 h-3" /> Deadline
+                  </h3>
                   <span className="text-sm font-bold text-slate-700">{formatDateTime(viewingTask.deadline)}</span>
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
-                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Client</h3>
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1 flex items-center gap-1.5">
+                    <Building className="w-3 h-3" /> Client
+                  </h3>
                   <span className="text-sm font-bold text-indigo-600">{viewingTask.company_name}</span>
                 </div>
               </div>
+
+              {/* Categories */}
+              {viewingTask.category_names && viewingTask.category_names.length > 0 && (
+                <div className="p-4 rounded-2xl bg-indigo-50/30 border border-indigo-100/50">
+                  <h3 className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-3 flex items-center gap-1.5">
+                    <Tag className="w-3 h-3" /> Categories
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingTask.category_names.map((cat, i) => (
+                      <span key={i} className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {viewingTask.completed_at && (
                 <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-between">
@@ -903,9 +949,9 @@ function EmployeeProfileContent() {
                   <span className="text-xs font-bold text-emerald-600">{formatPreciseDateTime(viewingTask.completed_at)}</span>
                 </div>
               )}
-              
+
               <div className="flex gap-3 pt-2">
-                <button 
+                <button
                   onClick={() => setShowViewModal(false)}
                   className="btn btn-primary w-full h-14 rounded-2xl font-black text-sm uppercase tracking-widest bg-slate-900 hover:bg-slate-800 shadow-xl shadow-slate-200"
                 >
@@ -982,6 +1028,39 @@ function EmployeeProfileContent() {
                     className="input h-11"
                     required
                   />
+                </div>
+              </div>
+
+              {/* Category Selection */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                  <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                  Categories
+                </label>
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="max-h-32 overflow-y-auto p-2 custom-scrollbar grid grid-cols-2 gap-1">
+                    {categories.filter(c => c.is_active).map(cat => {
+                      const isSelected = (editingTask.category_ids || []).includes(cat.id);
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => {
+                            const current = editingTask.category_ids || [];
+                            const next = isSelected ? current.filter(id => id !== cat.id) : [...current, cat.id];
+                            setEditingTask({ ...editingTask, category_ids: next });
+                          }}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-lg text-[10px] font-bold transition-all",
+                            isSelected ? "bg-indigo-50 text-indigo-600 border border-indigo-100" : "bg-slate-50 text-slate-500 border border-transparent hover:bg-slate-100"
+                          )}
+                        >
+                          {cat.name}
+                          {isSelected && <CheckCircle2 className="w-3 h-3" />}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
               <div className="flex gap-4 pt-4">
@@ -1149,7 +1228,7 @@ function EmployeeProfileContent() {
                       value={editEmployeeData.password}
                       onChange={(e) => setEditEmployeeData({ ...editEmployeeData, password: e.target.value })}
                       className="input input-with-icon pr-12 h-12 rounded-2xl"
-                      placeholder="••••••••"
+                      placeholder="........................"
                     />
                     <button
                       type="button"
@@ -1186,10 +1265,10 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
   const monthName = new Date(year, month).toLocaleString('default', { month: 'long', year: 'numeric' });
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const firstDayOfMonth = new Date(year, month, 1).getDay();
-  
+
   const today = new Date();
   const days = [];
-  
+
   let stats = {
     workingDays: 0,
     present: 0,
@@ -1211,7 +1290,7 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
     });
 
     let status = record?.status || (isFuture ? 'none' : (isWeekend ? 'weekend' : 'absent'));
-    
+
     if (!isWeekend && !isFuture) {
       stats.workingDays++;
       if (status === 'present') stats.present++;
@@ -1223,7 +1302,7 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
 
     let colorClass = 'bg-slate-50 text-slate-400';
     let symbol = '';
-    
+
     if (status === 'present') {
       colorClass = 'bg-emerald-500 text-white shadow-lg shadow-emerald-100';
       symbol = 'P';
@@ -1246,7 +1325,7 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
   return (
     <div className="flex flex-col">
       <h3 className="text-center font-black text-xl text-slate-800 mb-8">{monthName}</h3>
-      
+
       <div className="grid grid-cols-7 gap-2 mb-8">
         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
           <div key={i} className="text-center text-[10px] font-black text-slate-300 py-2">{d}</div>
@@ -1254,8 +1333,8 @@ function MonthCalendar({ year, month, history }: { year: number, month: number, 
         {Array.from({ length: firstDayOfMonth }).map((_, i) => <div key={`empty-${i}`} />)}
         {days.map(d => (
           <div key={d.day} className={cn(
-            "aspect-square rounded-xl flex flex-col items-center justify-center text-xs font-black relative transition-all group", 
-            d.colorClass, 
+            "aspect-square rounded-xl flex flex-col items-center justify-center text-xs font-black relative transition-all group",
+            d.colorClass,
             d.isFuture && "opacity-20"
           )}>
             <span className="text-[10px] opacity-40 absolute top-1 left-1.5">{d.day}</span>
@@ -1296,3 +1375,4 @@ export default function EmployeeProfilePage() {
     </Suspense>
   );
 }
+

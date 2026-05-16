@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { Search, Calendar, Filter, Users, Download, Loader2, ArrowRight, History, Clock } from 'lucide-react';
+import { Attendance } from '@/types';
+import { Search, Calendar, Filter, Users, Download, Loader2, ArrowRight, History, Clock, ShieldAlert, AlertTriangle, MapPin } from 'lucide-react';
 import { cn, ensureUTC } from '@/lib/utils';
 import Link from 'next/link';
 
@@ -21,16 +22,22 @@ interface AttendanceSummary {
 export default function AttendanceManagementPage() {
   const { user } = useAuth();
   const [summaries, setSummaries] = useState<AttendanceSummary[]>([]);
+  const [allLogs, setAllLogs] = useState<Attendance[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [showFlagged, setShowFlagged] = useState(false);
 
   const fetchSummaries = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/attendance/summary');
-      setSummaries(res.data);
+      const [summaryRes, logsRes] = await Promise.all([
+        api.get('/attendance/summary'),
+        api.get('/attendance/all'),
+      ]);
+      setSummaries(summaryRes.data);
+      setAllLogs(logsRes.data);
     } catch (err) {
-      console.error('Failed to fetch attendance summary:', err);
+      console.error('Failed to fetch attendance data:', err);
     } finally {
       setLoading(false);
     }
@@ -40,10 +47,24 @@ export default function AttendanceManagementPage() {
     fetchSummaries();
   }, [fetchSummaries]);
 
+  const flaggedLogs = allLogs.filter(log => (log.flags && log.flags.length > 0) || log.is_auto_closed);
+
   const filteredSummaries = summaries.filter(s => {
     return (s.user_name || '').toLowerCase().includes(searchTerm.toLowerCase()) || 
            (s.user_email || '').toLowerCase().includes(searchTerm.toLowerCase());
   });
+
+  const getFlagLabel = (flag: string): string => {
+    if (flag === 'outside_geofence') return '📍 Outside Zone';
+    if (flag === 'outside_geofence_checkout') return '📍 Checkout Outside';
+    if (flag === 'device_changed') return '📱 Device Changed';
+    if (flag === 'off_hours_checkin') return '🌙 Off-Hours';
+    if (flag === 'suspicious_coordinates') return '⚠️ Suspicious GPS';
+    if (flag === 'short_session') return '⏱️ Short Session';
+    if (flag === 'auto_closed') return '🔄 Auto-Closed';
+    if (flag.startsWith('location_drift_')) return `📏 ${flag.replace('location_drift_', 'Drift: ')}`;
+    return flag;
+  };
 
   if (loading) {
     return (
@@ -61,11 +82,100 @@ export default function AttendanceManagementPage() {
           <h1 className="text-2xl font-bold text-slate-800">Attendance Management</h1>
           <p className="text-muted-foreground text-sm mt-1">Monitor and manage organization-wide attendance tracker</p>
         </div>
-        <button className="btn btn-primary flex items-center gap-2 shadow-lg shadow-indigo-100">
-          <Download className="w-4 h-4" />
-          Export Report
-        </button>
+        <div className="flex items-center gap-3">
+          {flaggedLogs.length > 0 && (
+            <button
+              onClick={() => setShowFlagged(!showFlagged)}
+              className={cn(
+                "btn flex items-center gap-2 h-11 rounded-xl font-bold text-sm transition-all",
+                showFlagged
+                  ? "bg-amber-500 text-white shadow-lg shadow-amber-100 hover:bg-amber-600"
+                  : "btn-secondary border-amber-200 text-amber-600 hover:bg-amber-50"
+              )}
+            >
+              <ShieldAlert className="w-4 h-4" />
+              {flaggedLogs.length} Flagged
+            </button>
+          )}
+          <button className="btn btn-primary flex items-center gap-2 shadow-lg shadow-indigo-100">
+            <Download className="w-4 h-4" />
+            Export Report
+          </button>
+        </div>
       </div>
+
+      {/* Flagged Sessions Panel */}
+      {showFlagged && flaggedLogs.length > 0 && (
+        <div className="glass rounded-2xl border-2 border-amber-200 shadow-lg overflow-hidden animate-in fade-in slide-in-from-top-2">
+          <div className="px-6 py-4 bg-amber-50 border-b border-amber-100 flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-amber-600" />
+            <h2 className="font-bold text-amber-800">Flagged Attendance Sessions ({flaggedLogs.length})</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-amber-50/50 text-amber-700 font-medium border-b border-amber-100">
+                <tr>
+                  <th className="px-6 py-3">Employee</th>
+                  <th className="px-6 py-3">Date</th>
+                  <th className="px-6 py-3">Check-in</th>
+                  <th className="px-6 py-3">Check-out</th>
+                  <th className="px-6 py-3">Drift</th>
+                  <th className="px-6 py-3">Flags</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-amber-50">
+                {flaggedLogs.slice(0, 20).map((log) => (
+                  <tr key={log.id} className="hover:bg-amber-50/30 transition-colors">
+                    <td className="px-6 py-3">
+                      <div>
+                        <p className="font-bold text-slate-800">{log.user_name || 'Unknown'}</p>
+                        <p className="text-[10px] text-slate-400">{log.user_email}</p>
+                      </div>
+                    </td>
+                    <td className="px-6 py-3 text-slate-600 font-medium">
+                      {new Date(ensureUTC(log.check_in)).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </td>
+                    <td className="px-6 py-3 font-mono text-xs">
+                      {new Date(ensureUTC(log.check_in)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                      {log.distance_from_office_in !== null && log.distance_from_office_in !== undefined && (
+                        <span className={cn("block text-[9px] mt-0.5", log.distance_from_office_in > 500 ? "text-rose-500" : "text-slate-400")}>
+                          {Math.round(log.distance_from_office_in)}m from office
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3 font-mono text-xs">
+                      {log.check_out ? (
+                        <>
+                          {new Date(ensureUTC(log.check_out)).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                          {log.is_auto_closed && <span className="ml-1 text-[9px] font-black text-amber-500 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">AUTO</span>}
+                        </>
+                      ) : (
+                        <span className="text-amber-500 font-bold">Active</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3">
+                      {log.location_drift_km !== null && log.location_drift_km !== undefined ? (
+                        <span className={cn("font-bold text-xs", log.location_drift_km > 5 ? "text-rose-600" : "text-slate-500")}>
+                          {log.location_drift_km} km
+                        </span>
+                      ) : <span className="text-slate-300">—</span>}
+                    </td>
+                    <td className="px-6 py-3">
+                      <div className="flex flex-wrap gap-1 max-w-[250px]">
+                        {(log.flags || []).map((flag, i) => (
+                          <span key={i} className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
+                            {getFlagLabel(flag)}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -98,7 +208,7 @@ export default function AttendanceManagementPage() {
           { label: 'Total Present', value: summaries.filter(s => s.history[s.history.length-1]?.status === 'present').length, icon: Users, color: 'text-emerald-600', bg: 'bg-emerald-50' },
           { label: 'Total Absent', value: summaries.filter(s => s.history[s.history.length-1]?.status === 'absent').length, icon: Users, color: 'text-rose-600', bg: 'bg-rose-50' },
           { label: 'Avg Attendance', value: `${summaries.length > 0 ? Math.round((summaries.filter(s => s.history[s.history.length-1]?.status === 'present').length / summaries.length) * 100) : 0}%`, icon: History, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-          { label: 'Live Monitoring', value: 'Live', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
+          { label: 'Flagged Today', value: flaggedLogs.filter(l => { const d = new Date(ensureUTC(l.check_in)); const t = new Date(); return d.toDateString() === t.toDateString(); }).length, icon: ShieldAlert, color: 'text-amber-600', bg: 'bg-amber-50' },
         ].map((stat, i) => (
           <div key={i} className="glass rounded-2xl p-6 border border-slate-100 shadow-sm">
             <div className="flex items-center gap-4">

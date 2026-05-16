@@ -10,6 +10,7 @@ from app.models.company import Company
 from beanie import PydanticObjectId
 from beanie.operators import In
 from typing import List, Optional
+from app.models.category import Category
 
 router = APIRouter(prefix="/tasks", tags=["Task Management"])
 
@@ -86,7 +87,8 @@ async def create_task(
                 deadline=request.deadline,
                 task_type="assigned" if emp.id != current_user.id else "personal",
                 company_id=str(cid) if cid else None,
-                recurring_task_id=recurring_rule.id if recurring_rule else None
+                recurring_task_id=recurring_rule.id if recurring_rule else None,
+                category_ids=request.category_ids,
             )
 
     if not last_task:
@@ -97,11 +99,19 @@ async def create_task(
     creator = await User.get(last_task.created_by)
     company_name = await _resolve_company_name(last_task.company_id)
 
+    # Resolve categories
+    cat_names = []
+    for cid in (last_task.category_ids or []):
+        cat = await Category.get(cid)
+        if cat:
+            cat_names.append(cat.name)
+
     return TaskResponse.from_task(
         last_task,
         assigned_name=assigned_user.name if assigned_user else None,
         creator_name=creator.name if creator else None,
         company_name=company_name,
+        category_names=cat_names,
     )
 
 
@@ -125,35 +135,42 @@ async def list_tasks(
         is_admin=is_management,
     )
 
-    # Resolve names with caching
-    user_cache = {}
-    company_cache = {}
+    # Batch resolve related entity names
+    user_ids = set()
+    company_ids = set()
+    category_ids_set = set()
+    
+    for task in tasks:
+        user_ids.add(task.assigned_to)
+        user_ids.add(task.created_by)
+        if task.company_id:
+            company_ids.add(task.company_id)
+        for cid in (task.category_ids or []):
+            category_ids_set.add(cid)
+
+    # Parallel batch fetching
+    import asyncio
+    users_data, companies_data, categories_data = await asyncio.gather(
+        User.find({"_id": {"$in": list(user_ids)}}).to_list(),
+        Company.find({"_id": {"$in": list(company_ids)}}).to_list(),
+        Category.find({"_id": {"$in": list(category_ids_set)}}).to_list()
+    )
+
+    user_map = {u.id: u.name for u in users_data}
+    company_map = {c.id: c.name for c in companies_data}
+    category_map = {cat.id: cat.name for cat in categories_data}
+
     result = []
     for task in tasks:
-        # Resolve Assigned To name
-        if str(task.assigned_to) not in user_cache:
-            user = await User.get(task.assigned_to)
-            user_cache[str(task.assigned_to)] = user.name if user else "Unknown"
-            
-        # Resolve Created By name
-        if str(task.created_by) not in user_cache:
-            creator = await User.get(task.created_by)
-            user_cache[str(task.created_by)] = creator.name if creator else "Unknown"
-
-        # Resolve company name
-        comp_name = None
-        if task.company_id:
-            cid = str(task.company_id)
-            if cid not in company_cache:
-                company = await Company.get(task.company_id)
-                company_cache[cid] = company.name if company else None
-            comp_name = company_cache[cid]
+        # Resolve category names from map
+        cat_names = [category_map.get(cid, "Unknown") for cid in (task.category_ids or [])]
 
         result.append(TaskResponse.from_task(
             task,
-            assigned_name=user_cache.get(str(task.assigned_to)),
-            creator_name=user_cache.get(str(task.created_by)),
-            company_name=comp_name,
+            assigned_name=user_map.get(task.assigned_to, "Unknown"),
+            creator_name=user_map.get(task.created_by, "Unknown"),
+            company_name=company_map.get(task.company_id) if task.company_id else None,
+            category_names=cat_names,
         ))
 
     return result
@@ -177,6 +194,9 @@ async def update_task(
             priority=request.priority,
             deadline=request.deadline,
             remarks=request.remarks,
+            category_ids=request.category_ids,
+            company_id=request.company_id,
+            assigned_to=request.assigned_to,
         )
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
@@ -191,11 +211,18 @@ async def update_task(
     creator = await User.get(task.created_by)
     company_name = await _resolve_company_name(task.company_id)
 
+    cat_names = []
+    for cid in (task.category_ids or []):
+        cat = await Category.get(cid)
+        if cat:
+            cat_names.append(cat.name)
+
     return TaskResponse.from_task(
         task,
         assigned_name=assigned_user.name if assigned_user else None,
         creator_name=creator.name if creator else None,
         company_name=company_name,
+        category_names=cat_names,
     )
 
 

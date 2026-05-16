@@ -4,7 +4,7 @@ Attendance model for MongoDB attendance collection.
 from beanie import Document, PydanticObjectId
 from pydantic import Field
 from datetime import datetime
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 class Attendance(Document):
@@ -18,6 +18,13 @@ class Attendance(Document):
     address_out: Optional[str] = None
     status: str = Field(default="present") # present, late, etc.
     remarks: Optional[str] = None
+    # Smart attendance fields
+    location_drift_km: Optional[float] = None  # Distance between check-in and check-out
+    distance_from_office_in: Optional[float] = None  # Distance from office at check-in (meters)
+    distance_from_office_out: Optional[float] = None  # Distance from office at check-out (meters)
+    flags: List[str] = Field(default_factory=list)  # Anomaly flags
+    device_fingerprint: Optional[str] = None  # Browser fingerprint hash
+    is_auto_closed: bool = False  # Whether session was auto-closed by system
 
     class Settings:
         name = "attendance"
@@ -33,3 +40,4 @@ class Attendance(Document):
                 "status": "present"
             }
         }
+

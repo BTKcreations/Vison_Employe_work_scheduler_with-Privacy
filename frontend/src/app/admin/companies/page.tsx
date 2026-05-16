@@ -5,7 +5,7 @@ import api from '@/lib/api';
 import { Company } from '@/types';
 import { cn, formatDate } from '@/lib/utils';
 import {
-  Building2, Plus, Search, X, Power, PowerOff, FileText, Calendar, Clock, Loader2, Save
+  Building2, Plus, Search, X, Power, PowerOff, FileText, Calendar, Clock, Loader2, Save, Shield, MapPin, Timer
 } from 'lucide-react';
 
 export default function CompaniesPage() {
@@ -61,7 +61,14 @@ export default function CompaniesPage() {
         description: editingCompany.description,
         work_days: editingCompany.work_days,
         work_start_time: editingCompany.work_start_time,
-        work_end_time: editingCompany.work_end_time
+        work_end_time: editingCompany.work_end_time,
+        office_lat: editingCompany.office_lat,
+        office_lng: editingCompany.office_lng,
+        geofence_radius_meters: editingCompany.geofence_radius_meters,
+        geofence_policy: editingCompany.geofence_policy,
+        min_session_minutes: editingCompany.min_session_minutes,
+        auto_checkout_enabled: editingCompany.auto_checkout_enabled,
+        location_drift_threshold_km: editingCompany.location_drift_threshold_km,
       });
       setShowEditModal(false);
       fetchCompanies();
@@ -310,6 +317,123 @@ export default function CompaniesPage() {
                       className="input h-12 font-bold text-rose-500"
                     />
                   </div>
+                </div>
+              </div>
+
+              {/* Geofence & Smart Attendance Settings */}
+              <div className="col-span-full space-y-5 pt-6 border-t border-slate-200">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center border border-emerald-100">
+                    <Shield className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Smart Attendance & Geofencing</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Anti-manipulation controls</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Geofence Policy */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Geofence Policy</label>
+                    <select
+                      value={editingCompany.geofence_policy || 'flexible'}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, geofence_policy: e.target.value })}
+                      className="select h-12"
+                    >
+                      <option value="disabled">Disabled — No location check</option>
+                      <option value="flexible">Flexible — Flag if outside zone</option>
+                      <option value="strict">Strict — Block check-in outside zone</option>
+                    </select>
+                  </div>
+
+                  {/* Geofence Radius */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Geofence Radius (meters)</label>
+                    <input
+                      type="number"
+                      min="50"
+                      max="10000"
+                      value={editingCompany.geofence_radius_meters || 500}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, geofence_radius_meters: parseInt(e.target.value) })}
+                      className="input h-12"
+                    />
+                  </div>
+
+                  {/* Office Latitude */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      <MapPin className="w-3 h-3" /> Office Latitude
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={editingCompany.office_lat ?? ''}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, office_lat: e.target.value ? parseFloat(e.target.value) : null })}
+                      className="input h-12 font-mono"
+                      placeholder="e.g. 28.6139"
+                    />
+                  </div>
+
+                  {/* Office Longitude */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      <MapPin className="w-3 h-3" /> Office Longitude
+                    </label>
+                    <input
+                      type="number"
+                      step="0.000001"
+                      value={editingCompany.office_lng ?? ''}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, office_lng: e.target.value ? parseFloat(e.target.value) : null })}
+                      className="input h-12 font-mono"
+                      placeholder="e.g. 77.2090"
+                    />
+                  </div>
+
+                  {/* Min Session Duration */}
+                  <div>
+                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
+                      <Timer className="w-3 h-3" /> Min Session (minutes)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="480"
+                      value={editingCompany.min_session_minutes ?? 30}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, min_session_minutes: parseInt(e.target.value) })}
+                      className="input h-12"
+                    />
+                  </div>
+
+                  {/* Drift Threshold */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Drift Threshold (km)</label>
+                    <input
+                      type="number"
+                      min="0.5"
+                      step="0.5"
+                      value={editingCompany.location_drift_threshold_km ?? 5}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, location_drift_threshold_km: parseFloat(e.target.value) })}
+                      className="input h-12"
+                    />
+                  </div>
+                </div>
+
+                {/* Auto-checkout toggle */}
+                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div>
+                    <p className="text-sm font-bold text-slate-700">Auto-Checkout Stale Sessions</p>
+                    <p className="text-xs text-slate-400 mt-0.5">Automatically close sessions open past work hours + 1 hour</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={editingCompany.auto_checkout_enabled ?? true}
+                      onChange={(e) => setEditingCompany({ ...editingCompany, auto_checkout_enabled: e.target.checked })}
+                    />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+                  </label>
                 </div>
               </div>
 

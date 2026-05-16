@@ -93,3 +93,4 @@ async def process_recurrence():
     
     for rule in pending_rules:
         await spawn_tasks_from_rule(rule)
+        await spawn_tasks_from_rule(rule)

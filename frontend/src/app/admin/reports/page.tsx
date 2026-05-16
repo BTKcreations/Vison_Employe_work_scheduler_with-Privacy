@@ -39,7 +39,8 @@ export default function ReportsPage() {
   const downloadReport = async (type: 'tasks/csv' | 'tasks/excel' | 'employees/excel' | 'admin/attendance/excel') => {
     setDownloading(type);
     try {
-      const params = (type.startsWith('tasks') || type.startsWith('admin/attendance')) ? buildParams() : {};
+      const baseParams = (type.startsWith('tasks') || type.startsWith('admin/attendance')) ? buildParams() : {};
+      const params = { ...baseParams, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone };
       const res = await api.get(`/reports/${type}`, {
         params,
         responseType: 'blob',

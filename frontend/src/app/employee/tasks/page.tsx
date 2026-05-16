@@ -2,29 +2,81 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-import { Task, Company } from '@/types';
+import { Task, Company, Category } from '@/types';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Award, Clock,
-  Building2, MessageSquarePlus, Send, ChevronUp, Pencil, MessageSquare
+  Building2, MessageSquarePlus, Send, ChevronUp, Pencil, MessageSquare,
+  Search, ChevronDown, Check, RefreshCcw, Tag
 } from 'lucide-react';
 import { cn, formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime } from '@/lib/utils';
+
+interface MultiSelectProps {
+  label: string;
+  icon: any;
+  options: { id: string; name: string; subtext?: string }[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}
+
+function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange, placeholder, disabled }: MultiSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const filteredOptions = options.filter(opt =>
+    opt.name.toLowerCase().includes(search.toLowerCase()) ||
+    (opt.subtext && opt.subtext.toLowerCase().includes(search.toLowerCase()))
+  );
+  const selectedNames = options.filter(opt => selectedIds.includes(opt.id)).map(opt => opt.name);
+  return (
+    <div className="space-y-2 relative">
+      {label && <label className="flex items-center gap-2 text-sm font-bold text-slate-700 uppercase tracking-wide"><Icon className="w-4 h-4 text-indigo-500" />{label}</label>}
+      <button type="button" onClick={() => !disabled && setIsOpen(!isOpen)} className={cn("w-full flex items-center justify-between px-4 py-3 bg-white border rounded-xl transition-all text-left", isOpen ? "border-indigo-500 ring-2 ring-indigo-50" : "border-slate-200 hover:border-slate-300", disabled && "opacity-50 cursor-not-allowed bg-slate-50")} disabled={disabled}>
+        <div className="flex-1 truncate">{selectedNames.length > 0 ? <span className="text-sm font-semibold text-slate-700">{selectedNames.join(', ')}</span> : <span className="text-sm text-slate-400">{placeholder || 'Select items...'}</span>}</div>
+        <ChevronDown className={cn("w-4 h-4 text-slate-400 transition-transform", isOpen && "rotate-180")} />
+      </button>
+      {isOpen && (<>
+        <div className="fixed inset-0 z-10" onClick={() => setIsOpen(false)} />
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-xl z-20 overflow-hidden animate-in fade-in zoom-in-95 duration-100">
+          <div className="p-3 border-b border-slate-100"><div className="relative"><Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" /><input type="text" placeholder="Search..." className="w-full pl-9 pr-4 py-2 bg-slate-50 border-none rounded-lg text-xs focus:ring-2 focus:ring-indigo-500/20" value={search} onChange={(e) => setSearch(e.target.value)} autoFocus /></div></div>
+          <div className="max-h-48 overflow-y-auto p-2 custom-scrollbar">
+            {filteredOptions.length > 0 ? filteredOptions.map(opt => {
+              const isSelected = selectedIds.includes(opt.id);
+              return (<button key={opt.id} type="button" onClick={() => { const newIds = isSelected ? selectedIds.filter(id => id !== opt.id) : [...selectedIds, opt.id]; onChange(newIds); }} className={cn("w-full flex items-center justify-between p-2 rounded-lg transition-colors text-left group", isSelected ? "bg-indigo-50" : "hover:bg-slate-50")}>
+                <div className="flex flex-col"><span className={cn("text-xs font-bold", isSelected ? "text-indigo-600" : "text-slate-700")}>{opt.name}</span>{opt.subtext && <span className="text-[10px] text-slate-400 font-medium">{opt.subtext}</span>}</div>
+                {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+              </button>);
+            }) : <div className="py-8 text-center text-[10px] text-slate-400 font-bold uppercase italic">No results found</div>}
+          </div>
+        </div>
+      </>)}
+    </div>
+  );
+}
 
 export default function EmployeeTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
-    work_description: '', priority: 'medium', deadline: '', company_id: '',
+    work_description: '', priority: 'medium' as Task['priority'], deadline: '',
+    company_id_list: [] as string[], category_ids: [] as string[],
+    is_recurrent: false,
+  });
+  const [recurrence, setRecurrence] = useState({
+    type: 'daily', interval: 1, weekdays: [] as number[], month_day: 1,
+    end_type: 'never', end_value: '',
   });
   // Remarks state
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [remarkText, setRemarkText] = useState('');
   const [submittingRemark, setSubmittingRemark] = useState(false);
-  
+
   // Edit modal
   const [showEditModal, setShowEditModal] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -58,10 +110,20 @@ export default function EmployeeTasksPage() {
     }
   }, []);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await api.get('/categories');
+      setCategories(res.data);
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTasks();
     fetchCompanies();
-  }, [fetchTasks, fetchCompanies]);
+    fetchCategories();
+  }, [fetchTasks, fetchCompanies, fetchCategories]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,13 +131,17 @@ export default function EmployeeTasksPage() {
     setError('');
     try {
       const payload = {
-        ...newTask,
+        work_description: newTask.work_description,
+        priority: newTask.priority,
         deadline: new Date(newTask.deadline).toISOString(),
-        company_id: newTask.company_id || undefined,
+        company_id_list: newTask.company_id_list.length > 0 ? newTask.company_id_list : undefined,
+        category_ids: newTask.category_ids.length > 0 ? newTask.category_ids : undefined,
+        is_recurrent: newTask.is_recurrent,
+        recurrence: newTask.is_recurrent ? recurrence : undefined,
       };
       await api.post('/tasks', payload);
       setShowCreateModal(false);
-      setNewTask({ work_description: '', priority: 'medium', deadline: '', company_id: '' });
+      setNewTask({ work_description: '', priority: 'medium', deadline: '', company_id_list: [], category_ids: [], is_recurrent: false });
       fetchTasks();
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { detail?: string } } };
@@ -105,9 +171,9 @@ export default function EmployeeTasksPage() {
     try {
       // If there's a completion remark, send it first or along with status
       if (completionRemark.trim()) {
-        await api.put(`/tasks/${confirmingTask.id}`, { 
+        await api.put(`/tasks/${confirmingTask.id}`, {
           status: 'completed',
-          remarks: completionRemark.trim() 
+          remarks: completionRemark.trim()
         });
       } else {
         await handleStatusUpdate(confirmingTask.id, 'completed');
@@ -126,7 +192,7 @@ export default function EmployeeTasksPage() {
     // Convert deadline to datetime-local format
     const date = new Date(task.deadline);
     const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    
+
     setEditingTask({
       ...task,
       deadline: localDateTime
@@ -145,6 +211,7 @@ export default function EmployeeTasksPage() {
         priority: editingTask.priority,
         deadline: new Date(editingTask.deadline).toISOString(),
         company_id: editingTask.company_id || undefined,
+        category_ids: editingTask.category_ids,
       };
       await api.put(`/tasks/${editingTask.id}`, payload);
       setShowEditModal(false);
@@ -240,16 +307,15 @@ export default function EmployeeTasksPage() {
               <div className="p-5">
                 <div className="flex items-start gap-4">
                   {/* Status Indicator */}
-                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                    task.status === 'completed' ? 'bg-green-50' :
-                    task.status === 'overdue' ? 'bg-red-50' :
-                    task.status === 'in_progress' ? 'bg-blue-50' :
-                    'bg-amber-50'
-                  }`}>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${task.status === 'completed' ? 'bg-green-50' :
+                      task.status === 'overdue' ? 'bg-red-50' :
+                        task.status === 'in_progress' ? 'bg-blue-50' :
+                          'bg-amber-50'
+                    }`}>
                     {task.status === 'completed' ? <CheckCircle2 className="w-5 h-5 text-green-500" /> :
-                     task.status === 'overdue' ? <Clock className="w-5 h-5 text-red-500" /> :
-                     task.status === 'in_progress' ? <Play className="w-5 h-5 text-blue-500" /> :
-                     <Clock className="w-5 h-5 text-amber-500" />
+                      task.status === 'overdue' ? <Clock className="w-5 h-5 text-red-500" /> :
+                        task.status === 'in_progress' ? <Play className="w-5 h-5 text-blue-500" /> :
+                          <Clock className="w-5 h-5 text-amber-500" />
                     }
                   </div>
 
@@ -257,7 +323,7 @@ export default function EmployeeTasksPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className={`badge ${getStatusColor(task.status)}`}>
-                        {getStatusLabel(task.status)}
+                        {getStatusLabel(task.status).charAt(0).toUpperCase() + getStatusLabel(task.status).slice(1)}
                       </span>
                       {task.reward_given && (
                         <span className="badge badge-success flex items-center gap-1">
@@ -265,14 +331,19 @@ export default function EmployeeTasksPage() {
                         </span>
                       )}
                       <span className={`badge ${task.company_name === 'Personal / Internal' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'badge-purple'} flex items-center gap-1`}>
-                        <Building2 className="w-3 h-3" /> {task.company_name}
+                        <Building2 className="w-3.5 h-3.5" /> {task.company_name}
                       </span>
+                      {task.category_names && task.category_names.length > 0 && task.category_names.map((cat, i) => (
+                        <span key={i} className="badge bg-indigo-50 text-indigo-600 border-indigo-100 flex items-center gap-1">
+                          <Tag className="w-3 h-3" /> {cat}
+                        </span>
+                      ))}
                     </div>
                     <p className="text-base font-medium text-slate-800 leading-relaxed mb-3">{task.work_description}</p>
-                    
+
                     <div className="flex items-center gap-4 text-xs text-muted-foreground font-medium">
                       <span className={`capitalize ${getPriorityColor(task.priority)}`}>
-                        {task.priority} priority
+                        {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)} priority
                       </span>
                       <span>•</span>
                       <span className="flex items-center gap-1">
@@ -327,8 +398,8 @@ export default function EmployeeTasksPage() {
                       }}
                       className={cn(
                         "h-10 w-10 rounded-xl flex items-center justify-center relative transition-all border shadow-sm",
-                        isExpanded 
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-100' 
+                        isExpanded
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-indigo-100'
                           : 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100'
                       )}
                       title="Remarks & Communication"
@@ -351,13 +422,13 @@ export default function EmployeeTasksPage() {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Latest Remark Snippet */}
                 {!isExpanded && task.remarks.length > 0 && (
                   <div className="mt-4 pt-3 border-t border-slate-50 flex items-start gap-2">
                     <MessageSquare className="w-3.5 h-3.5 text-indigo-400 mt-0.5 shrink-0" />
                     <p className="text-[11px] text-slate-500 line-clamp-1 italic">
-                      <span className="font-bold not-italic">{task.remarks[task.remarks.length-1].user_name}:</span> {task.remarks[task.remarks.length-1].text}
+                      <span className="font-bold not-italic">{task.remarks[task.remarks.length - 1].user_name}:</span> {task.remarks[task.remarks.length - 1].text}
                     </p>
                   </div>
                 )}
@@ -457,9 +528,7 @@ export default function EmployeeTasksPage() {
             </div>
 
             {error && (
-              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-medium">
-                {error}
-              </div>
+              <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-100 text-rose-600 text-sm font-medium">{error}</div>
             )}
 
             <form onSubmit={handleCreate} className="space-y-5">
@@ -468,38 +537,50 @@ export default function EmployeeTasksPage() {
                 <textarea
                   value={newTask.work_description}
                   onChange={(e) => setNewTask({ ...newTask, work_description: e.target.value })}
-                  className="input min-h-32 resize-none p-4 text-base"
+                  className="input min-h-24 resize-none p-4 text-sm"
                   placeholder="Describe what you need to do..."
                   required
                 />
               </div>
-              
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">
-                  <span className="flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5" /> Company
-                  </span>
-                </label>
-                <select
-                  value={newTask.company_id}
-                  onChange={(e) => setNewTask({ ...newTask, company_id: e.target.value })}
-                  className="select h-11"
-                >
-                  <option value="">Personal / Internal</option>
-                  {companies.map((comp) => (
-                    <option key={comp.id} value={comp.id}>{comp.name}</option>
-                  ))}
-                </select>
+
+              {/* Company Multi-Select */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                    <Building2 className="w-3.5 h-3.5 text-indigo-500" /> Company
+                  </label>
+                  <button type="button" onClick={() => {
+                    const allIds = companies.map(c => c.id);
+                    const isAll = newTask.company_id_list.length === allIds.length;
+                    setNewTask(prev => ({ ...prev, company_id_list: isAll ? [] : allIds }));
+                  }} className={cn("text-[9px] font-black px-2 py-0.5 rounded-full border transition-all uppercase tracking-tight", newTask.company_id_list.length === companies.length && companies.length > 0 ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-slate-400 border-slate-200 hover:border-indigo-300")}>
+                    {newTask.company_id_list.length === companies.length && companies.length > 0 ? 'ALL SELECTED' : 'SELECT ALL'}
+                  </button>
+                </div>
+                <MultiSelectDropdown label="" icon={() => null} options={companies.map(c => ({ id: c.id, name: c.name }))} selectedIds={newTask.company_id_list} onChange={(ids) => setNewTask(prev => ({ ...prev, company_id_list: ids }))} placeholder="Personal / Internal" />
+              </div>
+
+              {/* Category Multi-Select */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                    <Tag className="w-3.5 h-3.5 text-indigo-500" /> Categories
+                  </label>
+                  <button type="button" onClick={() => {
+                    const allIds = categories.filter(c => c.is_active).map(c => c.id);
+                    const isAll = newTask.category_ids.length === allIds.length;
+                    setNewTask(prev => ({ ...prev, category_ids: isAll ? [] : allIds }));
+                  }} className={cn("text-[9px] font-black px-2 py-0.5 rounded-full border transition-all uppercase tracking-tight", newTask.category_ids.length === categories.filter(c => c.is_active).length && categories.filter(c => c.is_active).length > 0 ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" : "bg-white text-slate-400 border-slate-200 hover:border-indigo-300")}>
+                    {newTask.category_ids.length === categories.filter(c => c.is_active).length && categories.filter(c => c.is_active).length > 0 ? 'ALL SELECTED' : 'SELECT ALL'}
+                  </button>
+                </div>
+                <MultiSelectDropdown label="" icon={() => null} options={categories.filter(c => c.is_active).map(c => ({ id: c.id, name: c.name }))} selectedIds={newTask.category_ids} onChange={(ids) => setNewTask(prev => ({ ...prev, category_ids: ids }))} placeholder="Select categories..." />
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Priority</label>
-                  <select
-                    value={newTask.priority}
-                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })}
-                    className="select h-11"
-                  >
+                  <select value={newTask.priority} onChange={(e) => setNewTask({ ...newTask, priority: e.target.value as Task['priority'] })} className="select h-11">
                     <option value="regular">Regular</option>
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
@@ -508,26 +589,77 @@ export default function EmployeeTasksPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Deadline</label>
-                  <input
-                    type="datetime-local"
-                    value={newTask.deadline}
-                    onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })}
-                    className="input h-11"
-                    required
-                  />
+                  <input type="datetime-local" value={newTask.deadline} onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })} className="input h-11" required />
                 </div>
               </div>
 
+              {/* Recurrence Section */}
+              <div className="bg-slate-50/50 rounded-2xl p-5 border border-slate-200">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center border border-indigo-100">
+                      <RefreshCcw className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Recurrent Schedule</h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Auto-generate Tasks</p>
+                    </div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" className="sr-only peer" checked={newTask.is_recurrent} onChange={(e) => setNewTask(prev => ({ ...prev, is_recurrent: e.target.checked }))} />
+                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+                {newTask.is_recurrent && (
+                  <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">Repeat Interval</label>
+                        <div className="flex items-center gap-2">
+                          <input type="number" min="1" value={recurrence.interval} onChange={(e) => setRecurrence(prev => ({ ...prev, interval: parseInt(e.target.value) }))} className="input h-10 w-20 text-center" />
+                          <select value={recurrence.type} onChange={(e) => setRecurrence(prev => ({ ...prev, type: e.target.value }))} className="select h-10">
+                            <option value="daily">Day(s)</option>
+                            <option value="weekly">Week(s)</option>
+                            <option value="monthly">Month(s)</option>
+                          </select>
+                        </div>
+                      </div>
+                      {recurrence.type === 'weekly' && (
+                        <div>
+                          <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">On Specific Days</label>
+                          <div className="flex flex-wrap gap-1">
+                            {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((day, idx) => {
+                              const isSelected = recurrence.weekdays.includes(idx);
+                              return (<button key={idx} type="button" onClick={() => { const list = isSelected ? recurrence.weekdays.filter(d => d !== idx) : [...recurrence.weekdays, idx]; setRecurrence(prev => ({ ...prev, weekdays: list })); }} className={cn("w-8 h-8 rounded-lg text-[10px] font-black transition-all", isSelected ? "bg-indigo-600 text-white" : "bg-white text-slate-400 border border-slate-200")}>{day}</button>);
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-4 pt-2">
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">End Condition</label>
+                        <select value={recurrence.end_type} onChange={(e) => setRecurrence(prev => ({ ...prev, end_type: e.target.value }))} className="select h-10">
+                          <option value="never">Never</option>
+                          <option value="count">After occurrences</option>
+                          <option value="date">On specific date</option>
+                        </select>
+                      </div>
+                      {recurrence.end_type !== 'never' && (
+                        <div>
+                          <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">{recurrence.end_type === 'count' ? 'Limit (Occurrences)' : 'Termination Date'}</label>
+                          <input type={recurrence.end_type === 'count' ? 'number' : 'date'} value={recurrence.end_value} onChange={(e) => setRecurrence(prev => ({ ...prev, end_value: e.target.value }))} className="input h-10" placeholder={recurrence.end_type === 'count' ? 'e.g. 10' : ''} />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl">
-                  Cancel
-                </button>
+                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-xl">Cancel</button>
                 <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-indigo-100">
-                  {creating ? (
-                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <><Plus className="w-5 h-5 mr-2" /> Create Task</>
-                  )}
+                  {creating ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <><Plus className="w-5 h-5 mr-2" /> Create Task</>}
                 </button>
               </div>
             </form>
@@ -594,15 +726,15 @@ export default function EmployeeTasksPage() {
               </div>
 
               <div className="flex gap-4 pt-2">
-                <button 
-                  type="button" 
-                  onClick={() => setShowCompleteModal(false)} 
+                <button
+                  type="button"
+                  onClick={() => setShowCompleteModal(false)}
                   className="btn btn-secondary flex-1 h-12 rounded-xl"
                 >
                   Cancel
                 </button>
-                <button 
-                  onClick={confirmCompletion} 
+                <button
+                  onClick={confirmCompletion}
                   disabled={!isConfirmed}
                   className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-emerald-100/50 disabled:opacity-50 disabled:grayscale"
                 >
@@ -647,7 +779,7 @@ export default function EmployeeTasksPage() {
                   required
                 />
               </div>
-              
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
@@ -686,6 +818,23 @@ export default function EmployeeTasksPage() {
                     <option key={comp.id} value={comp.id}>{comp.name}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Category Multi-Select */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                    <Tag className="w-3.5 h-3.5 text-indigo-500" /> Categories
+                  </label>
+                </div>
+                <MultiSelectDropdown
+                  label=""
+                  icon={() => null}
+                  options={categories.filter(c => c.is_active).map(c => ({ id: c.id, name: c.name }))}
+                  selectedIds={editingTask.category_ids || []}
+                  onChange={(ids) => setEditingTask({ ...editingTask, category_ids: ids })}
+                  placeholder="Select categories..."
+                />
               </div>
 
               <div className="flex gap-4 pt-4">

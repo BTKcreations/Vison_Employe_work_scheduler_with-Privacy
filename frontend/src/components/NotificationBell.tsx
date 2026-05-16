@@ -108,7 +108,7 @@ export default function NotificationBell() {
       </button>
 
       {isOpen && (
-        <>
+        <div>
           <div 
             className="fixed inset-0 z-40" 
             onClick={() => setIsOpen(false)} 
@@ -201,7 +201,7 @@ export default function NotificationBell() {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

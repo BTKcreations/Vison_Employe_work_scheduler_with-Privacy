@@ -160,6 +160,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
                     Holidays
                   </Link>
+                  <Link 
+                    href="/admin/settings/categories" 
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                      <ClipboardList className="w-3.5 h-3.5" />
+                    </div>
+                    Categories
+                  </Link>
                   <button 
                     onClick={() => setShowChangePassword(true)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"

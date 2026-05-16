@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 
 
 async def get_admin_dashboard():
-    """Get admin dashboard analytics data."""
+    """Get admin dashboard analytics data with optimized batch queries."""
     total_employees = await User.find(User.role == UserRole.EMPLOYEE).count()
     active_employees = await User.find(
         User.role == UserRole.EMPLOYEE, User.is_active == True
@@ -21,25 +21,38 @@ async def get_admin_dashboard():
     task_counts = await get_task_counts()
     leaderboard = await get_leaderboard(limit=5)
 
-    # Task priority distribution
-    high_priority = await Task.find(Task.priority == "high").count()
-    medium_priority = await Task.find(Task.priority == "medium").count()
-    regular_priority = await Task.find(Task.priority == "regular").count()
-    critical_priority = await Task.find(Task.priority == "critical").count()
+    # Task priority distribution - optimized with single aggregation
+    priority_pipeline = [
+        {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+    ]
+    priority_results = await Task.aggregate(priority_pipeline).to_list()
+    priority_dist = {
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "regular": 0
+    }
+    for res in priority_results:
+        if res["_id"] in priority_dist:
+            priority_dist[res["_id"]] = res["count"]
 
-    # Recent activity
+    # Recent activity - optimized with batch user fetching
     recent_activities = await ActivityLog.find().sort("-timestamp").limit(10).to_list()
-    activity_list = []
-    for activity in recent_activities:
-        user = await User.get(activity.user_id)
-        activity_list.append({
-            "id": str(activity.id),
-            "user_id": str(activity.user_id),
-            "user_name": user.name if user else "Unknown",
-            "action": activity.action,
-            "details": activity.details,
-            "timestamp": activity.timestamp.isoformat() + "Z",
-        })
+    user_ids = list(set([a.user_id for a in recent_activities]))
+    users = await User.find({"_id": {"$in": user_ids}}).to_list()
+    user_map = {u.id: u.name for u in users}
+
+    activity_list = [
+        {
+            "id": str(a.id),
+            "user_id": str(a.user_id),
+            "user_name": user_map.get(a.user_id, "Unknown"),
+            "action": a.action,
+            "details": a.details,
+            "timestamp": a.timestamp.isoformat() + "Z",
+        }
+        for a in recent_activities
+    ]
 
     # Total rewards given
     total_rewards = await Task.find(Task.reward_given == True).count()
@@ -50,12 +63,7 @@ async def get_admin_dashboard():
             "active": active_employees,
         },
         "tasks": task_counts,
-        "priority_distribution": {
-            "critical": critical_priority,
-            "high": high_priority,
-            "medium": medium_priority,
-            "regular": regular_priority,
-        },
+        "priority_distribution": priority_dist,
         "attendance_today": await _get_today_attendance_stats(total_employees),
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
@@ -64,8 +72,11 @@ async def get_admin_dashboard():
 
 
 async def get_employee_dashboard(user_id: str):
-    """Get employee personal dashboard data."""
+    """Get employee personal dashboard data with optimized batch queries."""
     user = await User.get(PydanticObjectId(user_id))
+    if not user:
+        return None
+        
     task_counts = await get_task_counts(user_id=user_id)
 
     # Recent activity for this employee
@@ -91,48 +102,53 @@ async def get_employee_dashboard(user_id: str):
         Task.reward_given == True,
     ).count()
 
-    # Priority distribution for this employee
+    # Priority distribution - optimized with single aggregation
+    priority_pipeline = [
+        {"$match": {"assigned_to": PydanticObjectId(user_id)}},
+        {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+    ]
+    priority_results = await Task.aggregate(priority_pipeline).to_list()
     priority_distribution = {
-        "critical": await Task.find(Task.assigned_to == PydanticObjectId(user_id), Task.priority == "critical").count(),
-        "high": await Task.find(Task.assigned_to == PydanticObjectId(user_id), Task.priority == "high").count(),
-        "medium": await Task.find(Task.assigned_to == PydanticObjectId(user_id), Task.priority == "medium").count(),
-        "regular": await Task.find(Task.assigned_to == PydanticObjectId(user_id), Task.priority == "regular").count(),
+        "critical": 0,
+        "high": 0,
+        "medium": 0,
+        "regular": 0
     }
+    for res in priority_results:
+        if res["_id"] in priority_distribution:
+            priority_distribution[res["_id"]] = res["count"]
 
-    # Attendance status today
+    # Optimized attendance history (batch fetch last 90 days)
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-    attendance = await Attendance.find_one(
+    history_start = today_start - timedelta(days=89)
+    
+    attendance_records = await Attendance.find(
         Attendance.user_id == PydanticObjectId(user_id),
-        Attendance.check_in >= today_start
-    )
-    attendance_status = "present" if attendance else "absent"
+        Attendance.check_in >= history_start
+    ).to_list()
+    
+    # Map records by date for fast lookup
+    attendance_map = {r.check_in.date(): r for r in attendance_records}
+    
+    # Attendance status today
+    attendance_status = "present" if today_start.date() in attendance_map else "absent"
 
     # Last 5 days attendance history
     attendance_history = []
     for i in range(5):
         day = today_start - timedelta(days=i)
-        next_day = day + timedelta(days=1)
-        record = await Attendance.find_one(
-            Attendance.user_id == PydanticObjectId(user_id),
-            Attendance.check_in >= day,
-            Attendance.check_in < next_day
-        )
+        record = attendance_map.get(day.date())
         attendance_history.append({
             "date": day.isoformat() + "Z",
             "status": "present" if record else "absent"
         })
-    attendance_history.reverse() # Show oldest to newest (last 5 days)
+    attendance_history.reverse()
 
     # Last 90 days attendance history for detailed calendar
     attendance_history_detailed = []
     for i in range(90):
         day = today_start - timedelta(days=i)
-        next_day = day + timedelta(days=1)
-        record = await Attendance.find_one(
-            Attendance.user_id == PydanticObjectId(user_id),
-            Attendance.check_in >= day,
-            Attendance.check_in < next_day
-        )
+        record = attendance_map.get(day.date())
         if record:
             attendance_history_detailed.append({
                 "date": day.isoformat() + "Z",

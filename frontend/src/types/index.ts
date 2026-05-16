@@ -35,6 +35,16 @@ export interface Task {
   company_id: string | null;
   company_name: string | null;
   remarks: RemarkEntry[];
+  category_ids: string[];
+  category_names: string[];
+  created_at: string;
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  color: string;
+  is_active: boolean;
   created_at: string;
 }
 
@@ -49,6 +59,13 @@ export interface Company {
   work_type: string;
   flexible_hours: number;
   cut_out_time: string;
+  office_lat: number | null;
+  office_lng: number | null;
+  geofence_radius_meters: number;
+  geofence_policy: string;
+  min_session_minutes: number;
+  auto_checkout_enabled: boolean;
+  location_drift_threshold_km: number;
   created_at: string;
 }
 
@@ -67,6 +84,12 @@ export interface Attendance {
   address_out: string | null;
   status: string;
   remarks: string | null;
+  location_drift_km: number | null;
+  distance_from_office_in: number | null;
+  distance_from_office_out: number | null;
+  flags: string[];
+  is_auto_closed: boolean;
+  device_fingerprint: string | null;
 }
 
 export interface Employee {
@@ -120,6 +143,7 @@ export interface CreateTaskRequest {
     end_type: string;
     end_value?: string;
   };
+  category_ids?: string[];
 }
 
 export interface UpdateTaskRequest {

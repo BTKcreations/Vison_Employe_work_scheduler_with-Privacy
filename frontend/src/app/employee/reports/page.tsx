@@ -24,7 +24,10 @@ export default function EmployeeReportsPage() {
   const downloadReport = async (type: 'tasks/csv' | 'tasks/excel' | 'attendance/excel') => {
     setDownloading(type);
     try {
-      const params = buildParams();
+      const params = {
+        ...buildParams(),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
       const res = await api.get(`/reports/me/${type}`, {
         params,
         responseType: 'blob',

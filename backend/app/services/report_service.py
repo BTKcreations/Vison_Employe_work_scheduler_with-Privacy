@@ -7,8 +7,12 @@ from app.models.task import Task
 from app.models.attendance import Attendance
 from app.models.user import User, UserRole
 from beanie import PydanticObjectId
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo
 
 
 async def _get_task_data(
@@ -17,6 +21,7 @@ async def _get_task_data(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    tz_name: Optional[str] = None,
 ) -> pd.DataFrame:
     """Fetch and filter task data into a DataFrame with specific SaaS requirements."""
     query = {}
@@ -38,6 +43,17 @@ async def _get_task_data(
     tasks = await Task.find(query).sort("-created_at").to_list()
 
     rows = []
+    # Determine timezone for formatting
+    tz = ZoneInfo(tz_name) if tz_name else None
+
+    def fmt_dt(dt: datetime) -> str:
+        """Format datetime in local timezone if provided."""
+        if dt is None:
+            return ""
+        if tz:
+            dt = dt.replace(tzinfo=timezone.utc).astimezone(tz)
+        return dt.strftime("%d-%m-%Y %H:%M:%S")
+
     for i, task in enumerate(tasks, 1):
         # Calculate Time Variance (Deadline - Completed Time)
         time_variance = ""
@@ -56,15 +72,16 @@ async def _get_task_data(
             "s.no": i,
             "employee name": task.assigned_to_name or "Unknown",
             "company name": task.company_name or "Personal / Internal",
+            "category": ", ".join(task.category_names) if task.category_names else "",
             "work description": task.work_description,
-            "work priority": task.priority.value,
-            "dead-line": task.deadline.strftime("%d-%m-%Y %H:%M:%S"),
-            "completed time": task.completed_at.strftime("%d-%m-%Y %H:%M:%S") if task.completed_at else "",
+            "work priority": task.priority.value.capitalize(),
+            "dead-line": fmt_dt(task.deadline),
+            "completed time": fmt_dt(task.completed_at) if task.completed_at else "",
             "Time variance": time_variance,
-            "Status": task.status.value,
+            "Status": task.status.value.capitalize(),
             "Remarks": remarks_str,
             "points": 1 if task.status == "completed" else 0,
-            "created time": task.created_at.strftime("%d-%m-%Y %H:%M:%S"),
+            "created time": fmt_dt(task.created_at),
             "Assigned by": task.created_by_name or "Unknown"
         })
 
@@ -80,9 +97,10 @@ async def generate_tasks_csv(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    tz_name: Optional[str] = None,
 ) -> str:
     """Generate CSV string of task data."""
-    df = await _get_task_data(status, employee_id, priority, start_date, end_date)
+    df = await _get_task_data(status, employee_id, priority, start_date, end_date, tz_name)
     return df.to_csv(index=False)
 
 
@@ -92,9 +110,10 @@ async def generate_tasks_excel(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    tz_name: Optional[str] = None,
 ) -> BytesIO:
     """Generate Excel file of task data."""
-    df = await _get_task_data(status, employee_id, priority, start_date, end_date)
+    df = await _get_task_data(status, employee_id, priority, start_date, end_date, tz_name)
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Tasks", index=False)
@@ -140,6 +159,7 @@ async def generate_attendance_excel(
     user_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    tz_name: Optional[str] = None,
 ) -> BytesIO:
     """Generate Excel file of attendance data."""
     query = {}
@@ -163,8 +183,22 @@ async def generate_attendance_excel(
         users = await User.find({"_id": {"$in": user_ids}}).to_list()
         user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
 
+    # Determine timezone for formatting
+    tz = ZoneInfo(tz_name) if tz_name else None
+
+    def to_local(dt: datetime) -> datetime:
+        """Convert a UTC datetime to local timezone."""
+        if dt is None:
+            return None
+        if tz:
+            return dt.replace(tzinfo=timezone.utc).astimezone(tz)
+        return dt
+
     rows = []
     for i, rec in enumerate(records, 1):
+        local_check_in = to_local(rec.check_in)
+        local_check_out = to_local(rec.check_out) if rec.check_out else None
+
         # Calculate duration if checked out
         duration_str = ""
         if rec.check_out:
@@ -174,7 +208,7 @@ async def generate_attendance_excel(
 
         row = {
             "S.No": i,
-            "Date": rec.check_in.strftime("%d-%m-%Y"),
+            "Date": local_check_in.strftime("%d-%m-%Y"),
         }
 
         if not user_id:
@@ -183,8 +217,8 @@ async def generate_attendance_excel(
             row["Email"] = user_info["email"]
 
         row.update({
-            "Check In": rec.check_in.strftime("%H:%M:%S"),
-            "Check Out": rec.check_out.strftime("%H:%M:%S") if rec.check_out else "N/A",
+            "Check In": local_check_in.strftime("%H:%M:%S"),
+            "Check Out": local_check_out.strftime("%H:%M:%S") if local_check_out else "N/A",
             "Duration": duration_str,
             "Status": rec.status.upper(),
             "Address (In)": rec.address_in or "",

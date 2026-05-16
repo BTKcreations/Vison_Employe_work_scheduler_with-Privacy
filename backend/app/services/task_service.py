@@ -4,6 +4,7 @@ Task service - business logic for task operations.
 from app.models.task import Task, TaskStatus, TaskPriority, TaskType
 from app.models.user import User
 from app.models.company import Company
+from app.models.category import Category
 from app.models.activity_log import ActivityLog
 from app.services.reward_service import check_and_award_reward
 from app.models.notification import Notification
@@ -21,11 +22,22 @@ async def create_task(
     task_type: str = "assigned",
     company_id: Optional[str] = None,
     recurring_task_id: Optional[PydanticObjectId] = None,
+    category_ids: Optional[List[str]] = None,
 ) -> Task:
     """Create a new task."""
     assigned_user = await User.get(PydanticObjectId(assigned_to))
     creator_user = await User.get(PydanticObjectId(created_by))
     company = await Company.get(PydanticObjectId(company_id)) if company_id else None
+
+    # Resolve categories
+    resolved_category_ids = []
+    resolved_category_names = []
+    if category_ids:
+        for cid in category_ids:
+            cat = await Category.get(PydanticObjectId(cid))
+            if cat:
+                resolved_category_ids.append(cat.id)
+                resolved_category_names.append(cat.name)
 
     task = Task(
         work_description=work_description,
@@ -38,6 +50,8 @@ async def create_task(
         deadline=deadline,
         company_id=PydanticObjectId(company_id) if company_id else None,
         company_name=company.name if company else None,
+        category_ids=resolved_category_ids,
+        category_names=resolved_category_names,
         recurring_task_id=recurring_task_id,
     )
     await task.insert()
@@ -117,6 +131,25 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
                 update_data["status"] = TaskStatus(value)
             elif key == "priority":
                 update_data["priority"] = TaskPriority(value)
+            elif key == "assigned_to":
+                update_data["assigned_to"] = PydanticObjectId(value)
+                user = await User.get(PydanticObjectId(value))
+                if user:
+                    update_data["assigned_to_name"] = user.name
+            elif key == "company_id":
+                update_data["company_id"] = PydanticObjectId(value)
+                company = await Company.get(PydanticObjectId(value))
+                update_data["company_name"] = company.name if company else "Personal / Internal"
+            elif key == "category_ids":
+                resolved_ids = []
+                resolved_names = []
+                for cid in value:
+                    cat = await Category.get(PydanticObjectId(cid))
+                    if cat:
+                        resolved_ids.append(cat.id)
+                        resolved_names.append(cat.name)
+                update_data["category_ids"] = resolved_ids
+                update_data["category_names"] = resolved_names
             else:
                 update_data[key] = value
 
@@ -184,31 +217,42 @@ async def delete_task(task_id: str) -> bool:
 
 
 async def get_task_counts(user_id: Optional[str] = None):
-    """Get task count summary."""
+    """Get task count summary using a single aggregation pipeline."""
     base_query = {}
     if user_id:
         base_query["assigned_to"] = PydanticObjectId(user_id)
 
-    # Auto-update overdue tasks first
+    # Auto-update overdue tasks first (this still requires an update_many or individual updates)
     now = datetime.utcnow()
-    overdue_tasks = await Task.find(
-        {**base_query, "status": {"$in": ["pending", "in_progress"]}, "deadline": {"$lt": now}}
-    ).to_list()
-    for task in overdue_tasks:
-        await task.set({"status": TaskStatus.OVERDUE})
+    # Use find().set() for batch update if supported, or loop for simple logic.
+    # Beanie supports update_many:
+    await Task.find(
+        {**base_query, "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]}, "deadline": {"$lt": now}}
+    ).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
 
-    total = await Task.find(base_query).count()
-    completed = await Task.find({**base_query, "status": "completed"}).count()
-    completed_late = await Task.find({**base_query, "status": "completed_late"}).count()
-    pending = await Task.find({**base_query, "status": "pending"}).count()
-    in_progress = await Task.find({**base_query, "status": "in_progress"}).count()
-    overdue = await Task.find({**base_query, "status": "overdue"}).count()
-
-    return {
-        "total": total,
-        "completed": completed,
-        "completed_late": completed_late,
-        "pending": pending,
-        "in_progress": in_progress,
-        "overdue": overdue,
+    # Single aggregation for all counts
+    pipeline = [
+        {"$match": base_query},
+        {"$group": {"_id": "$status", "count": {"$sum": 1}}},
+    ]
+    
+    aggregation_results = await Task.aggregate(pipeline).to_list()
+    
+    # Initialize defaults
+    counts = {
+        "total": 0,
+        "completed": 0,
+        "completed_late": 0,
+        "pending": 0,
+        "in_progress": 0,
+        "overdue": 0,
     }
+    
+    for res in aggregation_results:
+        status = res["_id"]
+        count = res["count"]
+        if status in counts:
+            counts[status] = count
+        counts["total"] += count
+
+    return counts

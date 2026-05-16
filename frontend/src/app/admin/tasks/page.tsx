@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo, Fragment } from 'react';
 import api from '@/lib/api';
-import { Task, Employee, Company } from '@/types';
+import { Task, Employee, Company, Category } from '@/types';
 import UserLink from '@/components/UserLink';
 import { formatDateTime, getStatusColor, getStatusLabel, getPriorityColor, timeAgo, formatPreciseDateTime, cn } from '@/lib/utils';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Trash2, Award,
   MessageSquarePlus, Building2, Send, ChevronUp, Search, Pencil, Eye,
-  RefreshCcw, CalendarDays, Users2, Building, ChevronDown, Check
+  RefreshCcw, CalendarDays, Users2, Building, ChevronDown, Check, Tag
 } from 'lucide-react';
 
 interface MultiSelectProps {
@@ -25,8 +25,8 @@ function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
 
-  const filteredOptions = options.filter(opt => 
-    opt.name.toLowerCase().includes(search.toLowerCase()) || 
+  const filteredOptions = options.filter(opt =>
+    opt.name.toLowerCase().includes(search.toLowerCase()) ||
     (opt.subtext && opt.subtext.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -40,7 +40,7 @@ function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange
         <Icon className="w-4 h-4 text-indigo-500" />
         {label}
       </label>
-      
+
       <button
         type="button"
         onClick={() => !disabled && setIsOpen(!isOpen)}
@@ -80,7 +80,7 @@ function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange
                 />
               </div>
             </div>
-            
+
             <div className="max-h-48 overflow-y-auto p-2 custom-scrollbar">
               {filteredOptions.length > 0 ? (
                 filteredOptions.map(opt => {
@@ -90,7 +90,7 @@ function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange
                       key={opt.id}
                       type="button"
                       onClick={() => {
-                        const newIds = isSelected 
+                        const newIds = isSelected
                           ? selectedIds.filter(id => id !== opt.id)
                           : [...selectedIds, opt.id];
                         onChange(newIds);
@@ -125,6 +125,7 @@ export default function AdminTasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filter state
@@ -141,11 +142,12 @@ export default function AdminTasksPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
-    work_description: '', 
-    assigned_to_list: [] as string[], 
-    priority: 'medium' as Task['priority'], 
-    deadline: '', 
+    work_description: '',
+    assigned_to_list: [] as string[],
+    priority: 'medium' as Task['priority'],
+    deadline: '',
     company_id_list: [] as string[],
+    category_ids: [] as string[],
     for_all: false,
     is_recurrent: false
   });
@@ -172,6 +174,12 @@ export default function AdminTasksPage() {
   const [expandedTask, setExpandedTask] = useState<string | null>(null);
   const [remarkText, setRemarkText] = useState('');
   const [submittingRemark, setSubmittingRemark] = useState(false);
+
+  // Complete confirmation modal
+  const [showCompleteModal, setShowCompleteModal] = useState(false);
+  const [confirmingTask, setConfirmingTask] = useState<Task | null>(null);
+  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [completionRemark, setCompletionRemark] = useState('');
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -202,11 +210,21 @@ export default function AdminTasksPage() {
     }
   }, []);
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await api.get('/categories');
+      setCategories(res.data);
+    } catch (err) {
+      console.error('Failed to fetch categories:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchTasks();
     fetchEmployees();
     fetchCompanies();
-  }, [fetchTasks, fetchEmployees, fetchCompanies]);
+    fetchCategories();
+  }, [fetchTasks, fetchEmployees, fetchCompanies, fetchCategories]);
 
   // Client-side filtering
   const filteredTasks = useMemo(() => {
@@ -249,20 +267,22 @@ export default function AdminTasksPage() {
         deadline: new Date(newTask.deadline).toISOString(),
         assigned_to_list: newTask.assigned_to_list,
         company_id_list: newTask.company_id_list,
+        category_ids: newTask.category_ids,
         for_all: newTask.for_all,
         is_recurrent: newTask.is_recurrent,
         recurrence: newTask.is_recurrent ? recurrence : undefined
       };
       await api.post('/tasks', payload);
       setShowCreateModal(false);
-      setNewTask({ 
-        work_description: '', 
-        assigned_to_list: [], 
-        priority: 'medium', 
-        deadline: '', 
-        company_id_list: [], 
-        for_all: false, 
-        is_recurrent: false 
+      setNewTask({
+        work_description: '',
+        assigned_to_list: [],
+        priority: 'medium',
+        deadline: '',
+        company_id_list: [],
+        category_ids: [],
+        for_all: false,
+        is_recurrent: false
       });
       fetchTasks();
     } catch (err: unknown) {
@@ -278,7 +298,7 @@ export default function AdminTasksPage() {
     // Convert deadline to datetime-local format (YYYY-MM-DDThh:mm)
     const date = new Date(task.deadline);
     const localDateTime = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-    
+
     setEditingTask({
       ...task,
       deadline: localDateTime
@@ -302,6 +322,8 @@ export default function AdminTasksPage() {
         priority: editingTask.priority,
         deadline: new Date(editingTask.deadline).toISOString(),
         company_id: editingTask.company_id || undefined,
+        assigned_to: editingTask.assigned_to,
+        category_ids: editingTask.category_ids,
       };
       await api.put(`/tasks/${editingTask.id}`, payload);
       setShowEditModal(false);
@@ -321,6 +343,33 @@ export default function AdminTasksPage() {
       fetchTasks();
     } catch (err) {
       console.error('Failed to update task:', err);
+    }
+  };
+
+  const openCompleteModal = (task: Task) => {
+    setConfirmingTask(task);
+    setIsConfirmed(false);
+    setCompletionRemark('');
+    setShowCompleteModal(true);
+  };
+
+  const confirmCompletion = async () => {
+    if (!confirmingTask || !isConfirmed) return;
+    try {
+      if (completionRemark.trim()) {
+        await api.put(`/tasks/${confirmingTask.id}`, {
+          status: 'completed',
+          remarks: completionRemark.trim()
+        });
+      } else {
+        await handleStatusUpdate(confirmingTask.id, 'completed');
+      }
+      setShowCompleteModal(false);
+      setConfirmingTask(null);
+      setCompletionRemark('');
+      fetchTasks();
+    } catch (err) {
+      console.error('Failed to complete task:', err);
     }
   };
 
@@ -501,6 +550,7 @@ export default function AdminTasksPage() {
               <th className="w-16">S.No</th>
               <th>Employee Name</th>
               <th>Company Name</th>
+              <th>Category</th>
               <th>Work Description</th>
               <th>Work Priority</th>
               <th>Dead-line</th>
@@ -534,8 +584,21 @@ export default function AdminTasksPage() {
                       {task.company_name}
                     </span>
                   </td>
+                  <td>
+                    <div className="flex flex-wrap gap-1">
+                      {task.category_names && task.category_names.length > 0 ? (
+                        task.category_names.map((cat, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 text-[10px] font-bold border border-indigo-100 whitespace-nowrap">
+                            {cat}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-[10px] text-slate-300 italic font-medium">None</span>
+                      )}
+                    </div>
+                  </td>
                   <td className="max-w-md">
-                    <div 
+                    <div
                       onClick={() => openViewModal(task)}
                       className="cursor-pointer hover:bg-slate-50 p-2 -m-2 rounded-lg transition-colors group"
                       title="Click to view full details"
@@ -550,7 +613,7 @@ export default function AdminTasksPage() {
                   </td>
                   <td>
                     <span className={`font-medium text-sm capitalize ${getPriorityColor(task.priority)}`}>
-                      {task.priority}
+                      {task.priority.charAt(0).toUpperCase() + task.priority.slice(1)}
                     </span>
                   </td>
                   <td className="text-sm text-muted-foreground whitespace-nowrap">{formatDateTime(task.deadline)}</td>
@@ -566,7 +629,7 @@ export default function AdminTasksPage() {
                   <td>
                     <div className="flex items-center gap-1">
                       <span className={`badge ${getStatusColor(task.status)} mr-2`}>
-                        {getStatusLabel(task.status)}
+                        {getStatusLabel(task.status).charAt(0).toUpperCase() + getStatusLabel(task.status).slice(1)}
                       </span>
                       {task.status === 'pending' && (
                         <button
@@ -579,7 +642,7 @@ export default function AdminTasksPage() {
                       )}
                       {(task.status === 'pending' || task.status === 'in_progress' || task.status === 'overdue') && (
                         <button
-                          onClick={() => handleStatusUpdate(task.id, 'completed')}
+                          onClick={() => openCompleteModal(task)}
                           className="btn btn-ghost text-xs p-1.5"
                           title={task.status === 'overdue' ? 'Complete (no reward)' : 'Complete'}
                         >
@@ -598,20 +661,20 @@ export default function AdminTasksPage() {
                           </span>
                         )}
                       </button>
-                        <button
-                          onClick={() => handleEdit(task)}
-                          className="btn btn-ghost text-xs p-1.5"
-                          title="Edit"
-                        >
-                          <Pencil className="w-3.5 h-3.5 text-blue-500" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(task.id)}
-                          className="btn btn-ghost text-xs p-1.5"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-400" />
-                        </button>
+                      <button
+                        onClick={() => handleEdit(task)}
+                        className="btn btn-ghost text-xs p-1.5"
+                        title="Edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5 text-blue-500" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(task.id)}
+                        className="btn btn-ghost text-xs p-1.5"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -686,7 +749,7 @@ export default function AdminTasksPage() {
             ))}
             {filteredTasks.length === 0 && (
               <tr>
-                <td colSpan={8} className="text-center py-20 text-slate-400">
+                <td colSpan={9} className="text-center py-20 text-slate-400">
                   {hasActiveFilters ? 'No work items match the current filters' : 'No work assigned yet. Create your first task!'}
                 </td>
               </tr>
@@ -762,15 +825,15 @@ export default function AdminTasksPage() {
                         onClick={() => {
                           const allIds = companies.map(c => c.id);
                           const isAllSelected = newTask.company_id_list.length === allIds.length;
-                          setNewTask(prev => ({ 
-                            ...prev, 
-                            company_id_list: isAllSelected ? [] : allIds 
+                          setNewTask(prev => ({
+                            ...prev,
+                            company_id_list: isAllSelected ? [] : allIds
                           }));
                         }}
                         className={cn(
                           "text-[9px] font-black px-2 py-0.5 rounded-full border transition-all uppercase tracking-tight",
                           newTask.company_id_list.length === companies.length && companies.length > 0
-                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm" 
+                            ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
                             : "bg-white text-slate-400 border-slate-200 hover:border-indigo-300"
                         )}
                       >
@@ -838,6 +901,43 @@ export default function AdminTasksPage() {
                 </div>
               </div>
 
+              {/* Category Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                    <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                    Categories
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const allIds = categories.filter(c => c.is_active).map(c => c.id);
+                      const isAllSelected = newTask.category_ids.length === allIds.length;
+                      setNewTask(prev => ({
+                        ...prev,
+                        category_ids: isAllSelected ? [] : allIds
+                      }));
+                    }}
+                    className={cn(
+                      "text-[9px] font-black px-2 py-0.5 rounded-full border transition-all uppercase tracking-tight",
+                      newTask.category_ids.length === categories.filter(c => c.is_active).length && categories.filter(c => c.is_active).length > 0
+                        ? "bg-indigo-600 text-white border-indigo-600 shadow-sm"
+                        : "bg-white text-slate-400 border-slate-200 hover:border-indigo-300"
+                    )}
+                  >
+                    {newTask.category_ids.length === categories.filter(c => c.is_active).length && categories.filter(c => c.is_active).length > 0 ? 'ALL SELECTED' : 'SELECT ALL'}
+                  </button>
+                </div>
+                <MultiSelectDropdown
+                  label=""
+                  icon={() => null}
+                  options={categories.filter(c => c.is_active).map(c => ({ id: c.id, name: c.name }))}
+                  selectedIds={newTask.category_ids}
+                  onChange={(ids) => setNewTask(prev => ({ ...prev, category_ids: ids }))}
+                  placeholder="Select categories..."
+                />
+              </div>
+
               {/* Recurrence Section */}
               <div className="bg-slate-50/50 rounded-2xl p-6 border border-slate-200">
                 <div className="flex items-center justify-between mb-4">
@@ -851,8 +951,8 @@ export default function AdminTasksPage() {
                     </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       className="sr-only peer"
                       checked={newTask.is_recurrent}
                       onChange={(e) => setNewTask(prev => ({ ...prev, is_recurrent: e.target.checked }))}
@@ -867,14 +967,14 @@ export default function AdminTasksPage() {
                       <div>
                         <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">Repeat Interval</label>
                         <div className="flex items-center gap-2">
-                          <input 
-                            type="number" 
+                          <input
+                            type="number"
                             min="1"
                             value={recurrence.interval}
                             onChange={(e) => setRecurrence(prev => ({ ...prev, interval: parseInt(e.target.value) }))}
                             className="input h-10 w-20 text-center"
                           />
-                          <select 
+                          <select
                             value={recurrence.type}
                             onChange={(e) => setRecurrence(prev => ({ ...prev, type: e.target.value }))}
                             className="select h-10"
@@ -898,7 +998,7 @@ export default function AdminTasksPage() {
                                   key={idx}
                                   type="button"
                                   onClick={() => {
-                                    const list = isSelected 
+                                    const list = isSelected
                                       ? recurrence.weekdays.filter(d => d !== val)
                                       : [...recurrence.weekdays, val];
                                     setRecurrence(prev => ({ ...prev, weekdays: list }));
@@ -920,7 +1020,7 @@ export default function AdminTasksPage() {
                     <div className="grid grid-cols-2 gap-4 pt-2">
                       <div>
                         <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">End Condition</label>
-                        <select 
+                        <select
                           value={recurrence.end_type}
                           onChange={(e) => setRecurrence(prev => ({ ...prev, end_type: e.target.value }))}
                           className="select h-10"
@@ -935,7 +1035,7 @@ export default function AdminTasksPage() {
                           <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">
                             {recurrence.end_type === 'count' ? 'Limit (Occurrences)' : 'Termination Date'}
                           </label>
-                          <input 
+                          <input
                             type={recurrence.end_type === 'count' ? 'number' : 'date'}
                             value={recurrence.end_value}
                             onChange={(e) => setRecurrence(prev => ({ ...prev, end_value: e.target.value }))}
@@ -998,7 +1098,47 @@ export default function AdminTasksPage() {
                   required
                 />
               </div>
-              
+
+              {/* Assignment Section */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* Employee Selection */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                    <Users2 className="w-3.5 h-3.5 text-indigo-500" />
+                    Assigned To
+                  </label>
+                  <select
+                    value={editingTask.assigned_to}
+                    onChange={(e) => setEditingTask({ ...editingTask, assigned_to: e.target.value })}
+                    className="select h-11"
+                    required
+                  >
+                    {employees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>{emp.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Company Selection */}
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                    <Building className="w-3.5 h-3.5 text-indigo-500" />
+                    Target Company
+                  </label>
+                  <select
+                    value={editingTask.company_id || ''}
+                    onChange={(e) => setEditingTask({ ...editingTask, company_id: e.target.value })}
+                    className="select h-11"
+                  >
+                    <option value="">Personal / Internal</option>
+                    {companies.map((comp) => (
+                      <option key={comp.id} value={comp.id}>{comp.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Task Details */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
@@ -1025,18 +1165,20 @@ export default function AdminTasksPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Company</label>
-                <select
-                  value={editingTask.company_id || ''}
-                  onChange={(e) => setEditingTask({ ...editingTask, company_id: e.target.value })}
-                  className="select h-11"
-                >
-                  <option value="">Personal / Internal</option>
-                  {companies.map((comp) => (
-                    <option key={comp.id} value={comp.id}>{comp.name}</option>
-                  ))}
-                </select>
+              {/* Category Selection */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+                  <Tag className="w-3.5 h-3.5 text-indigo-500" />
+                  Categories
+                </label>
+                <MultiSelectDropdown
+                  label=""
+                  icon={() => null}
+                  options={categories.filter(c => c.is_active).map(c => ({ id: c.id, name: c.name }))}
+                  selectedIds={editingTask.category_ids || []}
+                  onChange={(ids) => setEditingTask({ ...editingTask, category_ids: ids })}
+                  placeholder="Select categories..."
+                />
               </div>
 
               <div className="flex gap-4 pt-4">
@@ -1091,24 +1233,48 @@ export default function AdminTasksPage() {
               {/* Grid info */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Assigned To</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <Users2 className="w-3 h-3" /> Assigned To
+                  </label>
                   <p className="text-sm font-bold text-slate-800">{viewingTask.assigned_to_name}</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Company</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <Building className="w-3 h-3" /> Company
+                  </label>
                   <p className="text-sm font-bold text-slate-800">{viewingTask.company_name}</p>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Priority</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3 h-3" /> Priority
+                  </label>
                   <span className={`text-sm font-bold uppercase tracking-wide ${getPriorityColor(viewingTask.priority)}`}>
                     {viewingTask.priority}
                   </span>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Deadline</label>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
+                    <CalendarDays className="w-3 h-3" /> Deadline
+                  </label>
                   <p className="text-sm font-bold text-slate-800">{formatDateTime(viewingTask.deadline)}</p>
                 </div>
               </div>
+
+              {/* Categories */}
+              {viewingTask.category_names && viewingTask.category_names.length > 0 && (
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                    <Tag className="w-3 h-3" /> Categories
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {viewingTask.category_names.map((cat, i) => (
+                      <span key={i} className="px-3 py-1 rounded-full bg-indigo-50 text-indigo-600 text-xs font-bold border border-indigo-100">
+                        {cat}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Stats/Dates */}
               <div className="flex flex-wrap gap-4 pt-4 border-t border-slate-100">
@@ -1126,7 +1292,7 @@ export default function AdminTasksPage() {
             </div>
 
             <div className="mt-10 flex gap-3">
-              <button 
+              <button
                 onClick={() => {
                   setShowViewModal(false);
                   handleEdit(viewingTask);
@@ -1138,6 +1304,84 @@ export default function AdminTasksPage() {
               <button onClick={() => setShowViewModal(false)} className="btn btn-primary flex-1 h-12 rounded-xl">
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Complete Confirmation Modal */}
+      {showCompleteModal && confirmingTask && (
+        <div className="modal-overlay" onClick={() => setShowCompleteModal(false)}>
+          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
+                  <CheckCircle2 className="w-6 h-6 text-emerald-600" />
+                </div>
+                <h2 className="text-xl font-bold text-slate-900">Complete Task</h2>
+              </div>
+              <button onClick={() => setShowCompleteModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                <p className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-2">Task Description</p>
+                <p className="text-slate-700 font-medium leading-relaxed">{confirmingTask.work_description}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Assigned To</p>
+                  <span className="text-sm font-bold text-slate-700">{confirmingTask.assigned_to_name}</span>
+                </div>
+                <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm">
+                  <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest mb-1">Deadline</p>
+                  <span className="text-sm font-bold text-slate-700">{formatDateTime(confirmingTask.deadline)}</span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={isConfirmed}
+                    onChange={(e) => setIsConfirmed(e.target.checked)}
+                    className="w-5 h-5 mt-0.5 rounded-lg border-2 border-indigo-200 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                  />
+                  <div className="select-none">
+                    <p className="text-sm font-bold text-indigo-900 group-hover:text-indigo-700 transition-colors">Are you sure?</p>
+                    <p className="text-xs text-indigo-500/80 font-medium mt-0.5">Confirming that this task is fully completed as per requirements.</p>
+                  </div>
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Closing Remark (Optional)</label>
+                <textarea
+                  value={completionRemark}
+                  onChange={(e) => setCompletionRemark(e.target.value)}
+                  className="input min-h-20 resize-none p-3 text-sm"
+                  placeholder="Any final notes about the completion..."
+                />
+              </div>
+
+              <div className="flex gap-4 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCompleteModal(false)}
+                  className="btn btn-secondary flex-1 h-12 rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmCompletion}
+                  disabled={!isConfirmed}
+                  className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-emerald-100/50 disabled:opacity-50 disabled:grayscale"
+                >
+                  Complete Task
+                </button>
+              </div>
             </div>
           </div>
         </div>

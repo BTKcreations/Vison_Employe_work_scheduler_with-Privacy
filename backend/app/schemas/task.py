@@ -32,6 +32,7 @@ class CreateTaskRequest(BaseModel):
     for_all: bool = False
     is_recurrent: bool = False
     recurrence: Optional[RecurrenceRuleSchema] = None
+    category_ids: Optional[List[str]] = None
 
 
 class UpdateTaskRequest(BaseModel):
@@ -40,6 +41,9 @@ class UpdateTaskRequest(BaseModel):
     priority: Optional[str] = Field(None, pattern="^(regular|medium|high|critical)$")
     deadline: Optional[datetime] = None
     remarks: Optional[str] = Field(None, max_length=1000)  # New remark text to append
+    category_ids: Optional[List[str]] = None
+    company_id: Optional[str] = None
+    assigned_to: Optional[str] = None
 
 
 class TaskResponse(BaseModel):
@@ -58,11 +62,13 @@ class TaskResponse(BaseModel):
     reward_points: int = 0
     company_id: Optional[str] = None
     company_name: Optional[str] = None
+    category_ids: List[str] = []
+    category_names: List[str] = []
     remarks: List[RemarkEntry] = []
     created_at: str
 
     @classmethod
-    def from_task(cls, task, assigned_name: str = None, creator_name: str = None, company_name: str = None) -> "TaskResponse":
+    def from_task(cls, task, assigned_name: str = None, creator_name: str = None, company_name: str = None, category_names: list = None) -> "TaskResponse":
         return cls(
             id=str(task.id),
             work_description=task.work_description,
@@ -79,6 +85,8 @@ class TaskResponse(BaseModel):
             reward_points=task.reward_points,
             company_id=str(task.company_id) if task.company_id else None,
             company_name=company_name or task.company_name or "Personal / Internal",
+            category_ids=[str(cid) for cid in (task.category_ids or [])],
+            category_names=category_names if category_names is not None else (task.category_names or []),
             remarks=[RemarkEntry(**r) for r in (task.remarks or [])],
             created_at=task.created_at.isoformat() + 'Z',
         )

@@ -24,7 +24,7 @@ async def get_notifications(current_user: User = Depends(get_current_user)):
     print(f"Found {len(notifications)} notifications, {unread_count} unread")
     
     return {
-        "items": notifications,
+        "items": [NotificationResponse.from_notification(n) for n in notifications],
         "unread_count": unread_count
     }
 
@@ -45,7 +45,7 @@ async def mark_notification_as_read(
         
     notification.is_read = True
     await notification.save()
-    return notification
+    return NotificationResponse.from_notification(notification)
 
 @router.post("/read-all")
 async def mark_all_notifications_as_read(current_user: User = Depends(get_current_user)):

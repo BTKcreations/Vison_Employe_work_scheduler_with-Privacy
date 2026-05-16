@@ -13,11 +13,24 @@ class NotificationCreate(NotificationBase):
     sender_id: Optional[PydanticObjectId] = None
 
 class NotificationResponse(NotificationBase):
-    id: PydanticObjectId = Field(alias="_id")
-    user_id: PydanticObjectId
-    sender_id: Optional[PydanticObjectId]
+    id: str
+    user_id: str
+    sender_id: Optional[str] = None
     is_read: bool
-    created_at: datetime
+    created_at: str
+
+    @classmethod
+    def from_notification(cls, notification) -> "NotificationResponse":
+        return cls(
+            id=str(notification.id),
+            user_id=str(notification.user_id),
+            sender_id=str(notification.sender_id) if notification.sender_id else None,
+            title=notification.title,
+            message=notification.message,
+            type=notification.type,
+            is_read=notification.is_read,
+            created_at=notification.created_at.isoformat() + 'Z',
+        )
 
     class Config:
         populate_by_name = True

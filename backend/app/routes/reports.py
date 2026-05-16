@@ -19,6 +19,7 @@ async def export_tasks_csv(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timezone: Optional[str] = None,
     admin: User = Depends(require_admin),
 ):
     """Export task report as CSV (admin only)."""
@@ -28,6 +29,7 @@ async def export_tasks_csv(
         priority=priority,
         start_date=start_date,
         end_date=end_date,
+        tz_name=timezone,
     )
     return StreamingResponse(
         iter([csv_data]),
@@ -43,6 +45,7 @@ async def export_tasks_excel(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timezone: Optional[str] = None,
     admin: User = Depends(require_admin),
 ):
     """Export task report as Excel (admin only)."""
@@ -52,6 +55,7 @@ async def export_tasks_excel(
         priority=priority,
         start_date=start_date,
         end_date=end_date,
+        tz_name=timezone,
     )
     return StreamingResponse(
         excel_data,
@@ -79,6 +83,7 @@ async def export_my_tasks_csv(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timezone: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Export current employee's task report as CSV."""
@@ -88,6 +93,7 @@ async def export_my_tasks_csv(
         priority=priority,
         start_date=start_date,
         end_date=end_date,
+        tz_name=timezone,
     )
     return StreamingResponse(
         iter([csv_data]),
@@ -102,6 +108,7 @@ async def export_my_tasks_excel(
     priority: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timezone: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Export current employee's task report as Excel."""
@@ -111,6 +118,7 @@ async def export_my_tasks_excel(
         priority=priority,
         start_date=start_date,
         end_date=end_date,
+        tz_name=timezone,
     )
     return StreamingResponse(
         excel_data,
@@ -123,6 +131,7 @@ async def export_my_tasks_excel(
 async def export_my_attendance_excel(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timezone: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
     """Export current employee's attendance report as Excel."""
@@ -130,6 +139,7 @@ async def export_my_attendance_excel(
         user_id=str(current_user.id),
         start_date=start_date,
         end_date=end_date,
+        tz_name=timezone,
     )
     return StreamingResponse(
         excel_data,
@@ -143,6 +153,7 @@ async def export_attendance_excel_admin(
     employee_id: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    timezone: Optional[str] = None,
     admin: User = Depends(require_admin),
 ):
     """Export attendance report for all or specific employee as Excel (admin only)."""
@@ -150,6 +161,7 @@ async def export_attendance_excel_admin(
         user_id=employee_id,
         start_date=start_date,
         end_date=end_date,
+        tz_name=timezone,
     )
     return StreamingResponse(
         excel_data,
