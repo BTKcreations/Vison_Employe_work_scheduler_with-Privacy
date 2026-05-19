@@ -5,6 +5,7 @@ import api from '@/lib/api';
 import { Attendance } from '@/types';
 import { MapPin, LogIn, LogOut, Loader2, CheckCircle2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { generateFingerprint } from '@/lib/fingerprint';
 
 export default function AttendanceToggle() {
   const [currentSession, setCurrentSession] = useState<Attendance | null>(null);
@@ -80,7 +81,8 @@ export default function AttendanceToggle() {
       const res = await api.post(`/attendance/${type}`, {
         lat: loc.lat,
         lng: loc.lng,
-        remarks: `Quick ${type === 'check-in' ? 'Check-in' : 'Check-out'}`
+        remarks: `Quick ${type === 'check-in' ? 'Check-in' : 'Check-out'}`,
+        device_fingerprint: generateFingerprint(),
       });
       
       if (type === 'check-in') {
@@ -158,12 +160,14 @@ export default function AttendanceToggle() {
               </>
             )}
 
-            {status === 'error' && (
+             {status === 'error' && (
               <>
                 <div className="w-16 h-16 rounded-full bg-rose-50 flex items-center justify-center mb-4">
                   <X className="w-8 h-8 text-rose-500" />
                 </div>
-                <h3 className="text-xl font-bold text-slate-900">Action Failed</h3>
+                <h3 className="text-xl font-bold text-slate-900">
+                  {error?.includes('office') || error?.includes('geofence') ? 'Geofence Restriction' : 'Action Failed'}
+                </h3>
                 <p className="text-rose-500 mt-2 text-sm">{error}</p>
                 <button 
                   onClick={() => setIsOpen(false)}

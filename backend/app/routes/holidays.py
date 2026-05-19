@@ -26,12 +26,21 @@ class HolidayResponse(BaseModel):
 
 @router.get("", response_model=List[HolidayResponse])
 async def list_holidays(current_user: User = Depends(get_current_user)):
-    """List holidays for the user's company."""
-    # Show global holidays (company_id=None) and company-specific holidays
+    """List holidays scoped to user's permissions/hierarchy."""
     global_holidays = await Holiday.find(Holiday.company_id == None).to_list()
     company_holidays = []
-    if current_user.company_id:
-        company_holidays = await Holiday.find(Holiday.company_id == current_user.company_id).to_list()
+    
+    if current_user.role == UserRole.SUPER_ADMIN:
+        company_holidays = await Holiday.find(Holiday.company_id != None).to_list()
+    elif current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = [c.id for c in companies]
+        from beanie.operators import In
+        company_holidays = await Holiday.find(In(Holiday.company_id, co_ids)).to_list()
+    else:
+        if current_user.company_id:
+            company_holidays = await Holiday.find(Holiday.company_id == current_user.company_id).to_list()
     
     holidays = sorted(global_holidays + company_holidays, key=lambda x: x.date)
     
@@ -48,10 +57,26 @@ async def list_holidays(current_user: User = Depends(get_current_user)):
 @router.post("", response_model=HolidayResponse, status_code=status.HTTP_201_CREATED)
 async def create_holiday(req: HolidayRequest, current_user: User = Depends(get_current_user)):
     """Create a new holiday."""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
-    company_id = PydanticObjectId(req.company_id) if req.company_id else current_user.company_id
+    if current_user.role == UserRole.SUPER_ADMIN:
+        company_id = PydanticObjectId(req.company_id) if req.company_id else None
+    else:
+        # Admin role
+        if not req.company_id:
+            if not current_user.company_id:
+                raise HTTPException(status_code=400, detail="Company ID must be specified")
+            company_id = current_user.company_id
+        else:
+            company_id = PydanticObjectId(req.company_id)
+        
+        # Check authorization
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = {c.id for c in companies}
+        if company_id not in co_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to create a holiday for this company")
     
     holiday = Holiday(
         name=req.name,
@@ -71,12 +96,22 @@ async def create_holiday(req: HolidayRequest, current_user: User = Depends(get_c
 @router.delete("/{holiday_id}")
 async def delete_holiday(holiday_id: str, current_user: User = Depends(get_current_user)):
     """Delete a holiday."""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
     holiday = await Holiday.get(PydanticObjectId(holiday_id))
     if not holiday:
         raise HTTPException(status_code=404, detail="Holiday not found")
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        if not holiday.company_id:
+            raise HTTPException(status_code=403, detail="Not authorized to delete a global holiday")
+        
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = {c.id for c in companies}
+        if holiday.company_id not in co_ids:
+            raise HTTPException(status_code=403, detail="Not authorized to delete holidays for this company")
         
     await holiday.delete()
     return {"message": "Holiday deleted"}

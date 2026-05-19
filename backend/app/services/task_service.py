@@ -23,6 +23,7 @@ async def create_task(
     company_id: Optional[str] = None,
     recurring_task_id: Optional[PydanticObjectId] = None,
     category_ids: Optional[List[str]] = None,
+    complexity: str = "medium",
 ) -> Task:
     """Create a new task."""
     assigned_user = await User.get(PydanticObjectId(assigned_to))
@@ -46,6 +47,7 @@ async def create_task(
         created_by=PydanticObjectId(created_by),
         created_by_name=creator_user.name if creator_user else "Unknown",
         priority=TaskPriority(priority),
+        complexity=complexity,
         task_type=TaskType(task_type),
         deadline=deadline,
         company_id=PydanticObjectId(company_id) if company_id else None,
@@ -77,16 +79,55 @@ async def create_task(
 
 
 async def get_tasks(
+    current_user: User,
     user_id: Optional[str] = None,
     status: Optional[str] = None,
     priority: Optional[str] = None,
-    is_admin: bool = False,
 ) -> List[Task]:
-    """Get tasks with optional filters."""
+    """Get tasks with strict hierarchical role-based filtering."""
+    from app.models.user import UserRole
+    from app.services import user_service
+
     query = {}
 
-    if (not is_admin and user_id) or (is_admin and user_id):
-        query["assigned_to"] = PydanticObjectId(user_id)
+    if current_user.role == UserRole.SUPER_ADMIN:
+        if user_id:
+            query["assigned_to"] = PydanticObjectId(user_id)
+    elif current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = [c.id for c in companies]
+        query["company_id"] = {"$in": co_ids}
+        if user_id:
+            query["assigned_to"] = PydanticObjectId(user_id)
+    elif current_user.role == UserRole.MANAGER:
+        subordinates = await user_service.get_all_employees(current_user)
+        subordinate_ids = {emp.id for emp in subordinates}
+        if user_id:
+            target_uid = PydanticObjectId(user_id)
+            if target_uid != current_user.id and target_uid not in subordinate_ids:
+                return []
+            query["assigned_to"] = target_uid
+        else:
+            query["$or"] = [
+                {"assigned_to": {"$in": list(subordinate_ids) + [current_user.id]}},
+                {"created_by": current_user.id}
+            ]
+    elif current_user.role == UserRole.ASSISTANT_MANAGER:
+        subordinates = await user_service.get_all_employees(current_user)
+        subordinate_ids = {emp.id for emp in subordinates}
+        if user_id:
+            target_uid = PydanticObjectId(user_id)
+            if target_uid != current_user.id and target_uid not in subordinate_ids:
+                return []
+            query["assigned_to"] = target_uid
+        else:
+            query["$or"] = [
+                {"assigned_to": {"$in": list(subordinate_ids) + [current_user.id]}},
+                {"created_by": current_user.id}
+            ]
+    else:  # EMPLOYEE
+        query["assigned_to"] = current_user.id
 
     if status:
         query["status"] = status
@@ -94,14 +135,14 @@ async def get_tasks(
     if priority:
         query["priority"] = priority
 
-    tasks = await Task.find(query).sort("-created_at").to_list()
-
-    # Auto-mark overdue tasks
+    # Auto-mark overdue tasks before fetching
     now = datetime.utcnow()
-    for task in tasks:
-        if task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] and task.deadline < now:
-            await task.set({"status": TaskStatus.OVERDUE, "updated_at": now})
-            task.status = TaskStatus.OVERDUE
+    overdue_query = query.copy()
+    overdue_query["status"] = {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]}
+    overdue_query["deadline"] = {"$lt": now}
+    await Task.find(overdue_query).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
+
+    tasks = await Task.find(query).sort("-created_at").to_list()
 
     return tasks
 
@@ -123,6 +164,14 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
 
     # Handle remarks separately — they are appended, not replaced
     remark_text = kwargs.pop("remarks", None)
+
+    # Restrict fields for non-admin (management)
+    if not is_admin:
+        if task.created_by == task.assigned_to:
+            allowed_fields = {"status", "work_description"}
+        else:
+            allowed_fields = {"status"}
+        kwargs = {k: v for k, v in kwargs.items() if k in allowed_fields}
 
     update_data = {}
     for key, value in kwargs.items():
@@ -150,6 +199,10 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
                         resolved_names.append(cat.name)
                 update_data["category_ids"] = resolved_ids
                 update_data["category_names"] = resolved_names
+            elif key == "complexity":
+                update_data["complexity"] = value
+            elif key == "quality_multiplier":
+                update_data["quality_multiplier"] = float(value)
             else:
                 update_data[key] = value
 
@@ -175,17 +228,20 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
         if task.deadline < now:
             update_data["status"] = TaskStatus.COMPLETED_LATE
 
+    # Keep track of original status before update
+    original_status = task.status
+
     update_data["updated_at"] = datetime.utcnow()
     await task.set(update_data)
 
     # Reload the task
     task = await Task.get(PydanticObjectId(task_id))
 
-    # Check for reward if task was just completed (only on-time completion gets reward)
-    final_status = update_data.get("status", task.status)
-    if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE] and task.status not in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE]:
-        if final_status == TaskStatus.COMPLETED:
-            await check_and_award_reward(task)
+    # Check for reward if task was just completed (handles both on-time and late completions, late penalty computed dynamically)
+    final_status = task.status
+    if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE] and original_status not in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE]:
+        await check_and_award_reward(task)
+
 
         await ActivityLog(
             user_id=task.assigned_to,
@@ -216,11 +272,13 @@ async def delete_task(task_id: str) -> bool:
     return True
 
 
-async def get_task_counts(user_id: Optional[str] = None):
+async def get_task_counts(user_id: Optional[str] = None, company_ids: Optional[List[PydanticObjectId]] = None):
     """Get task count summary using a single aggregation pipeline."""
     base_query = {}
     if user_id:
         base_query["assigned_to"] = PydanticObjectId(user_id)
+    elif company_ids:
+        base_query["company_id"] = {"$in": company_ids}
 
     # Auto-update overdue tasks first (this still requires an update_many or individual updates)
     now = datetime.utcnow()

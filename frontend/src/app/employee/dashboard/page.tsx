@@ -124,7 +124,7 @@ export default function EmployeeDashboardPage() {
               <div className="relative flex justify-center py-6">
                 <div className="w-80 h-80">
                   {mounted && (
-                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 320, height: 320 }}>
                       <PieChart>
                         <Pie
                           data={taskData}

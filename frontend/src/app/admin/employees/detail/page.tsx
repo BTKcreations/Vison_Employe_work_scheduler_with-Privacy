@@ -2,8 +2,9 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { Employee, Task, Company } from '@/types';
+import { Employee, Task, Company, Category } from '@/types';
 import StatusChart from '@/components/StatusChart';
 import EmptyState from '@/components/EmptyState';
 import {
@@ -14,7 +15,7 @@ import {
   Mail, Calendar, Trophy, CheckCircle2, Clock, AlertCircle,
   ClipboardList, Activity, ArrowLeft, Plus, UserX, UserCheck,
   MessageSquarePlus, Play, Trash2, ChevronUp, Send,
-  Eye, EyeOff, Copy, ShieldCheck, X, Phone, PhoneCall, Pencil, Award, Power, Lock, User, Shield
+  Eye, EyeOff, Copy, ShieldCheck, X, Phone, PhoneCall, Pencil, Award, Power, Lock, User, Shield, Building, Tag, Briefcase
 } from 'lucide-react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { cn } from '@/lib/utils';
@@ -22,11 +23,14 @@ import { cn } from '@/lib/utils';
 function EmployeeProfileContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get('id');
+  const { user, isAdmin } = useAuth();
   const router = useRouter();
   const [employee, setEmployee] = useState<Employee | null>(null);
+  const [allEmployees, setAllEmployees] = useState<Employee[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -74,16 +78,20 @@ function EmployeeProfileContent() {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [empRes, statsRes, tasksRes, companiesRes] = await Promise.all([
+      const [empRes, statsRes, tasksRes, companiesRes, categoriesRes, allEmpRes] = await Promise.all([
         api.get(`/admin/employees/${id}`),
         api.get(`/admin/employees/${id}/stats`),
         api.get(`/tasks?employee_id=${id}`),
-        api.get('/companies')
+        api.get('/companies'),
+        api.get('/categories'),
+        api.get('/admin/employees')
       ]);
       setEmployee(empRes.data);
       setStats(statsRes.data);
       setTasks(tasksRes.data);
       setCompanies(companiesRes.data);
+      setCategories(categoriesRes.data);
+      setAllEmployees(allEmpRes.data);
     } catch (err: any) {
       console.error('Failed to fetch employee data:', err);
       setError(err.response?.data?.detail || 'Failed to load employee profile');
@@ -119,7 +127,10 @@ function EmployeeProfileContent() {
       role: employee.role,
       reward_points: employee.reward_points,
       is_active: employee.is_active,
+      base_salary: employee.base_salary || 0,
       password: '',
+      parent_id: employee.parent_id || '',
+      company_id: employee.company_id || '',
     });
     setShowEditProfileModal(true);
   };
@@ -130,7 +141,11 @@ function EmployeeProfileContent() {
     setUpdatingProfile(true);
     try {
       // Filter out empty password to avoid 422 validation error (min_length=6)
-      const payload = { ...editEmployeeData };
+      const payload = { 
+        ...editEmployeeData,
+        parent_id: editEmployeeData.parent_id || '',
+        company_id: editEmployeeData.company_id || undefined
+      };
       if (!payload.password || payload.password.trim() === '') {
         delete payload.password;
       }
@@ -187,6 +202,14 @@ function EmployeeProfileContent() {
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
+    setError('');
+
+    if (new Date(newTask.deadline) <= new Date()) {
+      setError('Deadline must be in the future.');
+      setCreating(false);
+      return;
+    }
+
     try {
       const payload = {
         ...newTask,
@@ -364,18 +387,22 @@ function EmployeeProfileContent() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleToggleActive}
-                className={`btn ${employee.is_active ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
-              >
-                {employee.is_active ? <><UserX className="w-4 h-4" /> Deactivate</> : <><UserCheck className="w-4 h-4" /> Activate</>}
-              </button>
-              <button
-                onClick={handleEditProfile}
-                className="btn bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
-              >
-                <Pencil className="w-4 h-4" /> Edit Details
-              </button>
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={handleToggleActive}
+                    className={`btn ${employee.is_active ? 'bg-rose-50 text-rose-600 border-rose-100' : 'bg-emerald-50 text-emerald-600 border-emerald-100'}`}
+                  >
+                    {employee.is_active ? <><UserX className="w-4 h-4" /> Deactivate</> : <><UserCheck className="w-4 h-4" /> Activate</>}
+                  </button>
+                  <button
+                    onClick={handleEditProfile}
+                    className="btn bg-white border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm"
+                  >
+                    <Pencil className="w-4 h-4" /> Edit Details
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setShowCreateModal(true)}
                 className="btn btn-primary shadow-lg shadow-indigo-100"
@@ -426,6 +453,13 @@ function EmployeeProfileContent() {
                     <span className="text-xs font-bold text-slate-700">{employee.alternate_mobile}</span>
                   </div>
                 )}
+
+                <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50/50 border border-slate-100">
+                  <span className="text-xs text-slate-500 flex items-center gap-2 font-medium">
+                    <span className="text-xs font-bold text-slate-400">₹</span> Base Salary
+                  </span>
+                  <span className="text-xs font-bold text-slate-700">₹{employee.base_salary?.toLocaleString() || 0}</span>
+                </div>
 
                 <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50/50 border border-amber-100">
                   <span className="text-xs text-amber-600 flex items-center gap-2 font-bold">
@@ -512,7 +546,7 @@ function EmployeeProfileContent() {
 
               {mounted && stats?.priority_distribution ? (
                 <div className="h-[220px] w-full mt-2">
-                  <ResponsiveContainer width="100%" height="100%" debounce={100}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={100} initialDimension={{ width: 100, height: 220 }}>
                     <BarChart
                       data={[
                         { name: 'Critical', value: stats.priority_distribution.critical, color: '#8b5cf6' },
@@ -1202,6 +1236,22 @@ function EmployeeProfileContent() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Base Salary (INR)</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <span className="text-xs font-bold text-slate-400">₹</span>
+                    </div>
+                    <input
+                      type="number"
+                      value={editEmployeeData.base_salary}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, base_salary: parseFloat(e.target.value) || 0 })}
+                      className="input input-with-icon h-12 rounded-2xl font-bold"
+                      required
+                      min={0}
+                    />
+                  </div>
+                </div>
+                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Employment Role</label>
                   <div className="relative group">
                     <div className="input-icon-container">
@@ -1209,35 +1259,99 @@ function EmployeeProfileContent() {
                     </div>
                     <select
                       value={editEmployeeData.role}
-                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, role: e.target.value })}
+                      onChange={(e) => {
+                        const newRole = e.target.value;
+                        setEditEmployeeData({ 
+                          ...editEmployeeData, 
+                          role: newRole,
+                          parent_id: '' // reset parent
+                        });
+                      }}
                       className="select input-with-icon h-12 rounded-2xl"
                     >
                       <option value="employee">Employee</option>
+                      <option value="manager">Manager</option>
+                      <option value="assistant_manager">Assistant Manager</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Company / Department</label>
+                <div className="relative group">
+                  <div className="input-icon-container">
+                    <Building className="w-4 h-4 text-slate-400" />
+                  </div>
+                  <select
+                    value={editEmployeeData.company_id}
+                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, company_id: e.target.value })}
+                    className="select input-with-icon h-12 rounded-2xl font-bold"
+                    required={editEmployeeData.role !== 'admin'}
+                  >
+                    <option value="">Select Company/Department...</option>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {(editEmployeeData.role === 'assistant_manager' || editEmployeeData.role === 'employee') && (
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Change Password</label>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Direct Supervisor</label>
                   <div className="relative group">
                     <div className="input-icon-container">
-                      <Lock className="w-4 h-4" />
+                      <Briefcase className="w-4 h-4" />
                     </div>
-                    <input
-                      type={showPassword ? "text" : "password"}
-                      value={editEmployeeData.password}
-                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, password: e.target.value })}
-                      className="input input-with-icon pr-12 h-12 rounded-2xl"
-                      placeholder="........................"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+                    <select
+                      value={editEmployeeData.parent_id}
+                      onChange={(e) => setEditEmployeeData({ ...editEmployeeData, parent_id: e.target.value })}
+                      className="select input-with-icon h-12 rounded-2xl"
+                      required
                     >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                      <option value="">Select Supervisor...</option>
+                      {allEmployees
+                        .filter((emp) => 
+                          emp.id !== employee.id && (
+                            editEmployeeData.role === 'assistant_manager' 
+                              ? emp.role === 'manager' && emp.is_active
+                              : (emp.role === 'manager' || emp.role === 'assistant_manager') && emp.is_active
+                          )
+                        )
+                        .map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.name} ({emp.role.replace('_', ' ')})
+                          </option>
+                        ))}
+                    </select>
                   </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Change Password</label>
+                <div className="relative group">
+                  <div className="input-icon-container">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={editEmployeeData.password}
+                    onChange={(e) => setEditEmployeeData({ ...editEmployeeData, password: e.target.value })}
+                    className="input input-with-icon pr-12 h-12 rounded-2xl"
+                    placeholder="........................"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 

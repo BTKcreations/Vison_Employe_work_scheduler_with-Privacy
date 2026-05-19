@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-import { Employee } from '@/types';
+import { Employee, Company } from '@/types';
 import UserLink from '@/components/UserLink';
 import { formatDate } from '@/lib/utils';
 import {
@@ -12,6 +12,7 @@ import Link from 'next/link';
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -22,7 +23,10 @@ export default function EmployeesPage() {
     password: '', 
     role: 'employee',
     mobile: '',
-    alternate_mobile: ''
+    alternate_mobile: '',
+    base_salary: 30000,
+    parent_id: '',
+    company_id: ''
   });
   const [error, setError] = useState('');
 
@@ -37,16 +41,31 @@ export default function EmployeesPage() {
     }
   }, []);
 
+  const fetchCompanies = useCallback(async () => {
+    try {
+      const res = await api.get('/companies');
+      setCompanies(res.data);
+    } catch (err) {
+      console.error('Failed to fetch companies:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEmployees();
-  }, [fetchEmployees]);
+    fetchCompanies();
+  }, [fetchEmployees, fetchCompanies]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
     setError('');
     try {
-      await api.post('/admin/employees', newEmployee);
+      const payload = {
+        ...newEmployee,
+        parent_id: newEmployee.parent_id || undefined,
+        company_id: newEmployee.company_id || undefined,
+      };
+      await api.post('/admin/employees', payload);
       setShowCreateModal(false);
       setNewEmployee({ 
         name: '', 
@@ -54,7 +73,10 @@ export default function EmployeesPage() {
         password: '', 
         role: 'employee',
         mobile: '',
-        alternate_mobile: ''
+        alternate_mobile: '',
+        base_salary: 30000,
+        parent_id: '',
+        company_id: ''
       });
       fetchEmployees();
     } catch (err: unknown) {
@@ -135,6 +157,7 @@ export default function EmployeesPage() {
             <tr>
               <th className="px-6 py-4">Employee</th>
               <th className="px-6 py-4">Role</th>
+              <th className="px-6 py-4">Supervisor</th>
               <th className="px-6 py-4">Rewards</th>
               <th className="px-6 py-4">Status</th>
               <th className="px-6 py-4">Joined</th>
@@ -157,6 +180,13 @@ export default function EmployeesPage() {
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleBadge(emp.role)}`}>
                     {emp.role.replace('_', ' ')}
                   </span>
+                </td>
+                <td className="px-6 py-4">
+                  {emp.parent_name ? (
+                    <span className="text-xs font-semibold text-slate-700">{emp.parent_name}</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground italic">-</span>
+                  )}
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1 text-yellow-600 font-semibold">
@@ -255,16 +285,77 @@ export default function EmployeesPage() {
                     </div>
                     <select
                       value={newEmployee.role}
-                      onChange={(e) => setNewEmployee({ ...newEmployee, role: e.target.value })}
+                      onChange={(e) => {
+                        const newRole = e.target.value;
+                        setNewEmployee({ 
+                          ...newEmployee, 
+                          role: newRole,
+                          parent_id: '' // reset parent
+                        });
+                      }}
                       className="select input-with-icon h-12 rounded-2xl"
                       required
                     >
                       <option value="employee">Employee</option>
+                      <option value="manager">Manager</option>
+                      <option value="assistant_manager">Assistant Manager</option>
                       <option value="admin">Admin</option>
                     </select>
                   </div>
                 </div>
               </div>
+
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Company / Department</label>
+                <div className="relative group">
+                  <div className="input-icon-container">
+                    <Briefcase className="w-4 h-4" />
+                  </div>
+                  <select
+                    value={newEmployee.company_id}
+                    onChange={(e) => setNewEmployee({ ...newEmployee, company_id: e.target.value })}
+                    className="select input-with-icon h-12 rounded-2xl"
+                    required={newEmployee.role !== 'admin'}
+                  >
+                    <option value="">Select Company/Department...</option>
+                    {companies.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {(newEmployee.role === 'assistant_manager' || newEmployee.role === 'employee') && (
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Direct Supervisor</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Briefcase className="w-4 h-4" />
+                    </div>
+                    <select
+                      value={newEmployee.parent_id}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, parent_id: e.target.value })}
+                      className="select input-with-icon h-12 rounded-2xl"
+                      required
+                    >
+                      <option value="">Select Supervisor...</option>
+                      {employees
+                        .filter((emp) => 
+                          newEmployee.role === 'assistant_manager' 
+                            ? emp.role === 'manager' && emp.is_active
+                            : (emp.role === 'manager' || emp.role === 'assistant_manager') && emp.is_active
+                        )
+                        .map((emp) => (
+                          <option key={emp.id} value={emp.id}>
+                            {emp.name} ({emp.role.replace('_', ' ')})
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
@@ -316,21 +407,41 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Security Password</label>
-                <div className="relative group">
-                  <div className="input-icon-container">
-                    <Lock className="w-4 h-4" />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Base Salary (INR)</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <span className="text-xs font-bold text-slate-400">₹</span>
+                    </div>
+                    <input
+                      type="number"
+                      value={newEmployee.base_salary}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, base_salary: parseFloat(e.target.value) || 0 })}
+                      className="input input-with-icon h-12 rounded-2xl"
+                      placeholder="30000"
+                      required
+                      min={0}
+                    />
                   </div>
-                  <input
-                    type="password"
-                    value={newEmployee.password}
-                    onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
-                    className="input input-with-icon h-12 rounded-2xl"
-                    placeholder="Min. 6 characters"
-                    required
-                    minLength={6}
-                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Security Password</label>
+                  <div className="relative group">
+                    <div className="input-icon-container">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                    <input
+                      type="password"
+                      value={newEmployee.password}
+                      onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
+                      className="input input-with-icon h-12 rounded-2xl"
+                      placeholder="Min. 6 characters"
+                      required
+                      minLength={6}
+                    />
+                  </div>
                 </div>
               </div>
 

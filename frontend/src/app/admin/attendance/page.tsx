@@ -12,6 +12,7 @@ interface AttendanceSummary {
   user_id: string;
   user_name: string;
   user_email: string;
+  user_role?: string;
   reward_points: number;
   history: {
     date: string;
@@ -26,6 +27,14 @@ export default function AttendanceManagementPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showFlagged, setShowFlagged] = useState(false);
+
+  const getDetailHref = (empId: string) => {
+    if (!user) return '#';
+    if (user.role === 'admin') return `/admin/employees/detail?id=${empId}&showAttendance=true`;
+    if (user.role === 'manager') return `/manager/employees/detail?id=${empId}&showAttendance=true`;
+    if (user.role === 'assistant_manager') return `/assistant_manager/employees/detail?id=${empId}&showAttendance=true`;
+    return '#';
+  };
 
   const fetchSummaries = useCallback(async () => {
     try {
@@ -235,7 +244,9 @@ export default function AttendanceManagementPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="font-bold text-slate-800 text-lg leading-tight">{emp.user_name}</h3>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-100 uppercase tracking-tighter">EMPLOYEE</span>
+                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-50 text-slate-400 border border-slate-100 uppercase tracking-tighter">
+                    {(emp.user_role || 'employee').replace('_', ' ')}
+                  </span>
                 </div>
                 <p className="text-sm text-slate-400 font-medium">{emp.user_email}</p>
               </div>
@@ -267,7 +278,7 @@ export default function AttendanceManagementPage() {
               </div>
               
               <Link 
-                href={`/admin/employees/detail?id=${emp.user_id}&showAttendance=true`} 
+                href={getDetailHref(emp.user_id)} 
                 className="w-14 h-14 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all hover:scale-105 active:scale-95"
                 title="Full Attendance Calendar"
               >

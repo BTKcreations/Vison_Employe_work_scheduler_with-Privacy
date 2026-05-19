@@ -29,6 +29,7 @@ class AttendanceResponse(BaseModel):
     user_id: str
     user_name: Optional[str] = None
     user_email: Optional[str] = None
+    user_role: Optional[str] = None
     user_reward_points: Optional[int] = 0
     company_id: str
     check_in: datetime
@@ -56,6 +57,7 @@ def _build_response(attendance: Attendance, user: Optional[User] = None) -> dict
     if user:
         res["user_name"] = user.name
         res["user_email"] = user.email
+        res["user_role"] = user.role.value if hasattr(user.role, 'value') else str(user.role)
         res["user_reward_points"] = user.reward_points
     return res
 
@@ -243,11 +245,20 @@ async def get_my_attendance(current_user: User = Depends(get_current_user)):
 
 @router.get("/all", response_model=List[AttendanceResponse])
 async def get_all_attendance(current_user: User = Depends(get_current_user)):
-    """Retrieve attendance logs for management with user names."""
-    if current_user.role != UserRole.ADMIN:
+    """Retrieve attendance logs for management with user names (filtered by hierarchy)."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
         raise HTTPException(status_code=403, detail="Unauthorized access to attendance logs.")
     
-    logs = await Attendance.find(Attendance.company_id == current_user.company_id).sort(-Attendance.check_in).to_list()
+    if current_user.role == UserRole.ADMIN:
+        logs = await Attendance.find(Attendance.company_id == current_user.company_id).sort(-Attendance.check_in).to_list()
+    else:
+        from app.services import user_service
+        subordinates = await user_service.get_all_employees(current_user)
+        allowed_user_ids = [emp.id for emp in subordinates] + [current_user.id]
+        logs = await Attendance.find(
+            Attendance.company_id == current_user.company_id,
+            In(Attendance.user_id, allowed_user_ids)
+        ).sort(-Attendance.check_in).to_list()
     
     user_ids = list(set([log.user_id for log in logs]))
     if not user_ids:
@@ -258,13 +269,14 @@ async def get_all_attendance(current_user: User = Depends(get_current_user)):
     
     return [_build_response(log, user_map.get(log.user_id)) for log in logs]
 
+
 @router.get("/summary")
 async def get_summary(current_user: User = Depends(get_current_user)):
-    """Get attendance summary for all employees (admin only)."""
-    if current_user.role != UserRole.ADMIN:
+    """Get attendance summary for all employees (management access, filtered by hierarchy)."""
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
         raise HTTPException(status_code=403, detail="Unauthorized")
     from app.services import dashboard_service
-    return await dashboard_service.get_all_attendance_summary()
+    return await dashboard_service.get_all_attendance_summary(current_user)
 
 @router.get("/geofence-status")
 async def get_geofence_status(

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, BarChart
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, BarChart, Users
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -19,22 +19,33 @@ const navItems = [
   { href: '/employee/attendance', label: 'Attendance', icon: MapPin },
   { href: '/employee/tasks', label: 'My Tasks', icon: ClipboardList },
   { href: '/employee/reports', label: 'Reports', icon: BarChart },
+  { href: '/employee/collaboration', label: 'Collaboration', icon: Users },
 ];
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, logout } = useAuth();
+  const { user, isLoading, isEmployee, logout } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
-  useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/login');
-    }
-  }, [user, isLoading, router]);
+  const canAccess = isEmployee;
 
-  if (isLoading || !user) {
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) {
+        router.push('/login');
+      } else if (!canAccess) {
+        const dest = user.role === 'admin' ? '/admin/dashboard' :
+                     user.role === 'manager' ? '/manager/dashboard' :
+                     user.role === 'assistant_manager' ? '/assistant_manager/dashboard' :
+                     '/employee/dashboard';
+        router.push(dest);
+      }
+    }
+  }, [user, isLoading, canAccess, router]);
+
+  if (isLoading || !user || !canAccess) {
     return (
       <div className="gradient-bg min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />

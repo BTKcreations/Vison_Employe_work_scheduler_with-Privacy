@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { Company } from '@/types';
-import { Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Save, Loader2, CheckCircle2, AlertCircle, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -92,8 +93,15 @@ export default function RulesSettingsPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div className="flex items-center justify-center py-2 border-y border-indigo-100 bg-indigo-50/30">
-        <h1 className="text-sm font-black tracking-[0.2em] text-slate-900 uppercase">Rules</h1>
+      <div className="flex items-center justify-between py-3 px-4 border-y border-indigo-100 bg-indigo-50/30">
+        <h1 className="text-sm font-black tracking-[0.2em] text-slate-900 uppercase">Rules Configuration</h1>
+        <Link
+          href="/admin/settings"
+          className="btn btn-secondary py-1 px-3 text-xs font-semibold text-slate-700 hover:text-indigo-600 flex items-center gap-1.5"
+        >
+          <Settings className="w-3.5 h-3.5" />
+          Reward & Incentive Settings
+        </Link>
       </div>
 
       <div className="glass rounded-2xl p-8 border border-border shadow-sm space-y-8">

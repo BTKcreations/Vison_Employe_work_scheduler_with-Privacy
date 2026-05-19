@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useRouter } from 'next/navigation';
 import { Shield, Sparkles, Eye, EyeOff, ArrowRight, Zap } from 'lucide-react';
@@ -11,8 +11,32 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { login } = useAuth();
+  const { login, user, isLoading } = useAuth();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!isLoading && user) {
+      if (user.role === 'super_admin') {
+        router.push('/super_admin/dashboard');
+      } else if (user.role === 'admin') {
+        router.push('/admin/dashboard');
+      } else if (user.role === 'manager') {
+        router.push('/manager/dashboard');
+      } else if (user.role === 'assistant_manager') {
+        router.push('/assistant_manager/dashboard');
+      } else {
+        router.push('/employee/dashboard');
+      }
+    }
+  }, [user, isLoading, router]);
+
+  if (isLoading || user) {
+    return (
+      <div className="gradient-bg min-h-screen flex items-center justify-center">
+        <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,8 +47,14 @@ export default function LoginPage() {
       await login(email, password);
       // Get user from localStorage after login
       const userData = JSON.parse(localStorage.getItem('user') || '{}');
-      if (userData.role === 'admin') {
+      if (userData.role === 'super_admin') {
+        router.push('/super_admin/dashboard');
+      } else if (userData.role === 'admin') {
         router.push('/admin/dashboard');
+      } else if (userData.role === 'manager') {
+        router.push('/manager/dashboard');
+      } else if (userData.role === 'assistant_manager') {
+        router.push('/assistant_manager/dashboard');
       } else {
         router.push('/employee/dashboard');
       }

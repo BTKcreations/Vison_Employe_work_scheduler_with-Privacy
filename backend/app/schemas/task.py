@@ -26,6 +26,7 @@ class CreateTaskRequest(BaseModel):
     assigned_to: Optional[str] = None  # Single employee
     assigned_to_list: Optional[List[str]] = None  # Multiple employees
     priority: str = Field(default="medium", pattern="^(regular|medium|high|critical)$")
+    complexity: str = Field(default="medium", pattern="^(low|medium|high)$")
     deadline: datetime
     company_id: Optional[str] = None  # Single company
     company_id_list: Optional[List[str]] = None  # Multiple companies
@@ -39,11 +40,13 @@ class UpdateTaskRequest(BaseModel):
     work_description: Optional[str] = Field(None, min_length=1, max_length=2000)
     status: Optional[str] = Field(None, pattern="^(pending|in_progress|completed|overdue|completed_late)$")
     priority: Optional[str] = Field(None, pattern="^(regular|medium|high|critical)$")
+    complexity: Optional[str] = Field(None, pattern="^(low|medium|high)$")
     deadline: Optional[datetime] = None
     remarks: Optional[str] = Field(None, max_length=1000)  # New remark text to append
     category_ids: Optional[List[str]] = None
     company_id: Optional[str] = None
     assigned_to: Optional[str] = None
+    quality_multiplier: Optional[float] = None
 
 
 class TaskResponse(BaseModel):
@@ -55,11 +58,12 @@ class TaskResponse(BaseModel):
     created_by_name: Optional[str] = None
     status: str
     priority: str
+    complexity: str
     task_type: str
     deadline: str
     completed_at: Optional[str]
     reward_given: bool
-    reward_points: int = 0
+    reward_points: float = 0.0
     company_id: Optional[str] = None
     company_name: Optional[str] = None
     category_ids: List[str] = []
@@ -78,6 +82,7 @@ class TaskResponse(BaseModel):
             created_by_name=creator_name or task.created_by_name,
             status=task.status.value,
             priority=task.priority.value,
+            complexity=task.complexity,
             task_type=task.task_type.value,
             deadline=task.deadline.isoformat() + 'Z',
             completed_at=(task.completed_at.isoformat() + 'Z') if task.completed_at else None,

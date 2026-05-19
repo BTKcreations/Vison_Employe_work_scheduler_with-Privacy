@@ -9,23 +9,138 @@ from app.services.reward_service import get_leaderboard
 from app.models.attendance import Attendance
 from beanie import PydanticObjectId
 from datetime import datetime, timedelta
+from typing import Optional, List
 
 
-async def get_admin_dashboard():
-    """Get admin dashboard analytics data with optimized batch queries."""
-    total_employees = await User.find(User.role == UserRole.EMPLOYEE).count()
-    active_employees = await User.find(
-        User.role == UserRole.EMPLOYEE, User.is_active == True
-    ).count()
+async def get_admin_dashboard(current_user: User):
+    """Get admin/management dashboard analytics data with hierarchy-based filtering."""
+    from app.services import user_service
+    from beanie.operators import In
 
-    task_counts = await get_task_counts()
-    leaderboard = await get_leaderboard(limit=5)
+    if current_user.role == UserRole.SUPER_ADMIN:
+        total_employees = await User.find(User.role != UserRole.SUPER_ADMIN).count()
+        active_employees = await User.find(
+            User.role != UserRole.SUPER_ADMIN, User.is_active == True
+        ).count()
 
-    # Task priority distribution - optimized with single aggregation
-    priority_pipeline = [
-        {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
-    ]
-    priority_results = await Task.aggregate(priority_pipeline).to_list()
+        task_counts = await get_task_counts()
+        leaderboard = await get_leaderboard(limit=5, current_user=current_user)
+
+        # Task priority distribution - optimized with single aggregation
+        priority_pipeline = [
+            {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+        ]
+        priority_results = await Task.aggregate(priority_pipeline).to_list()
+
+        # Recent activity - optimized with batch user fetching
+        recent_activities = await ActivityLog.find().sort("-timestamp").limit(10).to_list()
+
+        # Total rewards given
+        total_rewards = await Task.find(Task.reward_given == True).count()
+
+        attendance_stats = await _get_today_attendance_stats(total_employees)
+    elif current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = [c.id for c in companies]
+
+        total_employees = await User.find(
+            User.role != UserRole.SUPER_ADMIN,
+            User.role != UserRole.ADMIN,
+            In(User.company_id, co_ids)
+        ).count()
+        active_employees = await User.find(
+            User.role != UserRole.SUPER_ADMIN,
+            User.role != UserRole.ADMIN,
+            User.is_active == True,
+            In(User.company_id, co_ids)
+        ).count()
+
+        task_counts = await get_task_counts(company_ids=co_ids)
+        leaderboard = await get_leaderboard(limit=5, current_user=current_user)
+
+        # Task priority distribution - filtered by company
+        priority_pipeline = [
+            {"$match": {"company_id": {"$in": co_ids}}},
+            {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+        ]
+        priority_results = await Task.aggregate(priority_pipeline).to_list()
+
+        # Recent activity - filtered by company
+        company_employees = await User.find(In(User.company_id, co_ids)).to_list()
+        company_emp_ids = [emp.id for emp in company_employees]
+        recent_activities = await ActivityLog.find(
+            {"user_id": {"$in": company_emp_ids}}
+        ).sort("-timestamp").limit(10).to_list()
+
+        # Total rewards given in these companies
+        total_rewards = await Task.find(
+            {"company_id": {"$in": co_ids}, "reward_given": True}
+        ).count()
+
+        attendance_stats = await _get_today_attendance_stats(total_employees, company_emp_ids)
+    else:
+        subordinates = await user_service.get_all_employees(current_user)
+        subordinate_ids = [emp.id for emp in subordinates]
+        total_employees = len(subordinates)
+        active_employees = sum(1 for emp in subordinates if emp.is_active)
+
+        # Subordinates + themselves for tasks and activities
+        all_allowed_ids = subordinate_ids + [current_user.id]
+
+        # 1. Custom task counts for hierarchy
+        now = datetime.utcnow()
+        await Task.find(
+            {"assigned_to": {"$in": all_allowed_ids}, "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]}, "deadline": {"$lt": now}}
+        ).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
+
+        task_pipeline = [
+            {"$match": {
+                "$or": [
+                    {"assigned_to": {"$in": all_allowed_ids}},
+                    {"created_by": current_user.id}
+                ]
+            }},
+            {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+        ]
+        task_results = await Task.aggregate(task_pipeline).to_list()
+        task_counts = {
+            "total": 0, "completed": 0, "completed_late": 0, "pending": 0, "in_progress": 0, "overdue": 0
+        }
+        for res in task_results:
+            status = res["_id"]
+            count = res["count"]
+            if status in task_counts:
+                task_counts[status] = count
+            task_counts["total"] += count
+
+        # 2. Leaderboard restricted to hierarchy
+        leaderboard = await get_leaderboard(limit=5, current_user=current_user)
+
+        # 3. Priority distribution for tasks in hierarchy
+        priority_pipeline = [
+            {"$match": {
+                "$or": [
+                    {"assigned_to": {"$in": all_allowed_ids}},
+                    {"created_by": current_user.id}
+                ]
+            }},
+            {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+        ]
+        priority_results = await Task.aggregate(priority_pipeline).to_list()
+
+        # 4. Recent activities in hierarchy
+        recent_activities = await ActivityLog.find(
+            {"user_id": {"$in": all_allowed_ids}}
+        ).sort("-timestamp").limit(10).to_list()
+
+        # 5. Total rewards in hierarchy
+        total_rewards = await Task.find(
+            {"assigned_to": {"$in": all_allowed_ids}, "reward_given": True}
+        ).count()
+
+        attendance_stats = await _get_today_attendance_stats(total_employees, subordinate_ids)
+
     priority_dist = {
         "critical": 0,
         "high": 0,
@@ -36,8 +151,6 @@ async def get_admin_dashboard():
         if res["_id"] in priority_dist:
             priority_dist[res["_id"]] = res["count"]
 
-    # Recent activity - optimized with batch user fetching
-    recent_activities = await ActivityLog.find().sort("-timestamp").limit(10).to_list()
     user_ids = list(set([a.user_id for a in recent_activities]))
     users = await User.find({"_id": {"$in": user_ids}}).to_list()
     user_map = {u.id: u.name for u in users}
@@ -54,9 +167,6 @@ async def get_admin_dashboard():
         for a in recent_activities
     ]
 
-    # Total rewards given
-    total_rewards = await Task.find(Task.reward_given == True).count()
-
     return {
         "employees": {
             "total": total_employees,
@@ -64,7 +174,7 @@ async def get_admin_dashboard():
         },
         "tasks": task_counts,
         "priority_distribution": priority_dist,
-        "attendance_today": await _get_today_attendance_stats(total_employees),
+        "attendance_today": attendance_stats,
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
         "total_rewards_given": total_rewards,
@@ -178,13 +288,19 @@ async def get_employee_dashboard(user_id: str):
         "attendance_history_detailed": attendance_history_detailed,
     }
 
-async def get_all_attendance_summary():
-    """Get last 5 days attendance summary for all employees."""
-    employees = await User.find(User.role == UserRole.EMPLOYEE).to_list()
+async def get_all_attendance_summary(current_user: User):
+    """Get last 5 days attendance summary for all employees visible in hierarchy."""
+    from app.services import user_service
+    from beanie.operators import In
+    employees = await user_service.get_all_employees(current_user)
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     five_days_ago = today_start - timedelta(days=4)
     
-    logs = await Attendance.find(Attendance.check_in >= five_days_ago).to_list()
+    emp_ids = [emp.id for emp in employees]
+    logs = await Attendance.find(
+        Attendance.check_in >= five_days_ago,
+        In(Attendance.user_id, emp_ids)
+    ).to_list()
     
     # Map logs by user_id and date
     log_map = {} 
@@ -210,22 +326,25 @@ async def get_all_attendance_summary():
             "user_id": uid,
             "user_name": emp.name,
             "user_email": emp.email,
+            "user_role": emp.role.value if hasattr(emp.role, 'value') else str(emp.role),
             "reward_points": emp.reward_points,
             "history": history
         })
     return summary
 
 
-async def _get_today_attendance_stats(total_employees: int):
+async def _get_today_attendance_stats(total_employees: int, user_ids: Optional[List[PydanticObjectId]] = None):
     """Helper to get today's attendance stats."""
     # Using UTC for consistent day boundaries or use local if specified. 
     # For now, let's use the start of the current UTC day.
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     
     # Unique users who checked in today
-    present_records = await Attendance.find(
-        Attendance.check_in >= today_start
-    ).to_list()
+    query = {"check_in": {"$gte": today_start}}
+    if user_ids is not None:
+        query["user_id"] = {"$in": user_ids}
+        
+    present_records = await Attendance.find(query).to_list()
     present_count = len({str(r.user_id) for r in present_records})
     absent_count = max(0, total_employees - present_count)
     

@@ -33,7 +33,12 @@ export default function Home() {
           <div className="flex items-center gap-4">
             {user ? (
               <Link 
-                href={user.role === 'employee' ? '/employee/dashboard' : '/admin/dashboard'}
+                href={
+                  user.role === 'admin' ? '/admin/dashboard' :
+                  user.role === 'manager' ? '/manager/dashboard' :
+                  user.role === 'assistant_manager' ? '/assistant_manager/dashboard' :
+                  '/employee/dashboard'
+                }
                 className="btn btn-primary px-5 py-2 rounded-xl flex items-center gap-2"
               >
                 Go to Dashboard

@@ -1,7 +1,7 @@
 """
 Company model for MongoDB companies collection.
 """
-from beanie import Document
+from beanie import Document, PydanticObjectId
 from pydantic import Field
 from datetime import datetime
 from typing import Optional, List
@@ -10,6 +10,7 @@ from typing import Optional, List
 class Company(Document):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = Field(default=None, max_length=500)
+    owner_id: Optional[PydanticObjectId] = None
     is_active: bool = Field(default=True)
     work_days: list[str] = Field(default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
     work_start_time: str = Field(default="09:00")

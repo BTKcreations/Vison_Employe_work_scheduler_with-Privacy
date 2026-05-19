@@ -13,4 +13,4 @@ async def search(
     """
     Global search endpoint.
     """
-    return await global_search(q)
+    return await global_search(q, current_user)

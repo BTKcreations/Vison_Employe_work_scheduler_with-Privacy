@@ -145,6 +145,7 @@ export default function AdminTasksPage() {
     work_description: '',
     assigned_to_list: [] as string[],
     priority: 'medium' as Task['priority'],
+    complexity: 'medium' as Task['complexity'],
     deadline: '',
     company_id_list: [] as string[],
     category_ids: [] as string[],
@@ -180,6 +181,8 @@ export default function AdminTasksPage() {
   const [confirmingTask, setConfirmingTask] = useState<Task | null>(null);
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [completionRemark, setCompletionRemark] = useState('');
+  const [completeQuality, setCompleteQuality] = useState<number>(1.0);
+  const [completing, setCompleting] = useState(false);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -260,10 +263,18 @@ export default function AdminTasksPage() {
     e.preventDefault();
     setCreating(true);
     setError('');
+
+    if (new Date(newTask.deadline) <= new Date()) {
+      setError('Deadline must be in the future.');
+      setCreating(false);
+      return;
+    }
+
     try {
       const payload = {
         work_description: newTask.work_description,
         priority: newTask.priority,
+        complexity: newTask.complexity,
         deadline: new Date(newTask.deadline).toISOString(),
         assigned_to_list: newTask.assigned_to_list,
         company_id_list: newTask.company_id_list,
@@ -278,6 +289,7 @@ export default function AdminTasksPage() {
         work_description: '',
         assigned_to_list: [],
         priority: 'medium',
+        complexity: 'medium',
         deadline: '',
         company_id_list: [],
         category_ids: [],
@@ -320,6 +332,7 @@ export default function AdminTasksPage() {
       const payload = {
         work_description: editingTask.work_description,
         priority: editingTask.priority,
+        complexity: editingTask.complexity,
         deadline: new Date(editingTask.deadline).toISOString(),
         company_id: editingTask.company_id || undefined,
         assigned_to: editingTask.assigned_to,
@@ -350,16 +363,19 @@ export default function AdminTasksPage() {
     setConfirmingTask(task);
     setIsConfirmed(false);
     setCompletionRemark('');
+    setCompleteQuality(1.0);
     setShowCompleteModal(true);
   };
 
   const confirmCompletion = async () => {
     if (!confirmingTask || !isConfirmed) return;
+    setCompleting(true);
     try {
-      if (completionRemark.trim()) {
+      if (completionRemark.trim() || completeQuality !== 1.0) {
         await api.put(`/tasks/${confirmingTask.id}`, {
           status: 'completed',
-          remarks: completionRemark.trim()
+          remarks: completionRemark.trim() || undefined,
+          quality_multiplier: completeQuality
         });
       } else {
         await handleStatusUpdate(confirmingTask.id, 'completed');
@@ -370,6 +386,8 @@ export default function AdminTasksPage() {
       fetchTasks();
     } catch (err) {
       console.error('Failed to complete task:', err);
+    } finally {
+      setCompleting(false);
     }
   };
 
@@ -874,7 +892,7 @@ export default function AdminTasksPage() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
                     <select
@@ -886,6 +904,18 @@ export default function AdminTasksPage() {
                       <option value="medium">Medium</option>
                       <option value="high">High</option>
                       <option value="critical">Critical</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Complexity</label>
+                    <select
+                      value={newTask.complexity}
+                      onChange={(e) => setNewTask({ ...newTask, complexity: e.target.value as Task['complexity'] })}
+                      className="select h-11"
+                    >
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
                     </select>
                   </div>
                   <div>
@@ -1139,7 +1169,7 @@ export default function AdminTasksPage() {
               </div>
 
               {/* Task Details */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Work Priority</label>
                   <select
@@ -1151,6 +1181,18 @@ export default function AdminTasksPage() {
                     <option value="medium">Medium</option>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Complexity</label>
+                  <select
+                    value={editingTask.complexity}
+                    onChange={(e) => setEditingTask({ ...editingTask, complexity: e.target.value as Task['complexity'] })}
+                    className="select h-11"
+                  >
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
                   </select>
                 </div>
                 <div>
@@ -1357,6 +1399,20 @@ export default function AdminTasksPage() {
               </div>
 
               <div>
+                <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Quality Score</label>
+                <select
+                  value={completeQuality}
+                  onChange={(e) => setCompleteQuality(parseFloat(e.target.value))}
+                  className="select h-11 mb-2"
+                >
+                  <option value={0.8}>Rework Required (0.8x)</option>
+                  <option value={1.0}>Standard (1.0x)</option>
+                  <option value={1.2}>Exemplary (1.2x)</option>
+                </select>
+                <p className="text-xs text-slate-500 font-medium">This will multiply the final reward points awarded for this task.</p>
+              </div>
+
+              <div>
                 <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Closing Remark (Optional)</label>
                 <textarea
                   value={completionRemark}
@@ -1376,10 +1432,14 @@ export default function AdminTasksPage() {
                 </button>
                 <button
                   onClick={confirmCompletion}
-                  disabled={!isConfirmed}
+                  disabled={!isConfirmed || completing}
                   className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-emerald-100/50 disabled:opacity-50 disabled:grayscale"
                 >
-                  Complete Task
+                  {completing ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                  ) : (
+                    'Complete Task'
+                  )}
                 </button>
               </div>
             </div>

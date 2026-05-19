@@ -27,7 +27,7 @@ class UserResponse(BaseModel):
     name: str
     email: str
     role: str
-    reward_points: int
+    reward_points: float
     is_active: bool
     created_at: str
 

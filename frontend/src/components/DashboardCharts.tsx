@@ -90,7 +90,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
           <h2 className="font-semibold text-slate-800">Priority Distribution</h2>
         </div>
         {mounted && (
-          <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0}>
+          <ResponsiveContainer width="100%" height={200} minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 200 }}>
             <BarChart data={priorityData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 12 }} axisLine={false} />
@@ -124,7 +124,7 @@ export default function DashboardCharts({ stats }: DashboardChartsProps) {
         <div className="flex flex-col items-center justify-center">
           <div className="h-[180px] w-full relative mb-4">
             {mounted && (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} initialDimension={{ width: 100, height: 180 }}>
                 <PieChart>
                   <Pie
                     data={attendanceData}

@@ -1,9 +1,10 @@
 """
 Report routes - CSV and Excel export endpoints.
 """
+from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from app.auth.dependencies import require_admin, get_current_user
+from app.auth.dependencies import require_admin, require_management, get_current_user
 from app.services import report_service
 from app.models.user import User
 from typing import Optional
@@ -20,10 +21,11 @@ async def export_tasks_csv(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     timezone: Optional[str] = None,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_management),
 ):
-    """Export task report as CSV (admin only)."""
+    """Export task report as CSV (filtered by hierarchy)."""
     csv_data = await report_service.generate_tasks_csv(
+        current_user=admin,
         status=status,
         employee_id=employee_id,
         priority=priority,
@@ -46,10 +48,11 @@ async def export_tasks_excel(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     timezone: Optional[str] = None,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_management),
 ):
-    """Export task report as Excel (admin only)."""
+    """Export task report as Excel (filtered by hierarchy)."""
     excel_data = await report_service.generate_tasks_excel(
+        current_user=admin,
         status=status,
         employee_id=employee_id,
         priority=priority,
@@ -66,10 +69,10 @@ async def export_tasks_excel(
 
 @router.get("/employees/excel")
 async def export_employees_excel(
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_management),
 ):
-    """Export employee report as Excel (admin only)."""
-    excel_data = await report_service.generate_employees_excel()
+    """Export employee report as Excel (filtered by hierarchy)."""
+    excel_data = await report_service.generate_employees_excel(current_user=admin)
     return StreamingResponse(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -88,6 +91,7 @@ async def export_my_tasks_csv(
 ):
     """Export current employee's task report as CSV."""
     csv_data = await report_service.generate_tasks_csv(
+        current_user=current_user,
         status=status,
         employee_id=str(current_user.id),
         priority=priority,
@@ -113,6 +117,7 @@ async def export_my_tasks_excel(
 ):
     """Export current employee's task report as Excel."""
     excel_data = await report_service.generate_tasks_excel(
+        current_user=current_user,
         status=status,
         employee_id=str(current_user.id),
         priority=priority,
@@ -136,6 +141,7 @@ async def export_my_attendance_excel(
 ):
     """Export current employee's attendance report as Excel."""
     excel_data = await report_service.generate_attendance_excel(
+        current_user=current_user,
         user_id=str(current_user.id),
         start_date=start_date,
         end_date=end_date,
@@ -154,10 +160,11 @@ async def export_attendance_excel_admin(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     timezone: Optional[str] = None,
-    admin: User = Depends(require_admin),
+    admin: User = Depends(require_management),
 ):
-    """Export attendance report for all or specific employee as Excel (admin only)."""
+    """Export attendance report for all or specific employee as Excel (filtered by hierarchy)."""
     excel_data = await report_service.generate_attendance_excel(
+        current_user=admin,
         user_id=employee_id,
         start_date=start_date,
         end_date=end_date,
@@ -167,4 +174,36 @@ async def export_attendance_excel_admin(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=attendance_report.xlsx"},
+    )
+
+
+@router.get("/payroll")
+async def get_payroll_report(
+    year: int = Query(default=None),
+    month: int = Query(default=None),
+    admin: User = Depends(require_management),
+):
+    """Get monthly payroll data for all employees (filtered by hierarchy)."""
+    current_time = datetime.utcnow()
+    yr = year if year is not None else current_time.year
+    mon = month if month is not None else current_time.month
+    return await report_service.calculate_payroll_data(admin, yr, mon)
+
+
+@router.get("/payroll/excel")
+async def export_payroll_excel(
+    year: int = Query(default=None),
+    month: int = Query(default=None),
+    admin: User = Depends(require_management),
+):
+    """Export monthly payroll report as a beautifully styled Excel spreadsheet (filtered by hierarchy)."""
+    current_time = datetime.utcnow()
+    yr = year if year is not None else current_time.year
+    mon = month if month is not None else current_time.month
+    excel_data = await report_service.generate_payroll_excel(admin, yr, mon)
+    filename = f"payroll_report_{yr}_{mon:02d}.xlsx"
+    return StreamingResponse(
+        excel_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

@@ -21,6 +21,7 @@ class CreateCompanyRequest(BaseModel):
     work_type: Optional[str] = "fixed"
     flexible_hours: Optional[int] = 8
     cut_out_time: Optional[str] = "10:00"
+    owner_id: Optional[str] = None
 
 
 class UpdateCompanyRequest(BaseModel):
@@ -33,6 +34,7 @@ class UpdateCompanyRequest(BaseModel):
     work_type: Optional[str] = None
     flexible_hours: Optional[int] = None
     cut_out_time: Optional[str] = None
+    owner_id: Optional[str] = None
 
 
 class CompanyResponse(BaseModel):
@@ -47,12 +49,32 @@ class CompanyResponse(BaseModel):
     flexible_hours: int
     cut_out_time: str
     created_at: str
+    owner_id: Optional[str] = None
 
 
 @router.get("", response_model=List[CompanyResponse])
 async def list_companies(current_user: User = Depends(get_current_user)):
-    """List all active companies."""
-    companies = await Company.find(Company.is_active == True).sort("name").to_list()
+    """List all active companies scoped by user role/company ownership."""
+    from app.models.user import UserRole
+    if current_user.role == UserRole.SUPER_ADMIN:
+        companies = await Company.find(Company.is_active == True).sort("name").to_list()
+    elif current_user.role == UserRole.ADMIN:
+        companies = await Company.find(
+            Company.is_active == True,
+            {"$or": [
+                {"owner_id": current_user.id},
+                {"_id": current_user.company_id}
+            ]}
+        ).sort("name").to_list()
+    else:
+        if current_user.company_id:
+            companies = await Company.find(
+                Company.is_active == True,
+                Company.id == current_user.company_id
+            ).sort("name").to_list()
+        else:
+            companies = []
+
     return [
         CompanyResponse(
             id=str(c.id),
@@ -66,6 +88,7 @@ async def list_companies(current_user: User = Depends(get_current_user)):
             flexible_hours=c.flexible_hours,
             cut_out_time=c.cut_out_time,
             created_at=c.created_at.isoformat() + 'Z',
+            owner_id=str(c.owner_id) if c.owner_id else None,
         )
         for c in companies
     ]
@@ -74,7 +97,16 @@ async def list_companies(current_user: User = Depends(get_current_user)):
 @router.get("/all", response_model=List[CompanyResponse])
 async def list_all_companies(admin: User = Depends(require_admin)):
     """List all companies including inactive (admin only)."""
-    companies = await Company.find().sort("-created_at").to_list()
+    from app.models.user import UserRole
+    if admin.role == UserRole.SUPER_ADMIN:
+        companies = await Company.find().sort("-created_at").to_list()
+    else:
+        companies = await Company.find(
+            {"$or": [
+                {"owner_id": admin.id},
+                {"_id": admin.company_id}
+            ]}
+        ).sort("-created_at").to_list()
     return [
         CompanyResponse(
             id=str(c.id),
@@ -88,6 +120,7 @@ async def list_all_companies(admin: User = Depends(require_admin)):
             flexible_hours=c.flexible_hours,
             cut_out_time=c.cut_out_time,
             created_at=c.created_at.isoformat() + 'Z',
+            owner_id=str(c.owner_id) if c.owner_id else None,
         )
         for c in companies
     ]
@@ -106,9 +139,16 @@ async def create_company(
             detail="Company with this name already exists",
         )
 
+    from app.models.user import UserRole
+    if admin.role == UserRole.SUPER_ADMIN:
+        owner_id = PydanticObjectId(request.owner_id) if request.owner_id else None
+    else:
+        owner_id = admin.id
+
     company = Company(
         name=request.name,
         description=request.description,
+        owner_id=owner_id,
         work_days=request.work_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         work_start_time=request.work_start_time or "09:00",
         work_end_time=request.work_end_time or "18:00",
@@ -130,6 +170,7 @@ async def create_company(
         flexible_hours=company.flexible_hours,
         cut_out_time=company.cut_out_time,
         created_at=company.created_at.isoformat() + 'Z',
+        owner_id=str(company.owner_id) if company.owner_id else None,
     )
 
 
@@ -144,7 +185,18 @@ async def update_company(
     if not company:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
 
+    from app.models.user import UserRole
+    if admin.role != UserRole.SUPER_ADMIN:
+        if company.owner_id != admin.id and company.id != admin.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to update this company",
+            )
+
     update_data = {k: v for k, v in request.model_dump().items() if v is not None}
+    if "owner_id" in update_data:
+        update_data["owner_id"] = PydanticObjectId(update_data["owner_id"]) if update_data["owner_id"] else None
+
     if update_data:
         await company.set(update_data)
         company = await Company.get(PydanticObjectId(company_id))
@@ -161,6 +213,7 @@ async def update_company(
         flexible_hours=company.flexible_hours,
         cut_out_time=company.cut_out_time,
         created_at=company.created_at.isoformat() + 'Z',
+        owner_id=str(company.owner_id) if company.owner_id else None,
     )
 
 
@@ -173,6 +226,14 @@ async def delete_company(
     company = await Company.get(PydanticObjectId(company_id))
     if not company:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+
+    from app.models.user import UserRole
+    if admin.role != UserRole.SUPER_ADMIN:
+        if company.owner_id != admin.id and company.id != admin.company_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to delete this company",
+            )
 
     await company.set({"is_active": False})
     return {"message": f"Company '{company.name}' deactivated"}

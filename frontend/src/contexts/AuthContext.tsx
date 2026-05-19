@@ -7,11 +7,15 @@ import { User } from '@/types';
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  isSuperAdmin: boolean;
   isAdmin: boolean;
+  isManager: boolean;
+  isAssistantManager: boolean;
   isEmployee: boolean;
   canManageAttendance: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -69,11 +73,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading,
-        isAdmin: role === 'admin',
+        isSuperAdmin: role === 'super_admin',
+        isAdmin: role === 'admin' || role === 'super_admin',
+        isManager: role === 'manager',
+        isAssistantManager: role === 'assistant_manager',
         isEmployee: role === 'employee',
-        canManageAttendance: role === 'admin',
+        canManageAttendance: role === 'admin' || role === 'super_admin' || role === 'manager' || role === 'assistant_manager',
         login,
         logout,
+        refreshUser: fetchUser,
       }}
     >
       {children}

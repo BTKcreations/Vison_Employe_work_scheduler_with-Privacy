@@ -23,6 +23,31 @@ async def _resolve_company_name(company_id) -> Optional[str]:
     return company.name if company else None
 
 
+async def can_manage_task(current_user: User, task) -> bool:
+    """Check if current_user has management rights over the task."""
+    from app.models.user import UserRole
+    if current_user.role == UserRole.SUPER_ADMIN:
+        return True
+    if current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = {c.id for c in companies}
+        return task.company_id in co_ids or task.company_id is None
+    if current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+        # Task must be in their company
+        if task.company_id != current_user.company_id:
+            return False
+        # User created the task
+        if task.created_by == current_user.id:
+            return True
+        # Or assignee is a subordinate
+        from app.routes.employees import check_hierarchy
+        assignee = await User.get(task.assigned_to)
+        if assignee and await check_hierarchy(current_user, assignee):
+            return True
+    return False
+
+
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
 async def create_task(
     request: CreateTaskRequest,
@@ -30,22 +55,68 @@ async def create_task(
 ):
     """Create a new task. Supports multiple assignees, multiple companies, and recurrence."""
     
-    # 1. Determine target employees
+    # 1. Determine target employees based on hierarchy
     target_employees = []
-    if request.for_all:
-        target_employees = await User.find(User.role == UserRole.EMPLOYEE, User.is_active == True).to_list()
-    elif request.assigned_to_list:
-        target_employees = await User.find(In(User.id, [PydanticObjectId(uid) for uid in request.assigned_to_list])).to_list()
-    elif request.assigned_to:
-        emp = await User.get(PydanticObjectId(request.assigned_to))
-        if emp: target_employees = [emp]
-
-    if not target_employees and not request.is_recurrent:
-        # If not management, assigned_to is self
-        if current_user.role != UserRole.ADMIN:
-            target_employees = [current_user]
-        else:
-            raise HTTPException(status_code=400, detail="No valid employees selected.")
+    if current_user.role == UserRole.ADMIN:
+        if request.for_all:
+            target_employees = await User.find(User.role != UserRole.ADMIN, User.is_active == True).to_list()
+        elif request.assigned_to_list:
+            target_employees = await User.find(In(User.id, [PydanticObjectId(uid) for uid in request.assigned_to_list])).to_list()
+        elif request.assigned_to:
+            emp = await User.get(PydanticObjectId(request.assigned_to))
+            if emp: target_employees = [emp]
+            
+    elif current_user.role == UserRole.MANAGER:
+        asms = await User.find(User.role == UserRole.ASSISTANT_MANAGER, User.parent_id == current_user.id).to_list()
+        asm_ids = [asm.id for asm in asms]
+        subordinates = await User.find(
+            {
+                "is_active": True,
+                "$or": [
+                    {"role": UserRole.ASSISTANT_MANAGER.value, "parent_id": current_user.id},
+                    {"role": UserRole.EMPLOYEE.value, "parent_id": current_user.id},
+                    {"role": UserRole.EMPLOYEE, "parent_id": {"$in": asm_ids}}
+                ]
+            }
+        ).to_list()
+        subordinate_ids = {emp.id for emp in subordinates}
+        
+        if request.for_all:
+            target_employees = subordinates
+        elif request.assigned_to_list:
+            requested = [PydanticObjectId(uid) for uid in request.assigned_to_list]
+            for uid in requested:
+                if uid != current_user.id and uid not in subordinate_ids:
+                    raise HTTPException(status_code=403, detail="Cannot assign task to users outside your hierarchy.")
+            target_employees = await User.find(In(User.id, requested)).to_list()
+        elif request.assigned_to:
+            uid = PydanticObjectId(request.assigned_to)
+            if uid != current_user.id and uid not in subordinate_ids:
+                raise HTTPException(status_code=403, detail="Cannot assign task to users outside your hierarchy.")
+            emp = await User.get(uid)
+            if emp: target_employees = [emp]
+            
+    elif current_user.role == UserRole.ASSISTANT_MANAGER:
+        subordinates = await User.find(User.role == UserRole.EMPLOYEE, User.parent_id == current_user.id, User.is_active == True).to_list()
+        subordinate_ids = {emp.id for emp in subordinates}
+        
+        if request.for_all:
+            target_employees = subordinates
+        elif request.assigned_to_list:
+            requested = [PydanticObjectId(uid) for uid in request.assigned_to_list]
+            for uid in requested:
+                if uid != current_user.id and uid not in subordinate_ids:
+                    raise HTTPException(status_code=403, detail="Cannot assign task to users outside your hierarchy.")
+            target_employees = await User.find(In(User.id, requested)).to_list()
+        elif request.assigned_to:
+            uid = PydanticObjectId(request.assigned_to)
+            if uid != current_user.id and uid not in subordinate_ids:
+                raise HTTPException(status_code=403, detail="Cannot assign task to users outside your hierarchy.")
+            emp = await User.get(uid)
+            if emp: target_employees = [emp]
+            
+    else: # EMPLOYEE
+        target_employees = [current_user]
 
     # 2. Determine target companies
     target_companies = []
@@ -55,6 +126,19 @@ async def create_task(
         target_companies = [PydanticObjectId(request.company_id)]
     else:
         target_companies = [None]
+
+    # Validate target companies
+    if current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = {c.id for c in companies}
+        for cid in target_companies:
+            if cid is not None and cid not in co_ids:
+                raise HTTPException(status_code=403, detail="Not authorized to assign tasks to this company")
+    elif current_user.role != UserRole.SUPER_ADMIN:
+        for cid in target_companies:
+            if cid is not None and cid != current_user.company_id:
+                raise HTTPException(status_code=403, detail="Not authorized to assign tasks to this company")
 
     # 3. Handle Recurrence Registration
     recurring_rule = None
@@ -84,6 +168,7 @@ async def create_task(
                 assigned_to=str(emp.id),
                 created_by=str(current_user.id),
                 priority=request.priority,
+                complexity=request.complexity,
                 deadline=request.deadline,
                 task_type="assigned" if emp.id != current_user.id else "personal",
                 company_id=str(cid) if cid else None,
@@ -122,17 +207,12 @@ async def list_tasks(
     employee_id: Optional[str] = None,
     current_user: User = Depends(get_current_user),
 ):
-    """Get tasks. Admins see all; employees see only their own."""
-    is_management = current_user.role == UserRole.ADMIN
-    
-    # If not management, they can only see their own tasks
-    target_user_id = str(current_user.id) if not is_management else employee_id
-    
+    """Get tasks with strict hierarchical role-based filtering."""
     tasks = await task_service.get_tasks(
-        user_id=target_user_id,
+        current_user=current_user,
+        user_id=employee_id,
         status=status_filter,
         priority=priority,
-        is_admin=is_management,
     )
 
     # Batch resolve related entity names
@@ -183,42 +263,74 @@ async def update_task(
     current_user: User = Depends(get_current_user),
 ):
     """Update a task. Employees can only update their own tasks."""
-    is_management = current_user.role == UserRole.ADMIN
-    try:
-        task = await task_service.update_task(
-            task_id=task_id,
-            user_id=str(current_user.id),
-            is_admin=is_management,
-            work_description=request.work_description,
-            status=request.status,
-            priority=request.priority,
-            deadline=request.deadline,
-            remarks=request.remarks,
-            category_ids=request.category_ids,
-            company_id=request.company_id,
-            assigned_to=request.assigned_to,
-        )
-    except PermissionError as e:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-
+    task = await task_service.get_task_by_id(task_id)
     if not task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Task not found",
         )
 
-    assigned_user = await User.get(task.assigned_to)
-    creator = await User.get(task.created_by)
-    company_name = await _resolve_company_name(task.company_id)
+    is_assignee = str(task.assigned_to) == str(current_user.id)
+    is_management = current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER, UserRole.SUPER_ADMIN]
+
+    if not is_assignee:
+        if not is_management or not await can_manage_task(current_user, task):
+            raise HTTPException(status_code=403, detail="Not authorized to update this task")
+    else:
+        has_restricted_changes = any(
+            v is not None for k, v in {
+                "work_description": request.work_description,
+                "priority": request.priority,
+                "complexity": request.complexity,
+                "deadline": request.deadline,
+                "category_ids": request.category_ids,
+                "company_id": request.company_id,
+                "assigned_to": request.assigned_to,
+                "quality_multiplier": request.quality_multiplier,
+            }.items()
+        )
+        if has_restricted_changes:
+            if not is_management or not await can_manage_task(current_user, task):
+                if task.company_id is not None:
+                    raise HTTPException(status_code=403, detail="Not authorized to update administrative fields for this task")
+
+    try:
+        updated_task = await task_service.update_task(
+            task_id=task_id,
+            user_id=str(current_user.id),
+            is_admin=is_management,
+            work_description=request.work_description,
+            status=request.status,
+            priority=request.priority,
+            complexity=request.complexity,
+            deadline=request.deadline,
+            remarks=request.remarks,
+            category_ids=request.category_ids,
+            company_id=request.company_id,
+            assigned_to=request.assigned_to,
+            quality_multiplier=request.quality_multiplier,
+        )
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+
+    if not updated_task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+
+    assigned_user = await User.get(updated_task.assigned_to)
+    creator = await User.get(updated_task.created_by)
+    company_name = await _resolve_company_name(updated_task.company_id)
 
     cat_names = []
-    for cid in (task.category_ids or []):
+    for cid in (updated_task.category_ids or []):
         cat = await Category.get(cid)
         if cat:
             cat_names.append(cat.name)
 
     return TaskResponse.from_task(
-        task,
+        updated_task,
         assigned_name=assigned_user.name if assigned_user else None,
         creator_name=creator.name if creator else None,
         company_name=company_name,
@@ -232,10 +344,23 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a task (management only)."""
-    if current_user.role != UserRole.ADMIN:
+    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions to delete tasks",
+        )
+
+    task = await task_service.get_task_by_id(task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found",
+        )
+
+    if not await can_manage_task(current_user, task):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this task",
         )
 
     success = await task_service.delete_task(task_id)

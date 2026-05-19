@@ -41,7 +41,10 @@ class Task(Document):
     deadline: datetime
     completed_at: Optional[datetime] = None
     reward_given: bool = False
-    reward_points: int = 0
+    reward_points: float = 0.0
+    complexity: str = "medium"
+    quality_multiplier: float = 1.0
+    time_variance_hours: float = 0.0
     company_id: Optional[PydanticObjectId] = None
     company_name: Optional[str] = None
     category_ids: List[PydanticObjectId] = Field(default_factory=list)

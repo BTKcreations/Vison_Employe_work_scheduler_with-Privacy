@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 import { Task, Company, Category } from '@/types';
 import {
   ClipboardList, Plus, Filter, X, CheckCircle2, Play, Award, Clock,
@@ -55,12 +56,14 @@ function MultiSelectDropdown({ label, icon: Icon, options, selectedIds, onChange
 }
 
 export default function EmployeeTasksPage() {
+  const { refreshUser } = useAuth();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [completing, setCompleting] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [newTask, setNewTask] = useState({
@@ -129,6 +132,13 @@ export default function EmployeeTasksPage() {
     e.preventDefault();
     setCreating(true);
     setError('');
+    
+    if (new Date(newTask.deadline) <= new Date()) {
+      setError('Deadline must be in the future.');
+      setCreating(false);
+      return;
+    }
+
     try {
       const payload = {
         work_description: newTask.work_description,
@@ -155,6 +165,7 @@ export default function EmployeeTasksPage() {
     try {
       await api.put(`/tasks/${taskId}`, { status: newStatus });
       fetchTasks();
+      refreshUser();
     } catch (err) {
       console.error('Failed to update task:', err);
     }
@@ -168,6 +179,7 @@ export default function EmployeeTasksPage() {
 
   const confirmCompletion = async () => {
     if (!confirmingTask || !isConfirmed) return;
+    setCompleting(true);
     try {
       // If there's a completion remark, send it first or along with status
       if (completionRemark.trim()) {
@@ -175,15 +187,18 @@ export default function EmployeeTasksPage() {
           status: 'completed',
           remarks: completionRemark.trim()
         });
+        fetchTasks();
+        refreshUser();
       } else {
         await handleStatusUpdate(confirmingTask.id, 'completed');
       }
       setShowCompleteModal(false);
       setConfirmingTask(null);
       setCompletionRemark('');
-      fetchTasks();
     } catch (err) {
       console.error('Failed to complete task:', err);
+    } finally {
+      setCompleting(false);
     }
   };
 
@@ -589,7 +604,7 @@ export default function EmployeeTasksPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2 uppercase tracking-wide">Deadline</label>
-                  <input type="datetime-local" value={newTask.deadline} onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })} className="input h-11" required />
+                  <input type="datetime-local" min={new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16)} value={newTask.deadline} onChange={(e) => setNewTask({ ...newTask, deadline: e.target.value })} className="input h-11" required />
                 </div>
               </div>
 
@@ -616,7 +631,7 @@ export default function EmployeeTasksPage() {
                       <div>
                         <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">Repeat Interval</label>
                         <div className="flex items-center gap-2">
-                          <input type="number" min="1" value={recurrence.interval} onChange={(e) => setRecurrence(prev => ({ ...prev, interval: parseInt(e.target.value) }))} className="input h-10 w-20 text-center" />
+                          <input type="number" min="1" step="1" value={recurrence.interval} onChange={(e) => setRecurrence(prev => ({ ...prev, interval: parseInt(e.target.value) }))} className="input h-10 w-20 text-center" />
                           <select value={recurrence.type} onChange={(e) => setRecurrence(prev => ({ ...prev, type: e.target.value }))} className="select h-10">
                             <option value="daily">Day(s)</option>
                             <option value="weekly">Week(s)</option>
@@ -648,7 +663,7 @@ export default function EmployeeTasksPage() {
                       {recurrence.end_type !== 'never' && (
                         <div>
                           <label className="block text-xs font-black text-slate-500 uppercase mb-2 tracking-wide">{recurrence.end_type === 'count' ? 'Limit (Occurrences)' : 'Termination Date'}</label>
-                          <input type={recurrence.end_type === 'count' ? 'number' : 'date'} value={recurrence.end_value} onChange={(e) => setRecurrence(prev => ({ ...prev, end_value: e.target.value }))} className="input h-10" placeholder={recurrence.end_type === 'count' ? 'e.g. 10' : ''} />
+                          <input type={recurrence.end_type === 'count' ? 'number' : 'date'} min={recurrence.end_type === 'count' ? "1" : undefined} step={recurrence.end_type === 'count' ? "1" : undefined} value={recurrence.end_value} onChange={(e) => setRecurrence(prev => ({ ...prev, end_value: e.target.value }))} className="input h-10" placeholder={recurrence.end_type === 'count' ? 'e.g. 10' : ''} />
                         </div>
                       )}
                     </div>
@@ -735,10 +750,14 @@ export default function EmployeeTasksPage() {
                 </button>
                 <button
                   onClick={confirmCompletion}
-                  disabled={!isConfirmed}
+                  disabled={!isConfirmed || completing}
                   className="btn btn-primary flex-1 h-12 rounded-xl shadow-xl shadow-emerald-100/50 disabled:opacity-50 disabled:grayscale"
                 >
-                  Complete Task
+                  {completing ? (
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto" />
+                  ) : (
+                    'Complete Task'
+                  )}
                 </button>
               </div>
             </div>

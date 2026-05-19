@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { Mail, Trophy, ClipboardList, CheckCircle2, Clock, Play, AlertCircle, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface EmployeeStats {
   user: {
@@ -41,16 +42,32 @@ export default function UserLink({
   const [isAbove, setIsAbove] = useState(false);
   const [stats, setStats] = useState<EmployeeStats | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<'private' | 'failed' | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { user } = useAuth();
+
+  const getDetailHref = () => {
+    if (!id || id === 'undefined' || !user) return '#';
+    if (user.role === 'admin') return `/admin/employees/detail?id=${id}`;
+    if (user.role === 'manager') return `/manager/employees/detail?id=${id}`;
+    if (user.role === 'assistant_manager') return `/assistant_manager/employees/detail?id=${id}`;
+    return '#';
+  };
 
   const fetchStats = async () => {
-    if (stats || loading) return;
+    if (!id || id === 'undefined' || stats || loading) return;
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get(`/admin/employees/${id}/stats`);
       setStats(res.data);
-    } catch (err) {
-      console.error('Failed to fetch hover stats:', err);
+    } catch (err: any) {
+      if (err.response?.status === 403) {
+        setError('private');
+      } else {
+        setError('failed');
+        console.warn('Failed to fetch hover stats:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -72,7 +89,7 @@ export default function UserLink({
       className="group relative inline-flex items-center gap-2"
     >
       <Link
-        href={`/admin/employees/detail?id=${id}`}
+        href={getDetailHref()}
         className="flex items-center gap-2 hover:text-indigo-600 transition-colors"
       >
         {showAvatar && (
@@ -198,6 +215,16 @@ export default function UserLink({
                 <span className="text-[9px] font-black text-indigo-400 uppercase tracking-[0.3em]">View Full Profile</span>
               </div>
             </div>
+          </div>
+        ) : error === 'private' ? (
+          <div className="p-8 text-center text-slate-400 text-xs font-bold flex flex-col items-center justify-center gap-2">
+            <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center text-slate-400 mt-2">
+              <AlertCircle className="w-5 h-5 text-slate-400" />
+            </div>
+            <p className="text-slate-700 font-extrabold mt-1">Private Profile</p>
+            <p className="text-[10px] text-slate-400 font-normal max-w-[240px] leading-relaxed">
+              This employee is outside of your management tree hierarchy.
+            </p>
           </div>
         ) : (
           <div className="p-8 text-center text-slate-400 text-xs font-bold italic">

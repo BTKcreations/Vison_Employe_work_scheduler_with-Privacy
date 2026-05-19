@@ -23,6 +23,7 @@ const navItems = [
   { href: '/admin/attendance', label: 'Attendance Logs', icon: MapPin },
   { href: '/admin/reports', label: 'Reports', icon: FileBarChart },
   { href: '/admin/leaderboard', label: 'Leaderboard', icon: Trophy },
+  { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -35,12 +36,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const canAccess = isAdmin;
 
   useEffect(() => {
-    if (!isLoading && (!user || !canAccess)) {
-      router.push('/login');
+    if (!isLoading) {
+      if (!user) {
+        router.push('/login');
+      } else if (!canAccess) {
+        const dest = user.role === 'admin' ? '/admin/dashboard' :
+                     user.role === 'manager' ? '/manager/dashboard' :
+                     user.role === 'assistant_manager' ? '/assistant_manager/dashboard' :
+                     '/employee/dashboard';
+        router.push(dest);
+      }
     }
   }, [user, isLoading, canAccess, router]);
 
-  if (isLoading || !user) {
+  if (isLoading || !user || !canAccess) {
     return (
       <div className="gradient-bg min-h-screen flex items-center justify-center">
         <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />

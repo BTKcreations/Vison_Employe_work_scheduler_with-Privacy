@@ -5,9 +5,9 @@ Employee Task & Reward Management System
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.config import settings
+from app.config import settings as core_settings
 from app.database.connection import init_db
-from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications, categories
+from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications, categories, settings, peer_recognition
 
 
 import asyncio
@@ -87,7 +87,7 @@ app.middleware("http")(exception_handler_middleware)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=core_settings.cors_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -105,6 +105,8 @@ app.include_router(holidays.router, prefix="/holidays", tags=["Holiday Managemen
 app.include_router(search.router)
 app.include_router(notifications.router)
 app.include_router(categories.router)
+app.include_router(settings.router)
+app.include_router(peer_recognition.router)
 
 @app.get("/", tags=["Health"])
 async def health_check():

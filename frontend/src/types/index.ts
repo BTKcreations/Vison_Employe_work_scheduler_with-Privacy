@@ -2,13 +2,15 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'employee';
+  role: 'super_admin' | 'admin' | 'manager' | 'assistant_manager' | 'employee';
   reward_points: number;
   is_active: boolean;
   created_at: string;
   company_id?: string;
   mobile?: string;
   alternate_mobile?: string;
+  parent_id?: string;
+  parent_name?: string;
 }
 
 export interface RemarkEntry {
@@ -27,6 +29,7 @@ export interface Task {
   created_by_name: string | null;
   status: 'pending' | 'in_progress' | 'completed' | 'overdue' | 'completed_late';
   priority: 'regular' | 'medium' | 'high' | 'critical';
+  complexity: 'low' | 'medium' | 'high';
   task_type: 'assigned' | 'personal';
   deadline: string;
   completed_at: string | null;
@@ -74,6 +77,7 @@ export interface Attendance {
   user_id: string;
   user_name?: string;
   user_email?: string;
+  user_role?: string;
   user_reward_points?: number;
   company_id: string;
   check_in: string;
@@ -103,6 +107,11 @@ export interface Employee {
   raw_password?: string;
   mobile?: string;
   alternate_mobile?: string;
+  base_salary?: number;
+  parent_id?: string;
+  parent_name?: string;
+  company_id?: string;
+  company_name?: string;
 }
 
 export interface LoginRequest {
@@ -123,6 +132,8 @@ export interface CreateEmployeeRequest {
   role?: string;
   mobile?: string;
   alternate_mobile?: string;
+  company_id?: string;
+  parent_id?: string;
 }
 
 export interface CreateTaskRequest {
@@ -130,6 +141,7 @@ export interface CreateTaskRequest {
   assigned_to?: string;
   assigned_to_list?: string[];
   priority: string;
+  complexity?: string;
   deadline: string;
   company_id?: string;
   company_id_list?: string[];
@@ -150,8 +162,10 @@ export interface UpdateTaskRequest {
   work_description?: string;
   status?: string;
   priority?: string;
+  complexity?: string;
   deadline?: string;
   remarks?: string;
+  quality_multiplier?: number;
 }
 
 export interface DashboardStats {
