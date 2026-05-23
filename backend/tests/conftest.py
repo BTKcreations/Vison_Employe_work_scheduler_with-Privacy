@@ -19,18 +19,23 @@ from app.models.notification import Notification
 from app.models.category import Category
 from app.models.system_settings import SystemSettings
 from app.models.activity_log import ActivityLog
+from app.models.leave import Leave
+from app.models.role import CompanyRole
 
 @pytest.fixture(autouse=True)
 async def init_and_clean_db():
     """Initialize Beanie ODM and clean all collections for each function test's event loop."""
     await init_db()
     
-    models = [User, Task, Company, Attendance, Holiday, RecurrenceRule, Notification, Category, SystemSettings, ActivityLog]
+    models = [User, Task, Company, Attendance, Holiday, RecurrenceRule, Notification, Category, SystemSettings, ActivityLog, Leave, CompanyRole]
     for model in models:
         try:
             await model.delete_all()
         except Exception as e:
             print(f"Error cleaning {model.__name__}: {e}")
+    
+    from app.models.role import seed_default_roles
+    await seed_default_roles()
     yield
 
 @pytest.fixture

@@ -95,3 +95,37 @@ class TaskResponse(BaseModel):
             remarks=[RemarkEntry(**r) for r in (task.remarks or [])],
             created_at=task.created_at.isoformat() + 'Z',
         )
+
+
+class RecurrenceRuleResponse(BaseModel):
+    id: str
+    work_description: str
+    priority: str
+    reward_points: float
+    assigned_to_list: List[str]
+    company_id_list: List[str]
+    created_by: str
+    type: str
+    interval: int
+    weekdays: Optional[List[int]] = None
+    month_day: Optional[int] = None
+    end_type: str
+    end_value: Optional[str] = None
+    next_run: str
+    last_run: Optional[str] = None
+    occurrence_count: int
+    is_active: bool
+    created_at: str
+
+
+class UpdateRecurrenceRuleRequest(BaseModel):
+    work_description: Optional[str] = None
+    priority: Optional[str] = None
+    reward_points: Optional[float] = None
+    is_active: Optional[bool] = None
+    type: Optional[str] = None
+    interval: Optional[int] = None
+    weekdays: Optional[List[int]] = None
+    month_day: Optional[int] = None
+    end_type: Optional[str] = None
+    end_value: Optional[str] = None

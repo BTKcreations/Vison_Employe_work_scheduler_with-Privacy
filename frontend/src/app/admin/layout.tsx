@@ -13,7 +13,7 @@ import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
 import NotificationBell from '@/components/NotificationBell';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
-import { Key } from 'lucide-react';
+import { Key, Shield } from 'lucide-react';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -24,6 +24,7 @@ const navItems = [
   { href: '/admin/reports', label: 'Reports', icon: FileBarChart },
   { href: '/admin/leaderboard', label: 'Leaderboard', icon: Trophy },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
+  { href: '/admin/leaves', label: 'Leaves', icon: Calendar },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -33,14 +34,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
-  const canAccess = isAdmin;
+  // Admin layout is for tenant admins only — super_admin has their own layout
+  const canAccess = user?.role === 'admin';
 
   useEffect(() => {
     if (!isLoading) {
       if (!user) {
         router.push('/login');
       } else if (!canAccess) {
-        const dest = user.role === 'admin' ? '/admin/dashboard' :
+        const dest = user.role === 'super_admin' ? '/super_admin/dashboard' :
                      user.role === 'manager' ? '/manager/dashboard' :
                      user.role === 'assistant_manager' ? '/assistant_manager/dashboard' :
                      '/employee/dashboard';
@@ -80,7 +82,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
             <div>
               <h1 className="font-bold text-sm gradient-text">TaskReward</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role.replace('_', ' ')} Panel</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role_display_name || user.role.replace('_', ' ')} Panel</p>
             </div>
           </div>
         </div>
@@ -178,6 +180,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
                     Categories
                   </Link>
+                  <Link 
+                    href="/admin/settings/roles" 
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                      <Shield className="w-3.5 h-3.5" />
+                    </div>
+                    Roles
+                  </Link>
                   <button 
                     onClick={() => setShowChangePassword(true)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
@@ -193,7 +204,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <div className="h-8 w-px bg-border mx-1" />
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
-              <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter font-black">{user.role}</p>
+              <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter font-black">{user.role_display_name || user.role}</p>
             </div>
           </div>
         </header>

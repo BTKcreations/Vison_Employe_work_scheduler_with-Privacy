@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, BarChart, Users
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, BarChart, Users, Calendar
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/employee/tasks', label: 'My Tasks', icon: ClipboardList },
   { href: '/employee/reports', label: 'Reports', icon: BarChart },
   { href: '/employee/collaboration', label: 'Collaboration', icon: Users },
+  { href: '/employee/leaves', label: 'Leaves', icon: Calendar },
 ];
 
 export default function EmployeeLayout({ children }: { children: React.ReactNode }) {
@@ -76,7 +77,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
             </div>
             <div>
               <h1 className="font-bold text-sm gradient-text">TaskReward</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role.replace('_', ' ')} Portal</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role_display_name || user.role.replace('_', ' ')} Portal</p>
             </div>
           </div>
         </div>
@@ -114,7 +115,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
               <p className="text-sm font-medium truncate">{user.name}</p>
               <div className="flex items-center gap-1 text-xs text-yellow-600">
                 <Trophy className="w-3 h-3" />
-                {user.reward_points} pts
+                {(user.reward_points ?? 0).toFixed(2)} pts
               </div>
             </div>
           </div>
@@ -167,7 +168,7 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
               <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
               <div className="flex items-center gap-1 justify-end mt-1">
                 <Trophy className="w-2.5 h-2.5 text-yellow-500" />
-                <span className="text-[10px] text-yellow-600 font-bold">{user.reward_points} pts</span>
+                <span className="text-[10px] text-yellow-600 font-bold">{(user.reward_points ?? 0).toFixed(2)} pts</span>
               </div>
             </div>
           </div>

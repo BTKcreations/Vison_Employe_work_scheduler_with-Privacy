@@ -572,3 +572,261 @@ async def test_multitenant_isolation_and_scoping(client: AsyncClient):
     )
     assert res_task_create_fail.status_code == 403
 
+
+@pytest.mark.asyncio
+async def test_company_time_validators(client: AsyncClient):
+    """Test company time validators enforce strict time formats (e.g. HH:MM AM/PM or HH:MM)."""
+    # Create Admin
+    admin = User(
+        name="Validation Admin",
+        email="val_admin@example.com",
+        password_hash=hash_password("adminpass123"),
+        role=UserRole.ADMIN
+    )
+    await admin.insert()
+    
+    # Login Admin
+    login_resp = await client.post("/auth/login", json={"email": "val_admin@example.com", "password": "adminpass123"})
+    headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
+    
+    # Create company with valid times
+    valid_payload = {
+        "name": "Valid Time Co",
+        "work_start_time": "09:30 AM",
+        "work_end_time": "18:00",
+        "cut_out_time": "10:15 AM"
+    }
+    resp = await client.post("/companies", json=valid_payload, headers=headers)
+    assert resp.status_code == 201
+    company_id = resp.json()["id"]
+    
+    # Try updating company with invalid times (should fail with 422)
+    invalid_payload = {
+        "work_start_time": "abc"
+    }
+    resp = await client.put(f"/companies/{company_id}", json=invalid_payload, headers=headers)
+    assert resp.status_code == 422
+    
+    invalid_payload2 = {
+        "cut_out_time": "10:00AM2"
+    }
+    resp = await client.put(f"/companies/{company_id}", json=invalid_payload2, headers=headers)
+    assert resp.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_recurrence_rules_crud(client: AsyncClient):
+    """Test recurring rule lifecycle via GET/PATCH/DELETE /tasks/recurring routes."""
+    # Create admin
+    admin = User(
+        name="Recurring Admin",
+        email="rec_admin@example.com",
+        password_hash=hash_password("adminpass123"),
+        role=UserRole.ADMIN
+    )
+    await admin.insert()
+    
+    login_resp = await client.post("/auth/login", json={"email": "rec_admin@example.com", "password": "adminpass123"})
+    headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
+    
+    # Create recurring task (this registers a recurrence rule in Tasks POST route)
+    task_payload = {
+        "work_description": "Weekly alignment check",
+        "priority": "regular",
+        "complexity": "low",
+        "deadline": (datetime.utcnow() + timedelta(days=7)).isoformat(),
+        "assigned_to": str(admin.id),
+        "is_recurrent": True,
+        "recurrence": {
+            "type": "weekly",
+            "interval": 1,
+            "weekdays": [0],
+            "end_type": "never"
+        }
+    }
+    
+    resp = await client.post("/tasks", json=task_payload, headers=headers)
+    assert resp.status_code == 201
+    
+    # Retrieve the recurrence rules
+    resp = await client.get("/tasks/recurring", headers=headers)
+    assert resp.status_code == 200
+    rules = resp.json()
+    assert len(rules) >= 1
+    rule_id = rules[0]["id"]
+    assert rules[0]["work_description"] == "Weekly alignment check"
+    
+    # Update the rule using PATCH /tasks/recurring/{rule_id}
+    patch_payload = {
+        "work_description": "Updated weekly check",
+        "priority": "high",
+        "is_active": False
+    }
+    resp = await client.patch(f"/tasks/recurring/{rule_id}", json=patch_payload, headers=headers)
+    assert resp.status_code == 200
+    assert resp.json()["work_description"] == "Updated weekly check"
+    assert resp.json()["priority"] == "high"
+    assert resp.json()["is_active"] is False
+    
+    # Delete the rule using DELETE /tasks/recurring/{rule_id}
+    resp = await client.delete(f"/tasks/recurring/{rule_id}", headers=headers)
+    assert resp.status_code == 200
+    
+    # Retrieve again and verify it is gone or list is empty/changed
+    resp = await client.get("/tasks/recurring", headers=headers)
+    assert resp.status_code == 200
+    rule_ids = [r["id"] for r in resp.json()]
+    assert rule_id not in rule_ids
+
+
+@pytest.mark.asyncio
+async def test_personal_task_boundaries(client: AsyncClient):
+    """Test personal task bounds: creator/assignee only, allowed/forbidden fields, admin blocked if not own."""
+    # Create two employees: A and B
+    emp_a = User(
+        name="Employee A",
+        email="empa@example.com",
+        password_hash=hash_password("password123"),
+        role=UserRole.EMPLOYEE
+    )
+    await emp_a.insert()
+
+    emp_b = User(
+        name="Employee B",
+        email="empb@example.com",
+        password_hash=hash_password("password123"),
+        role=UserRole.EMPLOYEE
+    )
+    await emp_b.insert()
+    
+    # Create admin
+    admin = User(
+        name="Admin User",
+        email="admin_personal@example.com",
+        password_hash=hash_password("password123"),
+        role=UserRole.ADMIN
+    )
+    await admin.insert()
+
+    # Login both employees and admin
+    async def get_headers(email):
+        resp = await client.post("/auth/login", json={"email": email, "password": "password123"})
+        return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    headers_a = await get_headers("empa@example.com")
+    headers_b = await get_headers("empb@example.com")
+    headers_admin = await get_headers("admin_personal@example.com")
+
+    # 1. Emp A creates a personal task
+    task_payload = {
+        "work_description": "My private personal task",
+        "priority": "medium",
+        "complexity": "low",
+        "deadline": (datetime.utcnow() + timedelta(days=2)).isoformat(),
+    }
+    resp = await client.post("/tasks", json=task_payload, headers=headers_a)
+    assert resp.status_code == 201
+    task_id = resp.json()["id"]
+
+    # 2. Emp B tries to update Emp A's personal task (should fail with 403)
+    update_payload = {"work_description": "Hacked description"}
+    resp = await client.put(f"/tasks/{task_id}", json=update_payload, headers=headers_b)
+    assert resp.status_code == 403
+
+    # 3. Admin tries to update/view Emp A's personal task (should fail with 403)
+    resp = await client.put(f"/tasks/{task_id}", json=update_payload, headers=headers_admin)
+    assert resp.status_code == 403
+
+    # 4. Emp A updates own personal task fully (should succeed)
+    update_payload = {
+        "work_description": "Updated private task",
+        "priority": "high",
+        "complexity": "medium"
+    }
+    resp = await client.put(f"/tasks/{task_id}", json=update_payload, headers=headers_a)
+    assert resp.status_code == 200
+    assert resp.json()["work_description"] == "Updated private task"
+    assert resp.json()["priority"] == "high"
+
+    # 5. Emp A tries to assign personal task to Emp B (should fail with 403)
+    bad_assign_payload = {"assigned_to": str(emp_b.id)}
+    resp = await client.put(f"/tasks/{task_id}", json=bad_assign_payload, headers=headers_a)
+    assert resp.status_code == 403
+
+    # 6. Create a Company Task assigned to Emp A by Admin
+    company = Company(name="Test Company Personal", work_days=["Monday"], work_start_time="09:00", work_end_time="17:00")
+    await company.insert()
+    
+    admin.company_id = company.id
+    await admin.save()
+    emp_a.company_id = company.id
+    await emp_a.save()
+    
+    headers_admin = await get_headers("admin_personal@example.com")
+    headers_a = await get_headers("empa@example.com")
+    
+    task_co_payload = {
+        "work_description": "Company task",
+        "priority": "high",
+        "complexity": "medium",
+        "deadline": (datetime.utcnow() + timedelta(days=2)).isoformat(),
+        "company_id": str(company.id),
+        "assigned_to": str(emp_a.id)
+    }
+    resp = await client.post("/tasks", json=task_co_payload, headers=headers_admin)
+    assert resp.status_code == 201
+    co_task_id = resp.json()["id"]
+
+    # 7. Emp A tries to update administrative fields on this company task (should fail with 403)
+    bad_co_update = {"priority": "critical"}
+    resp = await client.put(f"/tasks/{co_task_id}", json=bad_co_update, headers=headers_a)
+    assert resp.status_code == 403
+    
+    # 8. Emp A updates status (allowed field) (should succeed)
+    good_co_update = {"status": "in_progress"}
+    resp = await client.put(f"/tasks/{co_task_id}", json=good_co_update, headers=headers_a)
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "in_progress"
+
+
+@pytest.mark.asyncio
+async def test_employee_self_service_payroll_report(client: AsyncClient):
+    """Test employee self-service payroll report endpoints: GET /reports/me/payroll and /excel."""
+    # Create Company & Employee
+    company = Company(
+        name="Payroll Company",
+        work_days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        work_start_time="09:00 AM",
+        work_end_time="06:00 PM"
+    )
+    await company.insert()
+    
+    employee = User(
+        name="Salary Employee",
+        email="salary@example.com",
+        password_hash=hash_password("password123"),
+        role=UserRole.EMPLOYEE,
+        company_id=company.id,
+        base_salary=50000.0
+    )
+    await employee.insert()
+
+    # Login Employee
+    resp = await client.post("/auth/login", json={"email": "salary@example.com", "password": "password123"})
+    headers = {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+    # 1. Get self payroll data
+    now = datetime.utcnow()
+    resp = await client.get(f"/reports/me/payroll?year={now.year}&month={now.month}", headers=headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["name"] == "Salary Employee"
+    assert data[0]["base_salary"] == 50000.0
+
+    # 2. Get self payroll Excel file
+    resp = await client.get(f"/reports/me/payroll/excel?year={now.year}&month={now.month}", headers=headers)
+    assert resp.status_code == 200
+    assert resp.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+

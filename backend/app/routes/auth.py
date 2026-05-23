@@ -2,7 +2,7 @@
 Authentication routes - login, register, and current user.
 """
 from fastapi import APIRouter, HTTPException, status, Depends
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, ChangePasswordRequest
+from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, ChangePasswordRequest, UserResponse
 from app.models.user import User, UserRole
 from app.auth.password import hash_password, verify_password
 from app.auth.jwt_handler import create_access_token
@@ -43,6 +43,9 @@ async def login(request: LoginRequest):
             "email": user.email,
             "role": user.role.value,
             "reward_points": user.reward_points,
+            "role_id": str(user.role_id) if user.role_id else None,
+            "role_display_name": user.role_display_name,
+            "role_archetype": user.role_archetype.value if user.role_archetype else None,
         },
     )
 
@@ -57,11 +60,28 @@ async def register(request: RegisterRequest):
             detail="Email already registered",
         )
 
+    from app.models.role import BaseArchetype, CompanyRole
+    try:
+        arch_val = BaseArchetype(request.role)
+        db_role = await CompanyRole.find_one(
+            CompanyRole.company_id == None,
+            CompanyRole.base_archetype == arch_val
+        )
+    except ValueError:
+        db_role = None
+
+    role_id = db_role.id if db_role else None
+    role_display_name = db_role.display_name if db_role else request.role.replace("_", " ").title()
+    role_archetype = db_role.base_archetype if db_role else BaseArchetype(request.role)
+
     user = User(
         name=request.name,
         email=request.email,
         password_hash=hash_password(request.password),
-        role=UserRole(request.role),
+        role=UserRole(role_archetype.value),
+        role_id=role_id,
+        role_display_name=role_display_name,
+        role_archetype=role_archetype,
     )
     await user.insert()
 
@@ -72,22 +92,28 @@ async def register(request: RegisterRequest):
             "name": user.name,
             "email": user.email,
             "role": user.role.value,
+            "role_id": str(user.role_id) if user.role_id else None,
+            "role_display_name": user.role_display_name,
+            "role_archetype": user.role_archetype.value if user.role_archetype else None,
         },
     }
 
 
-@router.get("/me")
+@router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current authenticated user info."""
-    return {
-        "id": str(current_user.id),
-        "name": current_user.name,
-        "email": current_user.email,
-        "role": current_user.role.value,
-        "reward_points": current_user.reward_points,
-        "is_active": current_user.is_active,
-        "created_at": current_user.created_at.isoformat() + 'Z',
-    }
+    return UserResponse(
+        id=str(current_user.id),
+        name=current_user.name,
+        email=current_user.email,
+        role=current_user.role.value,
+        reward_points=current_user.reward_points,
+        is_active=current_user.is_active,
+        created_at=current_user.created_at.isoformat() + 'Z',
+        role_id=str(current_user.role_id) if current_user.role_id else None,
+        role_display_name=current_user.role_display_name,
+        role_archetype=current_user.role_archetype.value if current_user.role_archetype else None,
+    )
 
 
 @router.post("/change-password")

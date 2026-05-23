@@ -14,6 +14,8 @@ from app.models.recurring_task import RecurrenceRule
 from app.models.notification import Notification
 from app.models.category import Category
 from app.models.system_settings import SystemSettings
+from app.models.leave import Leave
+from app.models.role import CompanyRole
 
 
 async def init_db():
@@ -25,9 +27,15 @@ async def init_db():
 
         await init_beanie(
             database=database,
-            document_models=[User, Task, ActivityLog, Company, Attendance, Holiday, RecurrenceRule, Notification, Category, SystemSettings]
+            document_models=[
+                User, Task, ActivityLog, Company, Attendance, Holiday, 
+                RecurrenceRule, Notification, Category, SystemSettings, Leave,
+                CompanyRole
+            ]
         )
-        print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
+        from app.models.role import seed_default_roles
+        await seed_default_roles()
+        print(f"[OK] Connected to MongoDB and seeded roles: {settings.DATABASE_NAME}")
     except Exception as e:
         print(f"[ERROR] Failed to connect to MongoDB: {str(e)}")
         # Raise the error to prevent the app from starting in a broken state.

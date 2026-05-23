@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { Employee, Task, Company, Category } from '@/types';
+import { Employee, Task, Company, Category, CompanyRole } from '@/types';
 import StatusChart from '@/components/StatusChart';
 import EmptyState from '@/components/EmptyState';
 import {
@@ -31,6 +31,7 @@ function EmployeeProfileContent() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [roles, setRoles] = useState<CompanyRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -78,13 +79,14 @@ function EmployeeProfileContent() {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [empRes, statsRes, tasksRes, companiesRes, categoriesRes, allEmpRes] = await Promise.all([
+      const [empRes, statsRes, tasksRes, companiesRes, categoriesRes, allEmpRes, rolesRes] = await Promise.all([
         api.get(`/admin/employees/${id}`),
         api.get(`/admin/employees/${id}/stats`),
         api.get(`/tasks?employee_id=${id}`),
         api.get('/companies'),
         api.get('/categories'),
-        api.get('/admin/employees')
+        api.get('/admin/employees'),
+        api.get('/roles')
       ]);
       setEmployee(empRes.data);
       setStats(statsRes.data);
@@ -92,6 +94,7 @@ function EmployeeProfileContent() {
       setCompanies(companiesRes.data);
       setCategories(categoriesRes.data);
       setAllEmployees(allEmpRes.data);
+      setRoles(rolesRes.data);
     } catch (err: any) {
       console.error('Failed to fetch employee data:', err);
       setError(err.response?.data?.detail || 'Failed to load employee profile');
@@ -99,6 +102,22 @@ function EmployeeProfileContent() {
       setLoading(false);
     }
   }, [id]);
+
+  const getSelectedRoleArchetype = (roleVal: string) => {
+    const matchedRole = roles.find(r => r.is_custom ? r.display_name === roleVal : r.base_archetype === roleVal);
+    return matchedRole ? matchedRole.base_archetype : roleVal;
+  };
+
+  const getEmployeeArchetype = (emp: Employee) => {
+    return emp.role_archetype || emp.role;
+  };
+
+  // Edit Profile Modal
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [editEmployeeData, setEditEmployeeData] = useState<any>(null);
+
+  const selectedRoleArchetype = editEmployeeData ? getSelectedRoleArchetype(editEmployeeData.role) : '';
 
   // Edit Task Modal
   const [showEditModal, setShowEditModal] = useState(false);
@@ -111,11 +130,6 @@ function EmployeeProfileContent() {
     setEditingTask({ ...task, deadline: localDateTime });
     setShowEditModal(true);
   };
-
-  // Edit Profile Modal
-  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
-  const [updatingProfile, setUpdatingProfile] = useState(false);
-  const [editEmployeeData, setEditEmployeeData] = useState<any>(null);
 
   const handleEditProfile = () => {
     if (!employee) return;
@@ -423,7 +437,7 @@ function EmployeeProfileContent() {
                 <div>
                   <h3 className="font-bold text-lg text-slate-800">{employee.name}</h3>
                   <p className="text-[10px] uppercase tracking-[0.2em] text-indigo-500 font-black mt-0.5">
-                    {employee.role.replace('_', ' ')}
+                    {employee.role_display_name || employee.role.replace('_', ' ')}
                   </p>
                 </div>
               </div>
@@ -465,7 +479,7 @@ function EmployeeProfileContent() {
                   <span className="text-xs text-amber-600 flex items-center gap-2 font-bold">
                     <Trophy className="w-4 h-4" /> Rewards
                   </span>
-                  <span className="text-xs font-black text-amber-600">{employee.reward_points} pts</span>
+                  <span className="text-xs font-black text-amber-600">{(employee.reward_points ?? 0).toFixed(2)} pts</span>
                 </div>
               </div>
             </div>
@@ -1269,10 +1283,11 @@ function EmployeeProfileContent() {
                       }}
                       className="select input-with-icon h-12 rounded-2xl"
                     >
-                      <option value="employee">Employee</option>
-                      <option value="manager">Manager</option>
-                      <option value="assistant_manager">Assistant Manager</option>
-                      <option value="admin">Admin</option>
+                      {roles.map(r => (
+                        <option key={r.id} value={r.is_custom ? r.display_name : r.base_archetype}>
+                          {r.display_name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -1288,7 +1303,7 @@ function EmployeeProfileContent() {
                     value={editEmployeeData.company_id}
                     onChange={(e) => setEditEmployeeData({ ...editEmployeeData, company_id: e.target.value })}
                     className="select input-with-icon h-12 rounded-2xl font-bold"
-                    required={editEmployeeData.role !== 'admin'}
+                    required={selectedRoleArchetype !== 'admin' && selectedRoleArchetype !== 'super_admin'}
                   >
                     <option value="">Select Company/Department...</option>
                     {companies.map((c) => (
@@ -1300,7 +1315,7 @@ function EmployeeProfileContent() {
                 </div>
               </div>
 
-              {(editEmployeeData.role === 'assistant_manager' || editEmployeeData.role === 'employee') && (
+              {['assistant_manager', 'employee', 'contractor'].includes(selectedRoleArchetype) && (
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Direct Supervisor</label>
                   <div className="relative group">
@@ -1315,16 +1330,17 @@ function EmployeeProfileContent() {
                     >
                       <option value="">Select Supervisor...</option>
                       {allEmployees
-                        .filter((emp) => 
-                          emp.id !== employee.id && (
-                            editEmployeeData.role === 'assistant_manager' 
-                              ? emp.role === 'manager' && emp.is_active
-                              : (emp.role === 'manager' || emp.role === 'assistant_manager') && emp.is_active
-                          )
-                        )
+                        .filter((emp) => {
+                          const empArch = getEmployeeArchetype(emp);
+                          return emp.id !== employee?.id && (
+                            selectedRoleArchetype === 'assistant_manager'
+                              ? empArch === 'manager' && emp.is_active
+                              : (empArch === 'manager' || empArch === 'assistant_manager') && emp.is_active
+                          );
+                        })
                         .map((emp) => (
                           <option key={emp.id} value={emp.id}>
-                            {emp.name} ({emp.role.replace('_', ' ')})
+                            {emp.name} ({emp.role_display_name || emp.role.replace('_', ' ')})
                           </option>
                         ))}
                     </select>

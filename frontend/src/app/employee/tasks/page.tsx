@@ -342,7 +342,7 @@ export default function EmployeeTasksPage() {
                       </span>
                       {task.reward_given && (
                         <span className="badge badge-success flex items-center gap-1">
-                          <Award className="w-3 h-3" /> Rewarded (+{task.reward_points})
+                          <Award className="w-3 h-3" /> Rewarded (+{(task.reward_points ?? 0).toFixed(2)})
                         </span>
                       )}
                       <span className={`badge ${task.company_name === 'Personal / Internal' ? 'bg-slate-100 text-slate-500 border-slate-200' : 'badge-purple'} flex items-center gap-1`}>

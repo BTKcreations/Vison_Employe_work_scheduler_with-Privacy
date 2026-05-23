@@ -44,6 +44,18 @@ async def get_admin_dashboard(current_user: User):
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
 
+        # Safety: if admin has no companies yet, return zeroed-out dashboard
+        if not co_ids:
+            return {
+                "employees": {"total": 0, "active": 0},
+                "tasks": {"total": 0, "completed": 0, "completed_late": 0, "pending": 0, "in_progress": 0, "overdue": 0},
+                "priority_distribution": {"critical": 0, "high": 0, "medium": 0, "regular": 0},
+                "attendance_today": {"present": 0, "absent": 0, "total": 0},
+                "leaderboard": [],
+                "recent_activity": [],
+                "total_rewards_given": 0,
+            }
+
         total_employees = await User.find(
             User.role != UserRole.SUPER_ADMIN,
             User.role != UserRole.ADMIN,
@@ -66,14 +78,14 @@ async def get_admin_dashboard(current_user: User):
         ]
         priority_results = await Task.aggregate(priority_pipeline).to_list()
 
-        # Recent activity - filtered by company
+        # Recent activity - filtered by company employees only
         company_employees = await User.find(In(User.company_id, co_ids)).to_list()
         company_emp_ids = [emp.id for emp in company_employees]
         recent_activities = await ActivityLog.find(
             {"user_id": {"$in": company_emp_ids}}
         ).sort("-timestamp").limit(10).to_list()
 
-        # Total rewards given in these companies
+        # Total rewards given in these companies only
         total_rewards = await Task.find(
             {"company_id": {"$in": co_ids}, "reward_given": True}
         ).count()

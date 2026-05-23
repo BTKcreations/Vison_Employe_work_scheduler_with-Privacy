@@ -11,6 +11,9 @@ export interface User {
   alternate_mobile?: string;
   parent_id?: string;
   parent_name?: string;
+  role_id?: string;
+  role_display_name?: string;
+  role_archetype?: string;
 }
 
 export interface RemarkEntry {
@@ -112,6 +115,9 @@ export interface Employee {
   parent_name?: string;
   company_id?: string;
   company_name?: string;
+  role_id?: string;
+  role_display_name?: string;
+  role_archetype?: string;
 }
 
 export interface LoginRequest {
@@ -134,6 +140,21 @@ export interface CreateEmployeeRequest {
   alternate_mobile?: string;
   company_id?: string;
   parent_id?: string;
+  base_salary?: number;
+}
+
+export interface UpdateEmployeeRequest {
+  name?: string;
+  email?: string;
+  is_active?: boolean;
+  mobile?: string;
+  alternate_mobile?: string;
+  reward_points?: number;
+  base_salary?: number;
+  role?: string;
+  password?: string;
+  parent_id?: string;
+  company_id?: string;
 }
 
 export interface CreateTaskRequest {
@@ -166,6 +187,9 @@ export interface UpdateTaskRequest {
   deadline?: string;
   remarks?: string;
   quality_multiplier?: number;
+  category_ids?: string[];
+  company_id?: string;
+  assigned_to?: string;
 }
 
 export interface DashboardStats {
@@ -230,3 +254,13 @@ export interface ActivityEntry {
   details: string | null;
   timestamp: string;
 }
+
+export interface CompanyRole {
+  id: string;
+  company_id: string | null;
+  display_name: string;
+  base_archetype: string;
+  permissions: string[];
+  is_custom: boolean;
+}
+

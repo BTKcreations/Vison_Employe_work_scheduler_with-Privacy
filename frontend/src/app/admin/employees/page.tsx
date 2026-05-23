@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-import { Employee, Company } from '@/types';
+import { Employee, Company, CompanyRole } from '@/types';
 import UserLink from '@/components/UserLink';
 import { formatDate } from '@/lib/utils';
 import {
@@ -13,6 +13,7 @@ import Link from 'next/link';
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [roles, setRoles] = useState<CompanyRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -50,10 +51,31 @@ export default function EmployeesPage() {
     }
   }, []);
 
+  const fetchRoles = useCallback(async () => {
+    try {
+      const res = await api.get('/roles');
+      setRoles(res.data);
+    } catch (err) {
+      console.error('Failed to fetch roles:', err);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEmployees();
     fetchCompanies();
-  }, [fetchEmployees, fetchCompanies]);
+    fetchRoles();
+  }, [fetchEmployees, fetchCompanies, fetchRoles]);
+
+  const getSelectedRoleArchetype = (roleVal: string) => {
+    const matchedRole = roles.find(r => r.is_custom ? r.display_name === roleVal : r.base_archetype === roleVal);
+    return matchedRole ? matchedRole.base_archetype : roleVal;
+  };
+
+  const getEmployeeArchetype = (emp: Employee) => {
+    return emp.role_archetype || emp.role;
+  };
+
+  const selectedRoleArchetype = getSelectedRoleArchetype(newEmployee.role);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -178,7 +200,7 @@ export default function EmployeesPage() {
                 </td>
                 <td className="px-6 py-4">
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${getRoleBadge(emp.role)}`}>
-                    {emp.role.replace('_', ' ')}
+                    {emp.role_display_name || emp.role.replace('_', ' ')}
                   </span>
                 </td>
                 <td className="px-6 py-4">
@@ -191,7 +213,7 @@ export default function EmployeesPage() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1 text-yellow-600 font-semibold">
                     <Trophy className="w-3.5 h-3.5" />
-                    {emp.reward_points}
+                    {emp.reward_points?.toFixed(2) ?? '0.00'}
                   </div>
                 </td>
                 <td className="px-6 py-4">
@@ -296,10 +318,11 @@ export default function EmployeesPage() {
                       className="select input-with-icon h-12 rounded-2xl"
                       required
                     >
-                      <option value="employee">Employee</option>
-                      <option value="manager">Manager</option>
-                      <option value="assistant_manager">Assistant Manager</option>
-                      <option value="admin">Admin</option>
+                      {roles.map(r => (
+                        <option key={r.id} value={r.is_custom ? r.display_name : r.base_archetype}>
+                          {r.display_name}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -315,7 +338,7 @@ export default function EmployeesPage() {
                     value={newEmployee.company_id}
                     onChange={(e) => setNewEmployee({ ...newEmployee, company_id: e.target.value })}
                     className="select input-with-icon h-12 rounded-2xl"
-                    required={newEmployee.role !== 'admin'}
+                    required={selectedRoleArchetype !== 'admin' && selectedRoleArchetype !== 'super_admin'}
                   >
                     <option value="">Select Company/Department...</option>
                     {companies.map((c) => (
@@ -327,7 +350,7 @@ export default function EmployeesPage() {
                 </div>
               </div>
 
-              {(newEmployee.role === 'assistant_manager' || newEmployee.role === 'employee') && (
+              {['assistant_manager', 'employee', 'contractor'].includes(selectedRoleArchetype) && (
                 <div>
                   <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Direct Supervisor</label>
                   <div className="relative group">
@@ -342,14 +365,15 @@ export default function EmployeesPage() {
                     >
                       <option value="">Select Supervisor...</option>
                       {employees
-                        .filter((emp) => 
-                          newEmployee.role === 'assistant_manager' 
-                            ? emp.role === 'manager' && emp.is_active
-                            : (emp.role === 'manager' || emp.role === 'assistant_manager') && emp.is_active
-                        )
+                        .filter((emp) => {
+                          const empArch = getEmployeeArchetype(emp);
+                          return selectedRoleArchetype === 'assistant_manager'
+                            ? empArch === 'manager' && emp.is_active
+                            : (empArch === 'manager' || empArch === 'assistant_manager') && emp.is_active;
+                        })
                         .map((emp) => (
                           <option key={emp.id} value={emp.id}>
-                            {emp.name} ({emp.role.replace('_', ' ')})
+                            {emp.name} ({emp.role_display_name || emp.role.replace('_', ' ')})
                           </option>
                         ))}
                     </select>

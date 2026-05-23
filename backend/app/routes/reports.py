@@ -207,3 +207,46 @@ async def export_payroll_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+@router.get("/me/payroll")
+async def get_my_payroll_report(
+    year: int = Query(default=None),
+    month: int = Query(default=None),
+    current_user: User = Depends(get_current_user),
+):
+    """Get monthly payroll data for the authenticated employee."""
+    current_time = datetime.utcnow()
+    yr = year if year is not None else current_time.year
+    mon = month if month is not None else current_time.month
+    return await report_service.calculate_payroll_data(
+        current_user=current_user,
+        year=yr,
+        month=mon,
+        employee_id=str(current_user.id)
+    )
+
+
+@router.get("/me/payroll/excel")
+async def export_my_payroll_excel(
+    year: int = Query(default=None),
+    month: int = Query(default=None),
+    current_user: User = Depends(get_current_user),
+):
+    """Export monthly payroll report for the authenticated employee as a styled Excel spreadsheet."""
+    current_time = datetime.utcnow()
+    yr = year if year is not None else current_time.year
+    mon = month if month is not None else current_time.month
+    excel_data = await report_service.generate_payroll_excel(
+        current_user=current_user,
+        year=yr,
+        month=mon,
+        employee_id=str(current_user.id)
+    )
+    filename = f"my_payroll_report_{yr}_{mon:02d}.xlsx"
+    return StreamingResponse(
+        excel_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+

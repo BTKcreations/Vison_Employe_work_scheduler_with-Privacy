@@ -47,6 +47,9 @@ class EmployeeResponse(BaseModel):
     parent_name: Optional[str] = None
     company_id: Optional[str] = None
     company_name: Optional[str] = None
+    role_id: Optional[str] = None
+    role_display_name: Optional[str] = None
+    role_archetype: Optional[str] = None
 
     @classmethod
     def from_user(cls, user, parent_name: Optional[str] = None, company_name: Optional[str] = None) -> "EmployeeResponse":
@@ -66,4 +69,7 @@ class EmployeeResponse(BaseModel):
             parent_name=parent_name,
             company_id=str(user.company_id) if getattr(user, "company_id", None) else None,
             company_name=company_name,
+            role_id=str(user.role_id) if getattr(user, "role_id", None) else None,
+            role_display_name=getattr(user, "role_display_name", None),
+            role_archetype=user.role_archetype.value if getattr(user, "role_archetype", None) else None,
         )

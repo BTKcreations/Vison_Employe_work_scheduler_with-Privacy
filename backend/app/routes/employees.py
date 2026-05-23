@@ -15,12 +15,25 @@ router = APIRouter(prefix="/admin/employees", tags=["Employee Management"])
 
 async def check_hierarchy(current_user: User, target_user: User) -> bool:
     """Helper to check if target_user reports to current_user."""
+    from app.models.role import BaseArchetype
+
     if current_user.id == target_user.id:
         return True
-    if current_user.role == UserRole.SUPER_ADMIN:
+
+    arch = current_user.role_archetype or current_user.role
+
+    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
         return True
-    if current_user.role == UserRole.ADMIN:
-        # Admin can manage users in their company/companies
+
+    # Restrict tenant users from managing super_admins or support
+    target_arch = target_user.role_archetype or target_user.role
+    if target_arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+        return False
+    if target_arch in [BaseArchetype.SUPPORT, UserRole.SUPPORT]:
+        return arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN, BaseArchetype.SUPPORT, UserRole.SUPPORT]
+
+    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR]:
+        # Admin / HR can manage users in their company/companies
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
@@ -29,20 +42,23 @@ async def check_hierarchy(current_user: User, target_user: User) -> bool:
         if target_user.company_id is None:
             return True
         return False
-    if current_user.role == UserRole.MANAGER:
+    if arch in [BaseArchetype.MANAGER, UserRole.MANAGER]:
         # Direct subordinate (reports to this manager)
         if target_user.parent_id == current_user.id:
             return True
         # Indirect subordinate (reports to an assistant manager under this manager)
         if target_user.parent_id:
             parent = await User.get(target_user.parent_id)
-            if parent and parent.role == UserRole.ASSISTANT_MANAGER and parent.parent_id == current_user.id:
-                return True
-    if current_user.role == UserRole.ASSISTANT_MANAGER:
+            if parent:
+                parent_arch = parent.role_archetype or parent.role
+                if parent_arch in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER] and parent.parent_id == current_user.id:
+                    return True
+    if arch in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER]:
         # Only direct subordinates
         if target_user.parent_id == current_user.id:
             return True
     return False
+
 
 
 @router.get("", response_model=List[EmployeeResponse])
@@ -144,25 +160,71 @@ async def create_employee(
     current_user: User = Depends(require_management),
 ):
     """Create a new user (with hierarchy validation)."""
-    if current_user.role == UserRole.ASSISTANT_MANAGER:
+    from app.models.role import BaseArchetype, CompanyRole
+
+    arch = current_user.role_archetype or current_user.role
+    if arch in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Assistant Managers are not allowed to create users",
         )
-        
+
     target_role = request.role
     parent_id = request.parent_id
 
-    if target_role == "super_admin" and current_user.role != UserRole.SUPER_ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only Super Admins can create Super Admins",
+    # Resolve target archetype for validations
+    target_arch = None
+    if current_user.company_id:
+        db_role = await CompanyRole.find_one(
+            CompanyRole.company_id == current_user.company_id,
+            CompanyRole.display_name == target_role
         )
+        if not db_role:
+            try:
+                arch_enum = BaseArchetype(target_role)
+                db_role = await CompanyRole.find_one(
+                    CompanyRole.company_id == None,
+                    CompanyRole.base_archetype == arch_enum
+                )
+            except ValueError:
+                pass
+        if db_role:
+            target_arch = db_role.base_archetype
+
+    if not target_arch:
+        try:
+            target_arch = BaseArchetype(target_role)
+        except ValueError:
+            target_arch = BaseArchetype.EMPLOYEE
+
+    # 1. SaaS Provider level restriction: Tenant users cannot create Super Admin or Support roles
+    if target_arch in [BaseArchetype.SUPER_ADMIN, BaseArchetype.SUPPORT]:
+        if arch not in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN, BaseArchetype.SUPPORT, UserRole.SUPPORT]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenant users cannot create SaaS Provider level roles (Super Admin, Support)",
+            )
+
+    # 2. Workspace Admin role checks: Only Super Admin and Admins can create Admin roles
+    if target_arch == BaseArchetype.ADMIN:
+        if arch not in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN, BaseArchetype.ADMIN, UserRole.ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Admins and Super Admins can create Admin roles",
+            )
+
+    # 3. Manager/HR validation checks for target role creation
+    if arch in [BaseArchetype.MANAGER, UserRole.MANAGER]:
+        if target_arch not in [BaseArchetype.ASSISTANT_MANAGER, BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Managers can only create Assistant Managers, Employees, and Contractors",
+            )
 
     company_id = request.company_id
-    if current_user.role == UserRole.SUPER_ADMIN:
+    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
         pass
-    elif current_user.role == UserRole.ADMIN:
+    elif arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
@@ -177,49 +239,81 @@ async def create_employee(
     else:
         company_id = str(current_user.company_id)
 
-    # If manager is creating, restrict roles and force parent bindings
-    if current_user.role == UserRole.MANAGER:
-        if target_role not in ["assistant_manager", "employee"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Managers can only create Assistant Managers and Employees",
-            )
-        
-        if target_role == "assistant_manager":
+    # If manager is creating, force parent bindings
+    if arch in [BaseArchetype.MANAGER, UserRole.MANAGER]:
+        if target_arch == BaseArchetype.ASSISTANT_MANAGER:
             # Assistant manager created by a manager must report directly to that manager
             parent_id = str(current_user.id)
-        elif target_role == "employee":
-            # Employees created by a manager must report either to the manager or to an ASM reporting to the manager
+        elif target_arch in [BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR]:
+            # Employees/Contractors created by a manager must report either to the manager or to an ASM reporting to the manager
             if parent_id:
                 pid = PydanticObjectId(parent_id)
-                # Allow the manager themselves as a direct supervisor
                 if pid != current_user.id:
                     p_user = await User.get(pid)
-                    if not p_user or p_user.role != UserRole.ASSISTANT_MANAGER or p_user.parent_id != current_user.id:
+                    if p_user:
+                        p_user_arch = p_user.role_archetype or p_user.role
+                        if p_user_arch not in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER] or p_user.parent_id != current_user.id:
+                            raise HTTPException(
+                                status_code=status.HTTP_400_BAD_REQUEST,
+                                detail="Invalid parent supervisor: employee must report to you or one of your assistant managers",
+                            )
+                    else:
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Invalid parent supervisor: employee must report to you or one of your assistant managers",
+                            detail="Supervisor not found",
                         )
             else:
-                # Default parent to the manager
                 parent_id = str(current_user.id)
-                
-    # If admin is creating, validate parent structure if specified
-    elif current_user.role == UserRole.ADMIN:
-        if parent_id:
-            p_user = await User.get(PydanticObjectId(parent_id))
-            if target_role == "assistant_manager":
-                if not p_user or p_user.role != UserRole.MANAGER:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Invalid parent supervisor: Assistant Managers must report to a Manager",
-                    )
-            elif target_role == "employee":
-                if not p_user or p_user.role not in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Invalid parent supervisor: Employees must report to a Manager or Assistant Manager",
-                    )
+
+    # Generalized parent checks (who reports to who & company bounds)
+    if parent_id:
+        p_user = await User.get(PydanticObjectId(parent_id))
+        if not p_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Supervisor not found",
+            )
+        
+        # Verify parent belongs to same company
+        if company_id and p_user.company_id and str(p_user.company_id) != str(company_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Supervisor must belong to the same company/department",
+            )
+
+        p_user_arch = p_user.role_archetype or p_user.role
+        
+        # Hierarchy reporting validation rules
+        if target_arch == BaseArchetype.ASSISTANT_MANAGER:
+            if p_user_arch not in [BaseArchetype.MANAGER, UserRole.MANAGER]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Assistant Managers must report to a Manager",
+                )
+        elif target_arch in [BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR]:
+            if p_user_arch not in [BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Employees/Contractors must report to a Manager or Assistant Manager",
+                )
+        elif target_arch in [BaseArchetype.HR, BaseArchetype.FINANCE, BaseArchetype.IT, BaseArchetype.AUDITOR]:
+            if p_user_arch not in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.MANAGER, UserRole.MANAGER, BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid parent supervisor: {target_arch.value.replace('_', ' ').title()} must report to an Admin or Manager",
+                )
+        elif target_arch == BaseArchetype.MANAGER:
+            if p_user_arch not in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Managers must report to an Admin",
+                )
+        elif target_arch == BaseArchetype.ADMIN:
+            if p_user_arch not in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Admins must report to another Admin or Super Admin",
+                )
 
     try:
         employee = await user_service.create_employee(
@@ -239,7 +333,7 @@ async def create_employee(
             parent = await User.get(employee.parent_id)
             if parent:
                 parent_name = parent.name
-
+ 
         company_name = None
         if employee.company_id:
             from app.models.company import Company
@@ -276,10 +370,46 @@ async def update_employee(
             detail="Access denied: employee is outside of your management tree",
         )
 
+    company_id = request.company_id
     # Prevent role updates that violate hierarchy
     target_role = request.role or employee.role.value
     
-    if target_role in ["admin", "manager"]:
+    # Resolve target archetype for validations
+    from app.models.role import BaseArchetype, CompanyRole
+    
+    target_arch = None
+    res_company_id = company_id or (str(employee.company_id) if employee.company_id else None)
+    
+    if res_company_id:
+        try:
+            r_co_id = PydanticObjectId(res_company_id)
+        except Exception:
+            r_co_id = None
+            
+        if r_co_id:
+            db_role = await CompanyRole.find_one(
+                CompanyRole.company_id == r_co_id,
+                CompanyRole.display_name == target_role
+            )
+            if not db_role:
+                try:
+                    arch_enum = BaseArchetype(target_role)
+                    db_role = await CompanyRole.find_one(
+                        CompanyRole.company_id == None,
+                        CompanyRole.base_archetype == arch_enum
+                    )
+                except ValueError:
+                    pass
+            if db_role:
+                target_arch = db_role.base_archetype
+
+    if not target_arch:
+        try:
+            target_arch = BaseArchetype(target_role)
+        except ValueError:
+            target_arch = BaseArchetype.EMPLOYEE
+
+    if target_arch in [BaseArchetype.ADMIN, BaseArchetype.SUPER_ADMIN]:
         parent_id = None
     elif request.parent_id == "":
         parent_id = None
@@ -288,11 +418,28 @@ async def update_employee(
     else:
         parent_id = str(employee.parent_id) if employee.parent_id else None
 
-    company_id = request.company_id
+    current_arch = current_user.role_archetype or current_user.role
+
+    # 1. SaaS Provider level restriction: Tenant users cannot assign Super Admin or Support roles
+    if target_arch in [BaseArchetype.SUPER_ADMIN, BaseArchetype.SUPPORT]:
+        if current_arch not in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN, BaseArchetype.SUPPORT, UserRole.SUPPORT]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Tenants cannot assign SaaS Provider level roles (Super Admin, Support)",
+            )
+
+    # 2. Workspace Admin role checks: Only Super Admin and Admins can assign Admin roles
+    if target_arch == BaseArchetype.ADMIN:
+        if current_arch not in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN, BaseArchetype.ADMIN, UserRole.ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only Admins and Super Admins can assign Admin roles",
+            )
+
     if company_id is not None:
-        if current_user.role == UserRole.SUPER_ADMIN:
+        if current_arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
             pass
-        elif current_user.role == UserRole.ADMIN:
+        elif current_arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR]:
             from app.models.company import Company
             companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
             co_ids = {c.id for c in companies}
@@ -308,62 +455,109 @@ async def update_employee(
                 detail="Only Admins and Super Admins can update employee company assignments",
             )
     
-    if current_user.role == UserRole.ASSISTANT_MANAGER:
+    if current_arch in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Assistant Managers are not allowed to update user profiles",
         )
         
-    if current_user.role == UserRole.MANAGER:
-        if target_role not in ["assistant_manager", "employee"]:
+    if current_arch in [BaseArchetype.MANAGER, UserRole.MANAGER]:
+        if target_arch not in [BaseArchetype.ASSISTANT_MANAGER, BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR]:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Managers can only configure Assistant Managers and Employees",
+                detail="Managers can only configure Assistant Managers, Employees, and Contractors",
             )
         
-        if target_role == "assistant_manager":
+        if target_arch == BaseArchetype.ASSISTANT_MANAGER:
             parent_id = str(current_user.id)
-        elif target_role == "employee" and request.parent_id:
+        elif target_arch in [BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR] and parent_id:
             pid = PydanticObjectId(parent_id)
             # Allow the manager themselves as a direct supervisor
             if pid != current_user.id:
                 p_user = await User.get(pid)
-                if not p_user or p_user.role != UserRole.ASSISTANT_MANAGER or p_user.parent_id != current_user.id:
+                p_user_arch = (p_user.role_archetype or p_user.role) if p_user else None
+                if not p_user or p_user_arch not in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER] or p_user.parent_id != current_user.id:
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
                         detail="Invalid parent supervisor: employee must report to you or one of your assistant managers",
                     )
-                
-    elif current_user.role == UserRole.ADMIN:
-        if parent_id:
-            p_user = await User.get(PydanticObjectId(parent_id))
-            if target_role == "assistant_manager":
-                if not p_user or p_user.role != UserRole.MANAGER:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Invalid parent supervisor: Assistant Managers must report to a Manager",
-                    )
-            elif target_role == "employee":
-                if not p_user or p_user.role not in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Invalid parent supervisor: Employees must report to a Manager or Assistant Manager",
-                    )
+
+    # Generalized parent checks (who reports to who & company bounds)
+    if parent_id:
+        if parent_id == employee_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A user cannot report to themselves",
+            )
+
+        p_user = await User.get(PydanticObjectId(parent_id))
+        if not p_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Supervisor not found",
+            )
+        
+        # Verify parent belongs to same company
+        resolved_co_id = company_id or (str(employee.company_id) if employee.company_id else None)
+        if resolved_co_id and p_user.company_id and str(p_user.company_id) != str(resolved_co_id):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Supervisor must belong to the same company/department",
+            )
+
+        p_user_arch = p_user.role_archetype or p_user.role
+        
+        # Hierarchy reporting validation rules
+        if target_arch == BaseArchetype.ASSISTANT_MANAGER:
+            if p_user_arch not in [BaseArchetype.MANAGER, UserRole.MANAGER]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Assistant Managers must report to a Manager",
+                )
+        elif target_arch in [BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR]:
+            if p_user_arch not in [BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Employees/Contractors must report to a Manager or Assistant Manager",
+                )
+        elif target_arch in [BaseArchetype.HR, BaseArchetype.FINANCE, BaseArchetype.IT, BaseArchetype.AUDITOR]:
+            if p_user_arch not in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.MANAGER, UserRole.MANAGER, BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Invalid parent supervisor: {target_arch.value.replace('_', ' ').title()} must report to an Admin or Manager",
+                )
+        elif target_arch == BaseArchetype.MANAGER:
+            if p_user_arch not in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Managers must report to an Admin",
+                )
+        elif target_arch == BaseArchetype.ADMIN:
+            if p_user_arch not in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Invalid parent supervisor: Admins must report to another Admin or Super Admin",
+                )
 
     try:
+        update_kwargs = {
+            "name": request.name,
+            "email": request.email,
+            "is_active": request.is_active,
+            "mobile": request.mobile,
+            "alternate_mobile": request.alternate_mobile,
+            "reward_points": request.reward_points,
+            "base_salary": request.base_salary,
+            "role": request.role,
+            "password": request.password,
+            "parent_id": parent_id,
+        }
+        if "company_id" in request.model_fields_set:
+            update_kwargs["company_id"] = company_id
+
         updated = await user_service.update_employee(
             employee_id,
-            name=request.name,
-            email=request.email,
-            is_active=request.is_active,
-            mobile=request.mobile,
-            alternate_mobile=request.alternate_mobile,
-            reward_points=request.reward_points,
-            base_salary=request.base_salary,
-            role=request.role,
-            password=request.password,
-            parent_id=parent_id,
-            company_id=company_id,
+            **update_kwargs
         )
         
         parent_name = None

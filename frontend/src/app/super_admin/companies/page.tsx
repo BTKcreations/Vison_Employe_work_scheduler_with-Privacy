@@ -90,6 +90,11 @@ export default function SuperAdminCompaniesPage() {
         description: newCompany.description || undefined,
         owner_id: newCompany.owner_id || undefined,
       };
+      if (!newCompany.owner_id) {
+        setError('You must assign a tenant admin as the owner of this company.');
+        setCreating(false);
+        return;
+      }
       await api.post('/companies', payload);
       setShowCreateModal(false);
       setNewCompany({ name: '', description: '', owner_id: '' });
@@ -183,7 +188,7 @@ export default function SuperAdminCompaniesPage() {
             Companies & Departments
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Configure multi-tenant companies, set working schedules, geofences, and map tenant admins.
+            Monitor multi-tenant companies across all tenant administrators. Assign companies to tenant admins.
           </p>
         </div>
         <button
@@ -603,11 +608,12 @@ export default function SuperAdminCompaniesPage() {
                   onChange={(e) => setNewCompany({ ...newCompany, owner_id: e.target.value })}
                   className="input text-xs h-10"
                 >
-                  <option value="">-- Unassigned (Set later) --</option>
+                  <option value="">-- Select a Tenant Admin (Required) --</option>
                   {admins.map(admin => (
                     <option key={admin.id} value={admin.id}>{admin.name} ({admin.email})</option>
                   ))}
                 </select>
+                <p className="text-[10px] text-amber-600 font-bold mt-1">⚠ Super admin must assign an owner for every company.</p>
               </div>
 
               <div className="pt-4 flex justify-end gap-3 border-t border-border">

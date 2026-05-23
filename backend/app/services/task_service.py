@@ -167,11 +167,15 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
 
     # Restrict fields for non-admin (management)
     if not is_admin:
-        if task.created_by == task.assigned_to:
-            allowed_fields = {"status", "work_description"}
+        is_personal = task.company_id is None or task.task_type == TaskType.PERSONAL or task.created_by == task.assigned_to
+        if is_personal:
+            allowed_fields = {"status", "work_description", "priority", "complexity", "deadline", "category_ids", "company_id"}
         else:
             allowed_fields = {"status"}
-        kwargs = {k: v for k, v in kwargs.items() if k in allowed_fields}
+        
+        unauthorized_fields = {k for k, v in kwargs.items() if v is not None and k not in allowed_fields}
+        if unauthorized_fields:
+            raise PermissionError(f"Not authorized to update administrative fields: {', '.join(unauthorized_fields)}")
 
     update_data = {}
     for key, value in kwargs.items():
@@ -241,7 +245,8 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
     final_status = task.status
     if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE] and original_status not in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE]:
         await check_and_award_reward(task)
-
+        # Reload task to capture the reward points and reward_given flag updates
+        task = await Task.get(PydanticObjectId(task_id))
 
         await ActivityLog(
             user_id=task.assigned_to,

@@ -483,7 +483,7 @@ export default function CollaborationPage() {
                       </div>
                       <div className="text-right">
                         <span className="text-xs font-black text-indigo-600 bg-white border border-indigo-100 px-2.5 py-1 rounded-xl shadow-sm">
-                          {entry.reward_points.toFixed(1)} pts
+                          {(entry.reward_points ?? 0).toFixed(2)} pts
                         </span>
                       </div>
                     </div>

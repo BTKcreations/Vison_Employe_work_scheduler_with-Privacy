@@ -2,6 +2,7 @@
 Authentication request/response schemas.
 """
 from pydantic import BaseModel, EmailStr, Field
+from typing import Optional
 
 
 class LoginRequest(BaseModel):
@@ -30,6 +31,9 @@ class UserResponse(BaseModel):
     reward_points: float
     is_active: bool
     created_at: str
+    role_id: Optional[str] = None
+    role_display_name: Optional[str] = None
+    role_archetype: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):

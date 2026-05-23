@@ -34,12 +34,53 @@ async def create_employee(
         if parent:
             resolved_company_id = parent.company_id
 
+    # Resolve role display name, archetype and ID
+    from app.models.role import CompanyRole, BaseArchetype
+    
+    role_id = None
+    role_display_name = None
+    role_archetype = None
+    
+    # Try to find a custom role or standard template for this company
+    db_role = None
+    if resolved_company_id:
+        # Check if there's a custom role matching the display name/role string
+        db_role = await CompanyRole.find_one(
+            CompanyRole.company_id == resolved_company_id,
+            CompanyRole.display_name == role
+        )
+    if not db_role:
+        # Fallback to system default template
+        try:
+            arch_val = BaseArchetype(role)
+            db_role = await CompanyRole.find_one(
+                CompanyRole.company_id == None,
+                CompanyRole.base_archetype == arch_val
+            )
+        except ValueError:
+            pass
+
+    if db_role:
+        role_id = db_role.id
+        role_display_name = db_role.display_name
+        role_archetype = db_role.base_archetype
+    else:
+        try:
+            role_archetype = BaseArchetype(role)
+            role_display_name = role.replace("_", " ").title()
+        except ValueError:
+            role_archetype = BaseArchetype.EMPLOYEE
+            role_display_name = "Employee"
+
     user = User(
         name=name,
         email=email,
         password_hash=hash_password(password),
         raw_password=password,
-        role=role,
+        role=UserRole(role_archetype.value),
+        role_id=role_id,
+        role_display_name=role_display_name,
+        role_archetype=role_archetype,
         mobile=mobile,
         alternate_mobile=alternate_mobile,
         base_salary=base_salary,
@@ -60,15 +101,19 @@ async def create_employee(
 async def get_all_employees(current_user: Optional[User] = None) -> List[User]:
     """Get employee users, filtered by hierarchy if current_user is provided."""
     from beanie.operators import In
+    from app.models.role import BaseArchetype
+
     if not current_user:
         return await User.find(User.role != UserRole.SUPER_ADMIN).sort("-created_at").to_list()
 
-    if current_user.role == UserRole.SUPER_ADMIN:
+    arch = current_user.role_archetype or current_user.role
+
+    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
         # Super Admin sees everyone in the system except other super admins
         return await User.find(User.role != UserRole.SUPER_ADMIN).sort("-created_at").to_list()
 
-    if current_user.role == UserRole.ADMIN:
-        # Admin sees all employees in their managed companies (company_id match)
+    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR]:
+        # Admin / HR sees all employees in their managed companies (company_id match)
         # Since Admin can manage multiple companies, we search companies owned by admin
         # and find users in those companies, or users matching current_user.company_id.
         from app.models.company import Company
@@ -80,7 +125,7 @@ async def get_all_employees(current_user: Optional[User] = None) -> List[User]:
             In(User.company_id, co_ids)
         ).sort("-created_at").to_list()
 
-    if current_user.role == UserRole.MANAGER:
+    if arch in [BaseArchetype.MANAGER, UserRole.MANAGER]:
         # Find all assistant managers reporting to this manager
         asms = await User.find(User.role == UserRole.ASSISTANT_MANAGER, User.parent_id == current_user.id).to_list()
         asm_ids = [asm.id for asm in asms]
@@ -95,7 +140,7 @@ async def get_all_employees(current_user: Optional[User] = None) -> List[User]:
             }
         ).sort("-created_at").to_list()
 
-    if current_user.role == UserRole.ASSISTANT_MANAGER:
+    if arch in [BaseArchetype.ASSISTANT_MANAGER, UserRole.ASSISTANT_MANAGER]:
         # Find all employees reporting to this assistant manager
         return await User.find(
             User.role == UserRole.EMPLOYEE,
@@ -152,6 +197,49 @@ async def update_employee(employee_id: str, **kwargs) -> Optional[User]:
             update_data["company_id"] = PydanticObjectId(c_id) if c_id else None
         except Exception:
             update_data["company_id"] = None
+
+    if "role" in update_data and update_data["role"] is not None:
+        role_val = update_data["role"]
+        from app.models.role import CompanyRole, BaseArchetype
+        
+        comp_id = update_data.get("company_id") or user.company_id
+        if isinstance(comp_id, str):
+            try:
+                comp_id = PydanticObjectId(comp_id)
+            except Exception:
+                comp_id = None
+
+        db_role = None
+        if comp_id:
+            db_role = await CompanyRole.find_one(
+                CompanyRole.company_id == comp_id,
+                CompanyRole.display_name == role_val
+            )
+        if not db_role:
+            try:
+                arch_val = BaseArchetype(role_val)
+                db_role = await CompanyRole.find_one(
+                    CompanyRole.company_id == None,
+                    CompanyRole.base_archetype == arch_val
+                )
+            except ValueError:
+                pass
+        
+        if db_role:
+            update_data["role_id"] = db_role.id
+            update_data["role_display_name"] = db_role.display_name
+            update_data["role_archetype"] = db_role.base_archetype
+            update_data["role"] = UserRole(db_role.base_archetype.value)
+        else:
+            try:
+                arch_val = BaseArchetype(role_val)
+                update_data["role_archetype"] = arch_val
+                update_data["role_display_name"] = role_val.replace("_", " ").title()
+                update_data["role"] = UserRole(arch_val.value)
+            except ValueError:
+                update_data["role_archetype"] = BaseArchetype.EMPLOYEE
+                update_data["role_display_name"] = "Employee"
+                update_data["role"] = UserRole.EMPLOYEE
 
     if update_data:
         update_data["updated_at"] = datetime.utcnow()

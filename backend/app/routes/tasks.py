@@ -2,7 +2,7 @@
 Task management routes - CRUD for tasks.
 """
 from fastapi import APIRouter, HTTPException, status, Depends, Query
-from app.schemas.task import CreateTaskRequest, UpdateTaskRequest, TaskResponse
+from app.schemas.task import CreateTaskRequest, UpdateTaskRequest, TaskResponse, RecurrenceRuleResponse, UpdateRecurrenceRuleRequest
 from app.services import task_service
 from app.auth.dependencies import get_current_user
 from app.models.user import User, UserRole
@@ -11,6 +11,7 @@ from beanie import PydanticObjectId
 from beanie.operators import In
 from typing import List, Optional
 from app.models.category import Category
+from app.models.recurring_task import RecurrenceRule, RecurrenceType, RecurrenceEndType
 
 router = APIRouter(prefix="/tasks", tags=["Task Management"])
 
@@ -25,15 +26,20 @@ async def _resolve_company_name(company_id) -> Optional[str]:
 
 async def can_manage_task(current_user: User, task) -> bool:
     """Check if current_user has management rights over the task."""
+    from app.models.role import BaseArchetype
     from app.models.user import UserRole
-    if current_user.role == UserRole.SUPER_ADMIN:
+
+    arch = current_user.role_archetype or current_user.role
+    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
         return True
-    if current_user.role == UserRole.ADMIN:
+    if task.company_id is None:
+        return str(task.created_by) == str(current_user.id) or str(task.assigned_to) == str(current_user.id)
+    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
-        return task.company_id in co_ids or task.company_id is None
-    if current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+        return task.company_id in co_ids
+    if arch in [BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
         # Task must be in their company
         if task.company_id != current_user.company_id:
             return False
@@ -46,6 +52,7 @@ async def can_manage_task(current_user: User, task) -> bool:
         if assignee and await check_hierarchy(current_user, assignee):
             return True
     return False
+
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -116,6 +123,13 @@ async def create_task(
             if emp: target_employees = [emp]
             
     else: # EMPLOYEE
+        if (request.assigned_to and PydanticObjectId(request.assigned_to) != current_user.id) or \
+           (request.assigned_to_list and any(PydanticObjectId(uid) != current_user.id for uid in request.assigned_to_list)) or \
+           request.for_all:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Not authorized to assign tasks to other users",
+            )
         target_employees = [current_user]
 
     # 2. Determine target companies
@@ -256,6 +270,173 @@ async def list_tasks(
     return result
 
 
+@router.get("/recurring", response_model=List[RecurrenceRuleResponse])
+async def list_recurring_rules(
+    current_user: User = Depends(get_current_user),
+):
+    """List all recurring task rules."""
+    from app.models.company import Company
+    
+    if current_user.role == UserRole.SUPER_ADMIN:
+        rules = await RecurrenceRule.find_all().to_list()
+    elif current_user.role == UserRole.ADMIN:
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = [c.id for c in companies]
+        rules = await RecurrenceRule.find(
+            {
+                "$or": [
+                    {"company_id_list": {"$in": co_ids}},
+                    {"created_by": current_user.id}
+                ]
+            }
+        ).to_list()
+    elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+        rules = await RecurrenceRule.find(
+            {
+                "$or": [
+                    {"company_id_list": current_user.company_id},
+                    {"created_by": current_user.id}
+                ]
+            }
+        ).to_list()
+    else:
+        rules = await RecurrenceRule.find(
+            {
+                "$or": [
+                    {"assigned_to_list": current_user.id},
+                    {"created_by": current_user.id}
+                ]
+            }
+        ).to_list()
+
+    return [
+        RecurrenceRuleResponse(
+            id=str(r.id),
+            work_description=r.work_description,
+            priority=r.priority,
+            reward_points=r.reward_points,
+            assigned_to_list=[str(uid) for uid in r.assigned_to_list],
+            company_id_list=[str(cid) for cid in r.company_id_list],
+            created_by=str(r.created_by),
+            type=r.type.value,
+            interval=r.interval,
+            weekdays=r.weekdays,
+            month_day=r.month_day,
+            end_type=r.end_type.value,
+            end_value=r.end_value,
+            next_run=r.next_run.isoformat() + "Z",
+            last_run=r.last_run.isoformat() + "Z" if r.last_run else None,
+            occurrence_count=r.occurrence_count,
+            is_active=r.is_active,
+            created_at=r.created_at.isoformat() + "Z",
+        )
+        for r in rules
+    ]
+
+
+@router.patch("/recurring/{rule_id}", response_model=RecurrenceRuleResponse)
+async def update_recurring_rule(
+    rule_id: str,
+    request: UpdateRecurrenceRuleRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Update a recurring task rule."""
+    rule = await RecurrenceRule.get(PydanticObjectId(rule_id))
+    if not rule:
+        raise HTTPException(status_code=404, detail="Recurrence rule not found")
+        
+    can_edit = False
+    if current_user.role == UserRole.SUPER_ADMIN:
+        can_edit = True
+    elif str(rule.created_by) == str(current_user.id):
+        can_edit = True
+    elif current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = {c.id for c in companies}
+        if any(cid in co_ids for cid in rule.company_id_list):
+            can_edit = True
+            
+    if not can_edit:
+        raise HTTPException(status_code=403, detail="Not authorized to update this recurring rule")
+
+    update_data = {}
+    if request.work_description is not None:
+        update_data["work_description"] = request.work_description
+    if request.priority is not None:
+        update_data["priority"] = request.priority
+    if request.reward_points is not None:
+        update_data["reward_points"] = request.reward_points
+    if request.is_active is not None:
+        update_data["is_active"] = request.is_active
+    if request.type is not None:
+        update_data["type"] = RecurrenceType(request.type)
+    if request.interval is not None:
+        update_data["interval"] = request.interval
+    if request.weekdays is not None:
+        update_data["weekdays"] = request.weekdays
+    if request.month_day is not None:
+        update_data["month_day"] = request.month_day
+    if request.end_type is not None:
+        update_data["end_type"] = RecurrenceEndType(request.end_type)
+    if request.end_value is not None:
+        update_data["end_value"] = request.end_value
+
+    if update_data:
+        await rule.set(update_data)
+        rule = await RecurrenceRule.get(PydanticObjectId(rule_id))
+
+    return RecurrenceRuleResponse(
+        id=str(rule.id),
+        work_description=rule.work_description,
+        priority=rule.priority,
+        reward_points=rule.reward_points,
+        assigned_to_list=[str(uid) for uid in rule.assigned_to_list],
+        company_id_list=[str(cid) for cid in rule.company_id_list],
+        created_by=str(rule.created_by),
+        type=rule.type.value,
+        interval=rule.interval,
+        weekdays=rule.weekdays,
+        month_day=rule.month_day,
+        end_type=rule.end_type.value,
+        end_value=rule.end_value,
+        next_run=rule.next_run.isoformat() + "Z",
+        last_run=rule.last_run.isoformat() + "Z" if rule.last_run else None,
+        occurrence_count=rule.occurrence_count,
+        is_active=rule.is_active,
+        created_at=rule.created_at.isoformat() + "Z",
+    )
+
+
+@router.delete("/recurring/{rule_id}")
+async def delete_recurring_rule(
+    rule_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Delete a recurring task rule."""
+    rule = await RecurrenceRule.get(PydanticObjectId(rule_id))
+    if not rule:
+        raise HTTPException(status_code=404, detail="Recurrence rule not found")
+
+    can_delete = False
+    if current_user.role == UserRole.SUPER_ADMIN:
+        can_delete = True
+    elif str(rule.created_by) == str(current_user.id):
+        can_delete = True
+    elif current_user.role == UserRole.ADMIN:
+        from app.models.company import Company
+        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+        co_ids = {c.id for c in companies}
+        if any(cid in co_ids for cid in rule.company_id_list):
+            can_delete = True
+
+    if not can_delete:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this recurring rule")
+
+    await rule.delete()
+    return {"message": "Recurring task rule deleted successfully"}
+
+
 @router.put("/{task_id}", response_model=TaskResponse)
 async def update_task(
     task_id: str,
@@ -290,8 +471,14 @@ async def update_task(
             }.items()
         )
         if has_restricted_changes:
-            if not is_management or not await can_manage_task(current_user, task):
-                if task.company_id is not None:
+            is_personal = task.company_id is None or task.task_type.value == "personal" or str(task.created_by) == str(task.assigned_to)
+            if is_personal:
+                if request.assigned_to is not None and request.assigned_to != str(current_user.id):
+                    raise HTTPException(status_code=403, detail="Cannot assign personal tasks to other users")
+                if request.quality_multiplier is not None:
+                    raise HTTPException(status_code=403, detail="Cannot set quality multiplier on tasks")
+            else:
+                if not is_management or not await can_manage_task(current_user, task):
                     raise HTTPException(status_code=403, detail="Not authorized to update administrative fields for this task")
 
     try:

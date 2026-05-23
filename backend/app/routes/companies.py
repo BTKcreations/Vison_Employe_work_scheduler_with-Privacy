@@ -5,11 +5,26 @@ from fastapi import APIRouter, HTTPException, status, Depends
 from app.models.company import Company
 from app.auth.dependencies import get_current_user, require_admin
 from app.models.user import User
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from beanie import PydanticObjectId
 
 router = APIRouter(prefix="/companies", tags=["Company Management"])
+
+
+def _validate_time_str(v: Optional[str]) -> Optional[str]:
+    if v is None:
+        return v
+    import re
+    raw = v.strip().upper()
+    m = re.match(r"^(\d{1,2})[-:.](\d{2})\s*(AM|PM)?$", raw)
+    if not m:
+        raise ValueError("Time must match format HH:MM AM/PM or HH:MM (e.g., '09:30 AM', '14:00')")
+    hour = int(m.group(1))
+    minute = int(m.group(2))
+    if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+        raise ValueError("Hours must be 0-23 and minutes 0-59")
+    return v
 
 
 class CreateCompanyRequest(BaseModel):
@@ -23,6 +38,11 @@ class CreateCompanyRequest(BaseModel):
     cut_out_time: Optional[str] = "10:00"
     owner_id: Optional[str] = None
 
+    @field_validator("work_start_time", "work_end_time", "cut_out_time")
+    @classmethod
+    def validate_time_fields(cls, v):
+        return _validate_time_str(v)
+
 
 class UpdateCompanyRequest(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
@@ -35,6 +55,11 @@ class UpdateCompanyRequest(BaseModel):
     flexible_hours: Optional[int] = None
     cut_out_time: Optional[str] = None
     owner_id: Optional[str] = None
+
+    @field_validator("work_start_time", "work_end_time", "cut_out_time")
+    @classmethod
+    def validate_time_fields(cls, v):
+        return _validate_time_str(v)
 
 
 class CompanyResponse(BaseModel):
@@ -131,7 +156,7 @@ async def create_company(
     request: CreateCompanyRequest,
     admin: User = Depends(require_admin),
 ):
-    """Create a new company (admin only)."""
+    """Create a new company/department (admin creates for self, super_admin must assign to a tenant)."""
     existing = await Company.find_one(Company.name == request.name)
     if existing:
         raise HTTPException(
@@ -141,8 +166,22 @@ async def create_company(
 
     from app.models.user import UserRole
     if admin.role == UserRole.SUPER_ADMIN:
-        owner_id = PydanticObjectId(request.owner_id) if request.owner_id else None
+        # Super admin must specify which tenant admin owns this company
+        if not request.owner_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Super admin must specify an owner_id (tenant admin) when creating a company",
+            )
+        # Validate the owner is an actual admin user
+        owner = await User.get(PydanticObjectId(request.owner_id))
+        if not owner or owner.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="owner_id must refer to an existing tenant admin user",
+            )
+        owner_id = PydanticObjectId(request.owner_id)
     else:
+        # Tenant admin: auto-bind to themselves
         owner_id = admin.id
 
     company = Company(
@@ -157,6 +196,11 @@ async def create_company(
         cut_out_time=request.cut_out_time or "10:00"
     )
     await company.insert()
+
+    # Auto-assign company_id to tenant admin if not already set
+    if admin.role == UserRole.ADMIN and not admin.company_id:
+        admin.company_id = company.id
+        await admin.save()
 
     return CompanyResponse(
         id=str(company.id),

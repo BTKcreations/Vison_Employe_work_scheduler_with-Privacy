@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings as core_settings
 from app.database.connection import init_db
-from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications, categories, settings, peer_recognition
+from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications, categories, settings, peer_recognition, leaves, roles
 
 
 import asyncio
@@ -107,6 +107,8 @@ app.include_router(notifications.router)
 app.include_router(categories.router)
 app.include_router(settings.router)
 app.include_router(peer_recognition.router)
+app.include_router(leaves.router)
+app.include_router(roles.router)
 
 @app.get("/", tags=["Health"])
 async def health_check():

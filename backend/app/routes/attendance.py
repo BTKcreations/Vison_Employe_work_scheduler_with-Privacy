@@ -30,7 +30,7 @@ class AttendanceResponse(BaseModel):
     user_name: Optional[str] = None
     user_email: Optional[str] = None
     user_role: Optional[str] = None
-    user_reward_points: Optional[int] = 0
+    user_reward_points: Optional[float] = 0.0
     company_id: str
     check_in: datetime
     check_out: Optional[datetime] = None
@@ -119,28 +119,16 @@ async def check_in(req: AttendanceRequest, current_user: User = Depends(get_curr
     status_str = "present"
     if company and company.work_start_time:
         try:
-            # Robust parsing of various formats (e.g., "09:00 AM", "9:00AM", "14:00")
-            work_start = None
-            raw_time = company.work_start_time.strip().upper()
+            from app.services.report_service import parse_time_string
+            work_start = parse_time_string(company.work_start_time)
             
-            formats = ["%I:%M %p", "%I:%M%p", "%H:%M"]
-            for fmt in formats:
-                try:
-                    work_start = datetime.strptime(raw_time, fmt)
-                    break
-                except ValueError:
-                    continue
+            # Get current time in IST (UTC+5:30)
+            local_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
             
-            if work_start:
-                # Get current time in IST (UTC+5:30)
-                local_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
-                
-                if local_now.hour > work_start.hour or (local_now.hour == work_start.hour and local_now.minute > work_start.minute):
-                    status_str = "late"
-            else:
-                logger.warning(f"Could not parse work_start_time: {company.work_start_time}")
+            if local_now.hour > work_start.hour or (local_now.hour == work_start.hour and local_now.minute > work_start.minute):
+                status_str = "late"
         except Exception as e:
-            print(f"Error calculating late status: {e}")
+            logger.error(f"Error calculating late status: {e}")
 
     # --- ANOMALY DETECTION (check-in time) ---
     anomaly_flags = detect_anomalies(

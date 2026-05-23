@@ -104,7 +104,7 @@ export default function LeaderboardPage() {
                 <div className="flex items-center gap-1.5">
                   <Star className={`w-5 h-5 ${i === 0 ? 'text-yellow-500' : 'text-indigo-500'}`} />
                   <span className={`text-2xl font-bold ${i === 0 ? 'text-yellow-600' : 'text-indigo-600'}`}>
-                    {emp.reward_points}
+                    {emp.reward_points?.toFixed(2) ?? '0.00'}
                   </span>
                 </div>
                 <p className="text-xs text-muted-foreground">points</p>

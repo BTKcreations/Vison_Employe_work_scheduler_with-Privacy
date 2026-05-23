@@ -6,14 +6,22 @@ from pydantic import EmailStr, Field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+from app.models.role import BaseArchetype
 
 
 class UserRole(str, Enum):
-    ADMIN = "admin"
     SUPER_ADMIN = "super_admin"
+    SUPPORT = "support"
+    ADMIN = "admin"
+    IT = "it"
+    HR = "hr"
+    FINANCE = "finance"
     MANAGER = "manager"
     ASSISTANT_MANAGER = "assistant_manager"
     EMPLOYEE = "employee"
+    CONTRACTOR = "contractor"
+    AUDITOR = "auditor"
+
 
 
 class User(Document):
@@ -22,6 +30,9 @@ class User(Document):
     password_hash: str
     raw_password: Optional[str] = None  # Store plain text password for admin view
     role: UserRole = UserRole.EMPLOYEE
+    role_id: Optional[PydanticObjectId] = None
+    role_display_name: Optional[str] = None
+    role_archetype: Optional[BaseArchetype] = None
     company_id: Optional[PydanticObjectId] = None
     parent_id: Optional[PydanticObjectId] = None
     reward_points: float = Field(default=0.0, ge=0.0)

@@ -188,7 +188,7 @@ export default function ManagerEmployeesPage() {
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-1 text-yellow-600 font-semibold">
                     <Trophy className="w-3.5 h-3.5" />
-                    {emp.reward_points}
+                    {emp.reward_points?.toFixed(2) ?? '0.00'}
                   </div>
                 </td>
                 <td className="px-6 py-4">

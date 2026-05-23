@@ -71,7 +71,7 @@ export default function EmployeeDashboardPage() {
         <div className="flex items-center justify-between">
           <div>
             <p className="text-sm text-muted-foreground mb-1">Your Reward Points</p>
-            <p className="text-4xl font-bold text-yellow-600">{data.user.reward_points}</p>
+            <p className="text-4xl font-bold text-yellow-600">{(data.user.reward_points ?? 0).toFixed(2)}</p>
             <p className="text-xs text-muted-foreground mt-2">
               Complete tasks before the deadline to earn points!
             </p>

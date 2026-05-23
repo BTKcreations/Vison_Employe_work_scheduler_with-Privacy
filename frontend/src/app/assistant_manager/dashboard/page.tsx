@@ -89,7 +89,9 @@ export default function AssistantManagerDashboard() {
               <div className={`w-10 h-10 rounded-lg bg-gradient-to-br ${card.color} flex items-center justify-center mb-3`}>
                 <Icon className="w-5 h-5 text-white" />
               </div>
-              <p className="text-2xl font-bold">{card.value}</p>
+              <p className="text-2xl font-bold">
+                {typeof card.value === 'number' ? (Number.isInteger(card.value) ? card.value : card.value.toFixed(2)) : card.value}
+              </p>
               <p className="text-xs text-muted-foreground mt-1">{card.label}</p>
             </div>
           );
@@ -132,7 +134,7 @@ export default function AssistantManagerDashboard() {
                   </div>
                   <div className="flex items-center gap-1 text-sm font-semibold text-yellow-400">
                     <Trophy className="w-3.5 h-3.5" />
-                    {emp.reward_points}
+                    {emp.reward_points?.toFixed(2) ?? '0.00'}
                   </div>
                 </div>
               ))}

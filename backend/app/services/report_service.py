@@ -2,13 +2,62 @@
 Report service - generates CSV and Excel reports using Pandas and OpenPyXL.
 """
 import pandas as pd
+import re
 from io import BytesIO
 from app.models.task import Task
 from app.models.attendance import Attendance
 from app.models.user import User, UserRole
 from beanie import PydanticObjectId
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import datetime, timezone, timedelta, time
+from typing import Optional, List
+
+def parse_time_string(time_str: Optional[str]) -> time:
+    """
+    Parse check-in / start time strings into a datetime.time object.
+    Supports formats:
+      - 12-hour: '09:00 AM', '9:30PM', '09:00AM', etc.
+      - 24-hour: '14:30', '09:00', '9:00', etc.
+    Falls back to time(9, 0) on any exception or mismatch.
+    """
+    if not time_str:
+        return time(9, 0)
+    
+    raw = str(time_str).strip().upper()
+    
+    # Try Regex for 12-hour format: e.g. 09:30 AM or 9:30PM
+    m12 = re.match(r'^(\d{1,2}):(\d{2})\s*(AM|PM)$', raw)
+    if m12:
+        h, m, p = m12.groups()
+        h, m = int(h), int(m)
+        if p == "PM" and h < 12:
+            h += 12
+        elif p == "AM" and h == 12:
+            h = 0
+        try:
+            return time(h, m)
+        except ValueError:
+            return time(9, 0)
+            
+    # Try Regex for 24-hour format: e.g. 14:30 or 09:00
+    m24 = re.match(r'^(\d{1,2}):(\d{2})$', raw)
+    if m24:
+        h, m = m24.groups()
+        h, m = int(h), int(m)
+        try:
+            return time(h, m)
+        except ValueError:
+            return time(9, 0)
+
+    # Strptime fallbacks
+    formats = ["%I:%M %p", "%I:%M%p", "%H:%M", "%I:%M  %p"]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(raw, fmt)
+            return dt.time()
+        except ValueError:
+            continue
+            
+    return time(9, 0)
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -29,17 +78,20 @@ async def _get_task_data(
 
     query = {}
 
-    if current_user.role == UserRole.SUPER_ADMIN:
+    from app.models.role import BaseArchetype
+    arch = current_user.role_archetype or current_user.role
+
+    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
         if employee_id:
             query["assigned_to"] = PydanticObjectId(employee_id)
-    elif current_user.role == UserRole.ADMIN:
+    elif arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, BaseArchetype.FINANCE, BaseArchetype.AUDITOR]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
         query["company_id"] = {"$in": co_ids}
         if employee_id:
             query["assigned_to"] = PydanticObjectId(employee_id)
-    elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+    elif arch in [BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
         subordinates = await user_service.get_all_employees(current_user)
         subordinate_ids = {emp.id for emp in subordinates}
         if employee_id:
@@ -52,7 +104,7 @@ async def _get_task_data(
                 {"assigned_to": {"$in": list(subordinate_ids) + [current_user.id]}},
                 {"created_by": current_user.id}
             ]
-    else:  # EMPLOYEE
+    else:  # EMPLOYEE, CONTRACTOR
         query["assigned_to"] = current_user.id
 
     if status:
@@ -198,10 +250,13 @@ async def generate_attendance_excel(
     from app.services import user_service
     query = {}
 
-    if current_user.role == UserRole.SUPER_ADMIN:
+    from app.models.role import BaseArchetype
+    arch = current_user.role_archetype or current_user.role
+
+    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
         if user_id:
             query["user_id"] = PydanticObjectId(user_id)
-    elif current_user.role == UserRole.ADMIN:
+    elif arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, BaseArchetype.FINANCE, BaseArchetype.AUDITOR]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
@@ -214,7 +269,7 @@ async def generate_attendance_excel(
             query["user_id"] = target_uid
         else:
             query["user_id"] = {"$in": user_ids}
-    elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+    elif arch in [BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
         subordinates = await user_service.get_all_employees(current_user)
         subordinate_ids = {emp.id for emp in subordinates}
         if user_id:
@@ -299,10 +354,10 @@ async def generate_attendance_excel(
     return output
 
 
-async def calculate_payroll_data(current_user: User, year: int, month: int):
+async def calculate_payroll_data(current_user: User, year: int, month: int, employee_id: Optional[str] = None):
     from app.models.system_settings import SystemSettings
     from app.models.company import Company
-    import math
+    from app.services.reward_service import calculate_employee_performance
 
     # Get settings
     settings = None
@@ -315,17 +370,32 @@ async def calculate_payroll_data(current_user: User, year: int, month: int):
 
     # Get start and end dates in UTC
     import calendar
-    from datetime import date
     
     start_date = datetime(year, month, 1, 0, 0, 0, tzinfo=timezone.utc)
     _, last_day = calendar.monthrange(year, month)
     end_date = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
-    start_date_naive = start_date.replace(tzinfo=None)
-    end_date_naive = end_date.replace(tzinfo=None)
 
-    # Get all employees in hierarchy
+    # Get employees based on hierarchy and filter
     from app.services import user_service
-    employees = await user_service.get_all_employees(current_user)
+    from app.models.role import BaseArchetype
+    arch = current_user.role_archetype or current_user.role
+    if arch in [BaseArchetype.EMPLOYEE, BaseArchetype.CONTRACTOR, UserRole.EMPLOYEE]:
+        employees = [current_user]
+    elif employee_id:
+        target_uid = PydanticObjectId(employee_id)
+        if target_uid == current_user.id:
+            employees = [current_user]
+        else:
+            subordinates = await user_service.get_all_employees(current_user)
+            subordinate_ids = {emp.id for emp in subordinates}
+            if target_uid not in subordinate_ids:
+                employees = []
+            else:
+                emp_obj = await User.get(target_uid)
+                employees = [emp_obj] if emp_obj else []
+    else:
+        employees = await user_service.get_all_employees(current_user)
+
     employee_ids = [emp.id for emp in employees]
 
     # Get all tasks for this month for these employees
@@ -363,15 +433,6 @@ async def calculate_payroll_data(current_user: User, year: int, month: int):
     # Fetch all companies in a map for start time settings
     companies = await Company.find_all().to_list()
     company_map = {str(c.id): c for c in companies}
-
-    # Helper function to compute multiplier
-    def get_incentive_multiplier(performance_pct: float, tiers: dict) -> float:
-        sorted_tiers = sorted([(float(k), float(v)) for k, v in tiers.items()], key=lambda x: x[0])
-        multiplier = 0.0
-        for threshold, val in sorted_tiers:
-            if performance_pct >= threshold:
-                multiplier = val
-        return multiplier
 
     # Determine scheduled weekdays
     today = datetime.utcnow() + timedelta(hours=5, minutes=30)
@@ -414,24 +475,11 @@ async def calculate_payroll_data(current_user: User, year: int, month: int):
             if att:
                 company = company_map.get(str(emp.company_id)) if emp.company_id else None
                 work_start_str = company.work_start_time if company else "09:00 AM"
-
-                work_start = None
-                if work_start_str:
-                    raw_time = work_start_str.strip().upper()
-                    formats = ["%I:%M %p", "%I:%M%p", "%H:%M"]
-                    for fmt in formats:
-                        try:
-                            work_start = datetime.strptime(raw_time, fmt)
-                            break
-                        except ValueError:
-                            continue
+                work_start = parse_time_string(work_start_str)
 
                 local_ci = att.check_in + timedelta(hours=5, minutes=30)
-                if work_start:
-                    start_dt = local_ci.replace(hour=work_start.hour, minute=work_start.minute, second=0, microsecond=0)
-                    diff_minutes = (local_ci - start_dt).total_seconds() / 60.0
-                else:
-                    diff_minutes = 0.0
+                start_dt = local_ci.replace(hour=work_start.hour, minute=work_start.minute, second=0, microsecond=0)
+                diff_minutes = (local_ci - start_dt).total_seconds() / 60.0
 
                 if diff_minutes <= 0:
                     pts = settings.attendance_impact.get("present", 1.0)
@@ -466,76 +514,24 @@ async def calculate_payroll_data(current_user: User, year: int, month: int):
         base_sal = getattr(emp, "base_salary", 30000.0)
         attendance_bonus = 0.05 * base_sal if reliability_score >= (settings.attendance_bonus_threshold * 100.0) else 0.0
 
-        # Calculate Task Points
+        # Calculate Task Points using reward service
         emp_tasks = tasks_by_user.get(str(emp.id), [])
-        earned_task_points = 0.0
-        total_possible_points = 0.0
-        late_tasks_4_days_plus = 0
+        perf = await calculate_employee_performance(
+            user_id=emp.id,
+            start_date=start_date,
+            end_date=end_date,
+            tasks_list=emp_tasks
+        )
 
-        for task in emp_tasks:
-            base_pts = settings.priority_points.get(task.priority.value, 1.0)
-            complexity_mult = settings.complexity_multipliers.get(task.complexity, 1.0)
-            max_task_pts = base_pts * complexity_mult
-
-            is_completed_this_month = False
-            task_completed_at = task.completed_at.replace(tzinfo=None) if task.completed_at and task.completed_at.tzinfo else task.completed_at
-            if task_completed_at and start_date_naive <= task_completed_at <= end_date_naive:
-                is_completed_this_month = True
-
-            is_due_this_month = False
-            task_deadline = task.deadline.replace(tzinfo=None) if task.deadline and task.deadline.tzinfo else task.deadline
-            if task_deadline and start_date_naive <= task_deadline <= end_date_naive:
-                is_due_this_month = True
-
-            if is_completed_this_month:
-                if task.reward_given and task.reward_points is not None:
-                    earned_pts = task.reward_points
-                else:
-                    earned_pts = max_task_pts * task.quality_multiplier
-                    variance_hours = (task.deadline - task.completed_at).total_seconds() / 3600.0
-                    if variance_hours >= 24:
-                        earned_pts *= settings.early_completion_bonus
-                    elif variance_hours < 0:
-                        days_late_ceil = math.ceil(abs(variance_hours) / 24.0)
-                        if days_late_ceil == 1:
-                            earned_pts *= settings.delay_reductions.get("1", 0.75)
-                        elif days_late_ceil == 2:
-                            earned_pts *= settings.delay_reductions.get("2", 0.50)
-                        elif days_late_ceil == 3:
-                            earned_pts *= settings.delay_reductions.get("3", 0.25)
-                        else:
-                            earned_pts *= settings.delay_reductions.get("4", 0.0)
-                earned_task_points += earned_pts
-
-            if is_completed_this_month or is_due_this_month:
-                total_possible_points += max_task_pts
-
-            is_4_days_late = False
-            if task.completed_at:
-                if (task.completed_at - task.deadline).total_seconds() / 3600.0 > 96.0:
-                    is_4_days_late = True
-            else:
-                now = datetime.utcnow()
-                if (now - task.deadline).total_seconds() / 3600.0 > 96.0:
-                    is_4_days_late = True
-
-            if is_4_days_late:
-                late_tasks_4_days_plus += 1
-
-        # Performance percentage
-        if total_possible_points > 0:
-            performance_pct = (earned_task_points / total_possible_points) * 100.0
-        else:
-            performance_pct = 0.0
-
-        applied_deduction = 0.0
-        if late_tasks_4_days_plus > settings.negative_incentive_threshold:
-            performance_pct = max(0.0, performance_pct - (settings.negative_incentive_deduction * 100.0))
-            applied_deduction = settings.negative_incentive_deduction * 100.0
+        earned_task_points = perf["total_earned_points"]
+        total_possible_points = perf["total_possible_points"]
+        performance_pct = perf["performance_percent"]
+        late_tasks_4_days_plus = perf["overdue_count"]
+        applied_deduction = perf["deduction_applied"]
+        incentive_mult = perf["incentive_multiplier"]
 
         # Performance incentive
         incentive_pool = 0.25 * base_sal
-        incentive_mult = get_incentive_multiplier(performance_pct, settings.incentive_tiers)
         performance_incentive = incentive_mult * incentive_pool
 
         # Gross Pay
@@ -566,8 +562,8 @@ async def calculate_payroll_data(current_user: User, year: int, month: int):
     return payroll_records
 
 
-async def generate_payroll_excel(current_user: User, year: int, month: int) -> BytesIO:
-    records = await calculate_payroll_data(current_user, year, month)
+async def generate_payroll_excel(current_user: User, year: int, month: int, employee_id: Optional[str] = None) -> BytesIO:
+    records = await calculate_payroll_data(current_user, year, month, employee_id)
     
     # Create DataFrame
     df = pd.DataFrame(records)

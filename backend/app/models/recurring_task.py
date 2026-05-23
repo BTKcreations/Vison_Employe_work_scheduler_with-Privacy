@@ -19,7 +19,7 @@ class RecurrenceRule(Document):
     # This acts as a template for tasks
     work_description: str
     priority: str = "medium"
-    reward_points: int = 0
+    reward_points: float = 0.0
     assigned_to_list: List[PydanticObjectId] = []
     company_id_list: List[PydanticObjectId] = []
     created_by: PydanticObjectId

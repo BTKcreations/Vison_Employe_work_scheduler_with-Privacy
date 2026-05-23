@@ -200,7 +200,9 @@ export default function UserLink({
                 <div className="absolute top-0 right-0 w-20 h-20 bg-amber-500/5 rounded-full -mr-10 -mt-10 blur-2xl" />
                 <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Points Achieved</h5>
                 <div className="flex flex-col items-center gap-1">
-                  <span className="text-4xl font-black text-slate-900 leading-none">{stats.user.reward_points}</span>
+                  <span className="text-4xl font-black text-slate-900 leading-none">
+                    {stats.user.reward_points?.toFixed(2) ?? '0.00'}
+                  </span>
                   <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center shadow-lg shadow-amber-200/50 mt-2">
                     <Trophy className="w-5 h-5 text-amber-600" />
                   </div>

@@ -5,7 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
-  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, Settings, Key
+  LayoutDashboard, ClipboardList, LogOut, Zap, ChevronRight, Trophy, MapPin, Menu, Settings, Key, Calendar
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -18,6 +18,7 @@ const navItems = [
   { href: '/assistant_manager/tasks', label: 'Kanban & Tasks', icon: ClipboardList },
   { href: '/assistant_manager/attendance', label: 'Attendance Monitor', icon: MapPin },
   { href: '/assistant_manager/leaderboard', label: 'Leaderboard', icon: Trophy },
+  { href: '/assistant_manager/leaves', label: 'Leaves', icon: Calendar },
 ];
 
 export default function AssistantManagerLayout({ children }: { children: React.ReactNode }) {
@@ -74,7 +75,7 @@ export default function AssistantManagerLayout({ children }: { children: React.R
             </div>
             <div>
               <h1 className="font-bold text-sm gradient-text">TaskReward</h1>
-              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role.replace('_', ' ')} Panel</p>
+              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">{user.role_display_name || user.role.replace('_', ' ')} Panel</p>
             </div>
           </div>
         </div>
@@ -161,7 +162,7 @@ export default function AssistantManagerLayout({ children }: { children: React.R
             <div className="h-8 w-px bg-border mx-1" />
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-slate-900 leading-none">{user.name}</p>
-              <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter font-black">{user.role}</p>
+              <p className="text-[10px] text-muted-foreground mt-1 uppercase tracking-tighter font-black">{user.role_display_name || user.role}</p>
             </div>
           </div>
         </header>
