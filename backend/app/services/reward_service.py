@@ -95,7 +95,7 @@ async def get_leaderboard(limit: int = 10, current_user: Optional[User] = None):
     if not current_user or current_user.role == UserRole.SUPER_ADMIN:
         # Super Admin sees everyone
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
             User.is_active == True,
         ).sort("-reward_points").limit(limit).to_list()
     elif current_user.role == UserRole.ADMIN:
@@ -104,16 +104,16 @@ async def get_leaderboard(limit: int = 10, current_user: Optional[User] = None):
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
-            User.role != UserRole.ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
+            User.role != UserRole.ADMIN.value,
             User.is_active == True,
             In(User.company_id, co_ids)
         ).sort("-reward_points").limit(limit).to_list()
     else:
         # Managers, ASM, and Employees only see peers in their own company
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
-            User.role != UserRole.ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
+            User.role != UserRole.ADMIN.value,
             User.is_active == True,
             User.company_id == current_user.company_id
         ).sort("-reward_points").limit(limit).to_list()
@@ -123,7 +123,8 @@ async def get_leaderboard(limit: int = 10, current_user: Optional[User] = None):
             "id": str(emp.id),
             "name": emp.name,
             "email": emp.email,
-            "reward_points": emp.reward_points,
+            "reward_points": float(emp.reward_points) if emp.reward_points is not None else 0.0,
+            "role": emp.role.value if hasattr(emp.role, 'value') else str(emp.role)
         }
         for emp in employees
     ]

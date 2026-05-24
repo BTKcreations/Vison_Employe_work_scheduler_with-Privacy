@@ -48,10 +48,11 @@ export default function UserLink({
 
   const getDetailHref = () => {
     if (!id || id === 'undefined' || !user) return '#';
+    if (user.role === 'super_admin') return `/super_admin/employees/detail?id=${id}`;
     if (user.role === 'admin') return `/admin/employees/detail?id=${id}`;
     if (user.role === 'manager') return `/manager/employees/detail?id=${id}`;
     if (user.role === 'assistant_manager') return `/assistant_manager/employees/detail?id=${id}`;
-    return '#';
+    return `/employee/employees/detail?id=${id}`;
   };
 
   const fetchStats = async () => {

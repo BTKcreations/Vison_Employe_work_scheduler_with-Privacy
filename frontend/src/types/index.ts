@@ -14,6 +14,8 @@ export interface User {
   role_id?: string;
   role_display_name?: string;
   role_archetype?: string;
+  base_salary?: number;
+  company_name?: string;
 }
 
 export interface RemarkEntry {

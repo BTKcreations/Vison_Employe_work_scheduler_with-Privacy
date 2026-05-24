@@ -56,6 +56,19 @@ async def create_role(
             detail="Cannot create custom roles based on the Super Admin archetype",
         )
 
+    # SaaS Plan Verification: Check max custom roles limit
+    from app.models.company import Company
+    comp_obj = await Company.get(current_user.company_id)
+    if comp_obj:
+        max_roles = getattr(comp_obj, "subscription_max_roles", 3)
+        if max_roles > 0:
+            current_roles_count = await CompanyRole.find(CompanyRole.company_id == current_user.company_id).count()
+            if current_roles_count >= max_roles:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"Subscription Limit Reached: Your plan allows a maximum of {max_roles} custom roles."
+                )
+
     # If permissions are empty, populate with default archetype permissions
     perms = request.permissions
     if not perms:

@@ -112,7 +112,13 @@ async def get_all_employees(current_user: Optional[User] = None) -> List[User]:
         # Super Admin sees everyone in the system except other super admins
         return await User.find(User.role != UserRole.SUPER_ADMIN).sort("-created_at").to_list()
 
-    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR]:
+    if arch in [
+        BaseArchetype.ADMIN, UserRole.ADMIN, 
+        BaseArchetype.HR, UserRole.HR,
+        BaseArchetype.IT, UserRole.IT,
+        BaseArchetype.FINANCE, UserRole.FINANCE,
+        BaseArchetype.AUDITOR, UserRole.AUDITOR
+    ]:
         # Admin / HR sees all employees in their managed companies (company_id match)
         # Since Admin can manage multiple companies, we search companies owned by admin
         # and find users in those companies, or users matching current_user.company_id.
@@ -273,11 +279,11 @@ async def deactivate_employee(employee_id: str) -> Optional[User]:
 
 async def get_employee_count() -> int:
     """Get total number of employees."""
-    return await User.find(User.role != UserRole.ADMIN).count()
+    return await User.find(User.role != UserRole.ADMIN.value).count()
 
 
 async def get_active_employee_count() -> int:
     """Get total number of active employees."""
     return await User.find(
-        User.role != UserRole.ADMIN, User.is_active == True
+        User.role != UserRole.ADMIN.value, User.is_active == True
     ).count()

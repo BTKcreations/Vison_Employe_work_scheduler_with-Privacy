@@ -90,17 +90,20 @@ async def get_tasks(
 
     query = {}
 
-    if current_user.role == UserRole.SUPER_ADMIN:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str == "super_admin":
         if user_id:
             query["assigned_to"] = PydanticObjectId(user_id)
-    elif current_user.role == UserRole.ADMIN:
+    elif arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
         query["company_id"] = {"$in": co_ids}
         if user_id:
             query["assigned_to"] = PydanticObjectId(user_id)
-    elif current_user.role == UserRole.MANAGER:
+    elif arch_str == "manager":
         subordinates = await user_service.get_all_employees(current_user)
         subordinate_ids = {emp.id for emp in subordinates}
         if user_id:
@@ -113,7 +116,7 @@ async def get_tasks(
                 {"assigned_to": {"$in": list(subordinate_ids) + [current_user.id]}},
                 {"created_by": current_user.id}
             ]
-    elif current_user.role == UserRole.ASSISTANT_MANAGER:
+    elif arch_str == "assistant_manager":
         subordinates = await user_service.get_all_employees(current_user)
         subordinate_ids = {emp.id for emp in subordinates}
         if user_id:
@@ -126,7 +129,7 @@ async def get_tasks(
                 {"assigned_to": {"$in": list(subordinate_ids) + [current_user.id]}},
                 {"created_by": current_user.id}
             ]
-    else:  # EMPLOYEE
+    else:  # EMPLOYEE / CONTRACTOR
         query["assigned_to"] = current_user.id
 
     if status:
@@ -244,9 +247,11 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
     # Check for reward if task was just completed (handles both on-time and late completions, late penalty computed dynamically)
     final_status = task.status
     if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE] and original_status not in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE]:
-        await check_and_award_reward(task)
-        # Reload task to capture the reward points and reward_given flag updates
-        task = await Task.get(PydanticObjectId(task_id))
+        # FIX: Prevent reward point farming. Only official assigned tasks yield points.
+        if task.task_type != TaskType.PERSONAL:
+            await check_and_award_reward(task)
+            # Reload task to capture the reward points and reward_given flag updates
+            task = await Task.get(PydanticObjectId(task_id))
 
         await ActivityLog(
             user_id=task.assigned_to,

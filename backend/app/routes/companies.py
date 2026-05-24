@@ -37,6 +37,10 @@ class CreateCompanyRequest(BaseModel):
     flexible_hours: Optional[int] = 8
     cut_out_time: Optional[str] = "10:00"
     owner_id: Optional[str] = None
+    
+    subscription_max_employees: Optional[int] = Field(None, description="Super Admin only")
+    subscription_max_roles: Optional[int] = Field(None, description="Super Admin only")
+    subscription_geofencing: Optional[bool] = Field(None, description="Super Admin only")
 
     @field_validator("work_start_time", "work_end_time", "cut_out_time")
     @classmethod
@@ -55,6 +59,10 @@ class UpdateCompanyRequest(BaseModel):
     flexible_hours: Optional[int] = None
     cut_out_time: Optional[str] = None
     owner_id: Optional[str] = None
+    
+    subscription_max_employees: Optional[int] = Field(None, description="Super Admin only")
+    subscription_max_roles: Optional[int] = Field(None, description="Super Admin only")
+    subscription_geofencing: Optional[bool] = Field(None, description="Super Admin only")
 
     @field_validator("work_start_time", "work_end_time", "cut_out_time")
     @classmethod
@@ -75,6 +83,9 @@ class CompanyResponse(BaseModel):
     cut_out_time: str
     created_at: str
     owner_id: Optional[str] = None
+    subscription_max_employees: Optional[int] = 10
+    subscription_max_roles: Optional[int] = 3
+    subscription_geofencing: Optional[bool] = True
 
 
 @router.get("", response_model=List[CompanyResponse])
@@ -114,6 +125,9 @@ async def list_companies(current_user: User = Depends(get_current_user)):
             cut_out_time=c.cut_out_time,
             created_at=c.created_at.isoformat() + 'Z',
             owner_id=str(c.owner_id) if c.owner_id else None,
+            subscription_max_employees=getattr(c, 'subscription_max_employees', 10),
+            subscription_max_roles=getattr(c, 'subscription_max_roles', 3),
+            subscription_geofencing=getattr(c, 'subscription_geofencing', True),
         )
         for c in companies
     ]
@@ -146,6 +160,9 @@ async def list_all_companies(admin: User = Depends(require_admin)):
             cut_out_time=c.cut_out_time,
             created_at=c.created_at.isoformat() + 'Z',
             owner_id=str(c.owner_id) if c.owner_id else None,
+            subscription_max_employees=getattr(c, 'subscription_max_employees', 10),
+            subscription_max_roles=getattr(c, 'subscription_max_roles', 3),
+            subscription_geofencing=getattr(c, 'subscription_geofencing', True),
         )
         for c in companies
     ]
@@ -193,7 +210,10 @@ async def create_company(
         work_end_time=request.work_end_time or "18:00",
         work_type=request.work_type or "fixed",
         flexible_hours=request.flexible_hours or 8,
-        cut_out_time=request.cut_out_time or "10:00"
+        cut_out_time=request.cut_out_time or "10:00",
+        subscription_max_employees=request.subscription_max_employees if admin.role == UserRole.SUPER_ADMIN and request.subscription_max_employees is not None else 10,
+        subscription_max_roles=request.subscription_max_roles if admin.role == UserRole.SUPER_ADMIN and request.subscription_max_roles is not None else 3,
+        subscription_geofencing=request.subscription_geofencing if admin.role == UserRole.SUPER_ADMIN and request.subscription_geofencing is not None else True,
     )
     await company.insert()
 
@@ -215,6 +235,9 @@ async def create_company(
         cut_out_time=company.cut_out_time,
         created_at=company.created_at.isoformat() + 'Z',
         owner_id=str(company.owner_id) if company.owner_id else None,
+        subscription_max_employees=getattr(company, 'subscription_max_employees', 10),
+        subscription_max_roles=getattr(company, 'subscription_max_roles', 3),
+        subscription_geofencing=getattr(company, 'subscription_geofencing', True),
     )
 
 
@@ -240,6 +263,12 @@ async def update_company(
     update_data = {k: v for k, v in request.model_dump().items() if v is not None}
     if "owner_id" in update_data:
         update_data["owner_id"] = PydanticObjectId(update_data["owner_id"]) if update_data["owner_id"] else None
+        
+    # Protect subscription fields from Tenant Admins
+    if admin.role != UserRole.SUPER_ADMIN:
+        update_data.pop("subscription_max_employees", None)
+        update_data.pop("subscription_max_roles", None)
+        update_data.pop("subscription_geofencing", None)
 
     if update_data:
         await company.set(update_data)
@@ -258,6 +287,9 @@ async def update_company(
         cut_out_time=company.cut_out_time,
         created_at=company.created_at.isoformat() + 'Z',
         owner_id=str(company.owner_id) if company.owner_id else None,
+        subscription_max_employees=getattr(company, 'subscription_max_employees', 10),
+        subscription_max_roles=getattr(company, 'subscription_max_roles', 3),
+        subscription_geofencing=getattr(company, 'subscription_geofencing', True),
     )
 
 

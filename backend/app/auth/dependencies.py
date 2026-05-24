@@ -92,10 +92,10 @@ async def require_management(
     allowed_management = [
         BaseArchetype.ADMIN, BaseArchetype.SUPER_ADMIN, 
         BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER,
-        BaseArchetype.HR,
+        BaseArchetype.HR, BaseArchetype.IT, BaseArchetype.FINANCE, BaseArchetype.AUDITOR,
         UserRole.ADMIN, UserRole.SUPER_ADMIN,
         UserRole.MANAGER, UserRole.ASSISTANT_MANAGER,
-        UserRole.HR
+        UserRole.HR, UserRole.IT, UserRole.FINANCE, UserRole.AUDITOR
     ]
     if arch not in allowed_management:
         raise HTTPException(

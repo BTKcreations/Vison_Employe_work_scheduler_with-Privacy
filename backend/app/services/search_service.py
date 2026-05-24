@@ -19,7 +19,7 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
     # 1. Search Employees
     if current_user.role == UserRole.SUPER_ADMIN:
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
             {"$or": [
                 {"name": search_filter},
                 {"email": search_filter}
@@ -31,7 +31,7 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
         co_ids = [c.id for c in companies]
         from beanie.operators import In
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
             In(User.company_id, co_ids),
             {"$or": [
                 {"name": search_filter},
@@ -54,7 +54,7 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
     else:
         # Employee can only search users in their own company to maintain privacy
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
             User.company_id == current_user.company_id,
             {"$or": [
                 {"name": search_filter},

@@ -30,7 +30,11 @@ export default function EmployeeLayout({ children }: { children: React.ReactNode
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
-  const canAccess = isEmployee;
+  const canAccess = user && 
+    user.role !== 'super_admin' && 
+    user.role !== 'admin' && 
+    user.role !== 'manager' && 
+    user.role !== 'assistant_manager';
 
   useEffect(() => {
     if (!isLoading) {

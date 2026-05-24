@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Users, ClipboardList, FileBarChart,
   Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Menu, X as CloseIcon,
-  Settings, Calendar
+  Settings, Calendar, Network
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -18,6 +18,7 @@ import { Key, Shield } from 'lucide-react';
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/admin/employees', label: 'Employees', icon: Users },
+  { href: '/admin/hierarchy', label: 'Org Hierarchy', icon: Network },
   { href: '/admin/companies', label: 'Companies', icon: Building2 },
   { href: '/admin/tasks', label: 'Tasks', icon: ClipboardList },
   { href: '/admin/attendance', label: 'Attendance Logs', icon: MapPin },
@@ -146,6 +147,15 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
           <div className="flex items-center gap-4">
             <NotificationBell />
+            <Link 
+              href="/admin/hierarchy" 
+              className={`p-2 rounded-full transition-colors relative hover:bg-slate-100 ${
+                pathname === '/admin/hierarchy' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500'
+              }`}
+              title="Organization Hierarchy Map"
+            >
+              <Network className="w-5 h-5" />
+            </Link>
             {/* Settings Dropdown */}
             <div className="relative group">
               <button className="p-2 hover:bg-slate-100 rounded-full transition-colors relative">

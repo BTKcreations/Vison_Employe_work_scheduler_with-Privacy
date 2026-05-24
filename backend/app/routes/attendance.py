@@ -6,11 +6,12 @@ from app.auth.dependencies import get_current_user
 from app.services.geofence_utils import (
     is_within_geofence, calculate_drift_km, detect_anomalies, get_distance_to_office
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 from pydantic import BaseModel
 from beanie import PydanticObjectId
 from beanie.operators import In
+from zoneinfo import ZoneInfo
 import logging
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,8 @@ async def check_in(req: AttendanceRequest, current_user: User = Depends(get_curr
     distance_from_office = None
     geofence_flags = []
     
-    if company and company.office_lat is not None and company.office_lng is not None:
+    is_geofence_enabled = getattr(company, 'subscription_geofencing', True) if company else False
+    if is_geofence_enabled and company and company.office_lat is not None and company.office_lng is not None:
         distance_from_office = get_distance_to_office(
             req.lat, req.lng, company.office_lat, company.office_lng
         )
@@ -122,8 +124,10 @@ async def check_in(req: AttendanceRequest, current_user: User = Depends(get_curr
             from app.services.report_service import parse_time_string
             work_start = parse_time_string(company.work_start_time)
             
-            # Get current time in IST (UTC+5:30)
-            local_now = datetime.utcnow() + timedelta(hours=5, minutes=30)
+            # FIX: Use company's configured timezone, fallback to UTC
+            tz_string = getattr(company, 'timezone', 'UTC')
+            tz = ZoneInfo(tz_string)
+            local_now = datetime.utcnow().replace(tzinfo=timezone.utc).astimezone(tz)
             
             if local_now.hour > work_start.hour or (local_now.hour == work_start.hour and local_now.minute > work_start.minute):
                 status_str = "late"
@@ -187,7 +191,8 @@ async def check_out(req: AttendanceRequest, current_user: User = Depends(get_cur
     distance_from_office_out = None
     checkout_flags = list(attendance.flags)  # Preserve existing flags
     
-    if company and company.office_lat is not None and company.office_lng is not None:
+    is_geofence_enabled = getattr(company, 'subscription_geofencing', True) if company else False
+    if is_geofence_enabled and company and company.office_lat is not None and company.office_lng is not None:
         distance_from_office_out = get_distance_to_office(
             req.lat, req.lng, company.office_lat, company.office_lng
         )
@@ -274,7 +279,8 @@ async def get_geofence_status(
     """Check if the current location is within the geofence. Returns distance and status."""
     company = await Company.get(current_user.company_id) if current_user.company_id else None
     
-    if not company or company.office_lat is None or company.office_lng is None:
+    is_geofence_enabled = getattr(company, 'subscription_geofencing', True) if company else False
+    if not is_geofence_enabled or not company or company.office_lat is None or company.office_lng is None:
         return {
             "geofence_configured": False,
             "policy": "disabled",

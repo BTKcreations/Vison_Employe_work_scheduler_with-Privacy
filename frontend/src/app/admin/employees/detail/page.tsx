@@ -79,22 +79,39 @@ function EmployeeProfileContent() {
   const fetchData = useCallback(async () => {
     if (!id) return;
     try {
-      const [empRes, statsRes, tasksRes, companiesRes, categoriesRes, allEmpRes, rolesRes] = await Promise.all([
+      const [empRes, statsRes, tasksRes, categoriesRes] = await Promise.all([
         api.get(`/admin/employees/${id}`),
         api.get(`/admin/employees/${id}/stats`),
         api.get(`/tasks?employee_id=${id}`),
-        api.get('/companies'),
-        api.get('/categories'),
-        api.get('/admin/employees'),
-        api.get('/roles')
+        api.get('/categories')
       ]);
       setEmployee(empRes.data);
       setStats(statsRes.data);
       setTasks(tasksRes.data);
-      setCompanies(companiesRes.data);
       setCategories(categoriesRes.data);
-      setAllEmployees(allEmpRes.data);
-      setRoles(rolesRes.data);
+
+      // Optional metadata endpoints for editing/assignment
+      try {
+        const companiesRes = await api.get('/companies');
+        setCompanies(companiesRes.data);
+      } catch (e) {
+        console.warn('Optional endpoint /companies failed:', e);
+      }
+
+      try {
+        const allEmpRes = await api.get('/admin/employees');
+        setAllEmployees(allEmpRes.data);
+      } catch (e) {
+        console.warn('Optional endpoint /admin/employees failed:', e);
+      }
+
+      try {
+        const rolesRes = await api.get('/roles');
+        setRoles(rolesRes.data);
+      } catch (e) {
+        console.warn('Optional endpoint /roles failed:', e);
+      }
+
     } catch (err: any) {
       console.error('Failed to fetch employee data:', err);
       setError(err.response?.data?.detail || 'Failed to load employee profile');

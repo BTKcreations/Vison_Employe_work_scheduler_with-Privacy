@@ -30,10 +30,11 @@ export default function AttendanceManagementPage() {
 
   const getDetailHref = (empId: string) => {
     if (!user) return '#';
+    if (user.role === 'super_admin') return `/super_admin/employees/detail?id=${empId}&showAttendance=true`;
     if (user.role === 'admin') return `/admin/employees/detail?id=${empId}&showAttendance=true`;
     if (user.role === 'manager') return `/manager/employees/detail?id=${empId}&showAttendance=true`;
     if (user.role === 'assistant_manager') return `/assistant_manager/employees/detail?id=${empId}&showAttendance=true`;
-    return '#';
+    return `/employee/employees/detail?id=${empId}&showAttendance=true`;
   };
 
   const fetchSummaries = useCallback(async () => {

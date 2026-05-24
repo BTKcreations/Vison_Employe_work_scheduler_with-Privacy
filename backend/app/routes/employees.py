@@ -32,7 +32,7 @@ async def check_hierarchy(current_user: User, target_user: User) -> bool:
     if target_arch in [BaseArchetype.SUPPORT, UserRole.SUPPORT]:
         return arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN, BaseArchetype.SUPPORT, UserRole.SUPPORT]
 
-    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR]:
+    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN, BaseArchetype.HR, UserRole.HR, BaseArchetype.IT, UserRole.IT]:
         # Admin / HR can manage users in their company/companies
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
@@ -91,8 +91,10 @@ async def list_employees(current_user: User = Depends(require_management)):
     ]
 
 
+from app.auth.dependencies import get_current_user
+
 @router.get("/{employee_id}", response_model=EmployeeResponse)
-async def get_employee(employee_id: str, current_user: User = Depends(require_management)):
+async def get_employee(employee_id: str, current_user: User = Depends(get_current_user)):
     """Get a specific employee (filtered by hierarchy visibility)."""
     employee = await user_service.get_employee_by_id(employee_id)
     if not employee:
@@ -101,12 +103,31 @@ async def get_employee(employee_id: str, current_user: User = Depends(require_ma
             detail="Employee not found",
         )
     
-    # Enforce hierarchy bounds
-    if not await check_hierarchy(current_user, employee):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied: employee is outside of your management tree",
-        )
+    # Allow self viewing
+    if str(current_user.id) != str(employee.id):
+        # Otherwise, check management and hierarchy
+        from app.models.role import BaseArchetype
+        arch = current_user.role_archetype or current_user.role
+        allowed_management = [
+            BaseArchetype.ADMIN, BaseArchetype.SUPER_ADMIN, 
+            BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER,
+            BaseArchetype.HR, BaseArchetype.IT, BaseArchetype.FINANCE, BaseArchetype.AUDITOR,
+            UserRole.ADMIN, UserRole.SUPER_ADMIN,
+            UserRole.MANAGER, UserRole.ASSISTANT_MANAGER,
+            UserRole.HR, UserRole.IT, UserRole.FINANCE, UserRole.AUDITOR
+        ]
+        if arch not in allowed_management:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: you must be a manager or admin to view other profiles",
+            )
+        
+        # Enforce hierarchy bounds
+        if not await check_hierarchy(current_user, employee):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Access denied: employee is outside of your management tree",
+            )
         
     parent_name = None
     if employee.parent_id:
@@ -139,7 +160,7 @@ async def get_employee_stats(employee_id: str, current_user: User = Depends(get_
     if current_user.id == employee.id:
         return await dashboard_service.get_employee_dashboard(employee_id)
         
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+    if current_user.role not in [UserRole.SUPER_ADMIN, UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied",
@@ -314,6 +335,23 @@ async def create_employee(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Invalid parent supervisor: Admins must report to another Admin or Super Admin",
                 )
+
+    # SaaS Plan Verification: Check max employees limit
+    if company_id:
+        from app.models.company import Company
+        try:
+            comp_obj = await Company.get(PydanticObjectId(company_id))
+            if comp_obj:
+                max_emp = getattr(comp_obj, "subscription_max_employees", 10)
+                if max_emp > 0:
+                    active_count = await User.find(User.company_id == PydanticObjectId(company_id), User.is_active == True).count()
+                    if active_count >= max_emp:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail=f"Subscription Limit Reached: Your plan only allows up to {max_emp} active employees."
+                        )
+        except Exception:
+            pass
 
     try:
         employee = await user_service.create_employee(

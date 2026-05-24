@@ -34,6 +34,7 @@ async def login(request: LoginRequest):
         )
 
     token = create_access_token({"sub": str(user.id), "role": user.role.value})
+    permissions = await user.get_permissions()
 
     return TokenResponse(
         access_token=token,
@@ -46,6 +47,7 @@ async def login(request: LoginRequest):
             "role_id": str(user.role_id) if user.role_id else None,
             "role_display_name": user.role_display_name,
             "role_archetype": user.role_archetype.value if user.role_archetype else None,
+            "permissions": permissions,
         },
     )
 
@@ -102,6 +104,7 @@ async def register(request: RegisterRequest):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     """Get current authenticated user info."""
+    permissions = await current_user.get_permissions()
     return UserResponse(
         id=str(current_user.id),
         name=current_user.name,
@@ -113,6 +116,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
         role_id=str(current_user.role_id) if current_user.role_id else None,
         role_display_name=current_user.role_display_name,
         role_archetype=current_user.role_archetype.value if current_user.role_archetype else None,
+        permissions=permissions,
     )
 
 

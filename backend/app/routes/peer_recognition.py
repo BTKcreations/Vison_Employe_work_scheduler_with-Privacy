@@ -73,13 +73,20 @@ async def get_received_recognitions(current_user: User = Depends(get_current_use
     # Serialize ObjectId
     res = []
     for r in recognitions:
-        d = r.model_dump()
-        d["id"] = str(d["id"])
-        d["sender_id"] = str(d["sender_id"])
-        d["receiver_id"] = str(d["receiver_id"])
-        if d.get("company_id"):
-            d["company_id"] = str(d["company_id"])
-        res.append(d)
+        created_dt = getattr(r, "created_at", None)
+        created_str = created_dt.isoformat() + "Z" if hasattr(created_dt, "isoformat") else str(created_dt) if created_dt else None
+        
+        res.append({
+            "id": str(r.id),
+            "sender_id": str(r.sender_id) if hasattr(r, "sender_id") and r.sender_id else None,
+            "sender_name": getattr(r, "sender_name", "Unknown"),
+            "receiver_id": str(r.receiver_id) if hasattr(r, "receiver_id") and r.receiver_id else None,
+            "receiver_name": getattr(r, "receiver_name", "Unknown"),
+            "company_id": str(r.company_id) if getattr(r, "company_id", None) else None,
+            "points": float(r.points) if getattr(r, "points", None) is not None else 0.0,
+            "reason": r.reason if getattr(r, "reason", None) is not None else "",
+            "created_at": created_str
+        })
     return res
 
 @router.get("/sent", response_model=List[dict])
@@ -89,13 +96,20 @@ async def get_sent_recognitions(current_user: User = Depends(get_current_user)):
     # Serialize ObjectId
     res = []
     for r in recognitions:
-        d = r.model_dump()
-        d["id"] = str(d["id"])
-        d["sender_id"] = str(d["sender_id"])
-        d["receiver_id"] = str(d["receiver_id"])
-        if d.get("company_id"):
-            d["company_id"] = str(d["company_id"])
-        res.append(d)
+        created_dt = getattr(r, "created_at", None)
+        created_str = created_dt.isoformat() + "Z" if hasattr(created_dt, "isoformat") else str(created_dt) if created_dt else None
+        
+        res.append({
+            "id": str(r.id),
+            "sender_id": str(r.sender_id) if hasattr(r, "sender_id") and r.sender_id else None,
+            "sender_name": getattr(r, "sender_name", "Unknown"),
+            "receiver_id": str(r.receiver_id) if hasattr(r, "receiver_id") and r.receiver_id else None,
+            "receiver_name": getattr(r, "receiver_name", "Unknown"),
+            "company_id": str(r.company_id) if getattr(r, "company_id", None) else None,
+            "points": float(r.points) if getattr(r, "points", None) is not None else 0.0,
+            "reason": r.reason if getattr(r, "reason", None) is not None else "",
+            "created_at": created_str
+        })
     return res
 
 
@@ -104,4 +118,3 @@ async def get_recognition_leaderboard(current_user: User = Depends(get_current_u
     """Get leaderboard of employees filtered by company privacy rules."""
     from app.services.reward_service import get_leaderboard
     return await get_leaderboard(limit=10, current_user=current_user)
-

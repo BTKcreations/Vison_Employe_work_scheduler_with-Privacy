@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, User, Building2, ClipboardList, X, Command, Loader2 } from 'lucide-react';
 import api from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface SearchResult {
   id: string;
@@ -24,6 +25,7 @@ export default function GlobalSearch() {
   }>({ employees: [], companies: [], tasks: [] });
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { user } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut Ctrl+K
@@ -72,15 +74,33 @@ export default function GlobalSearch() {
 
   const handleNavigate = (type: string, id: string) => {
     setIsOpen(false);
+    if (!user) return;
+
+    const rolePrefix = user.role === 'super_admin' ? '/super_admin' :
+                       user.role === 'admin' ? '/admin' :
+                       user.role === 'manager' ? '/manager' :
+                       user.role === 'assistant_manager' ? '/assistant_manager' :
+                       '/employee';
+
     switch (type) {
       case 'employee':
-        router.push(`/admin/employees/detail?id=${id}`);
+        router.push(`${rolePrefix}/employees/detail?id=${id}`);
         break;
       case 'company':
-        router.push(`/admin/companies`); // or detail if we add it
+        if (user.role === 'super_admin') {
+          router.push('/super_admin/companies');
+        } else if (user.role === 'admin') {
+          router.push('/admin/companies');
+        } else {
+          router.push(`${rolePrefix}/dashboard`);
+        }
         break;
       case 'task':
-        router.push(`/admin/tasks`); // or specific scroll/filter
+        if (user.role === 'super_admin') {
+          router.push('/super_admin/dashboard');
+        } else {
+          router.push(`${rolePrefix}/tasks`);
+        }
         break;
     }
   };

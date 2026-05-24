@@ -34,6 +34,8 @@ class UserResponse(BaseModel):
     role_id: Optional[str] = None
     role_display_name: Optional[str] = None
     role_archetype: Optional[str] = None
+    permissions: list[str] = []
+
 
 
 class ChangePasswordRequest(BaseModel):

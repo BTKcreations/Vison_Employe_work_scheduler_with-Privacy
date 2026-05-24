@@ -64,6 +64,77 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 
+def _style_excel_sheet(worksheet, df):
+    """Apply professional layout and styling to the generated Excel sheet."""
+    # Enable grid lines explicitly
+    worksheet.views.sheetView[0].showGridLines = True
+    
+    # Import styling tools
+    from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+    from openpyxl.utils import get_column_letter
+    
+    # Palette: Dark Slate Blue & Ice Blue accents
+    header_font = Font(name="Segoe UI", size=11, bold=True, color="FFFFFF")
+    header_fill = PatternFill(start_color="1E293B", end_color="1E293B", fill_type="solid") # Dark Slate
+    
+    data_font = Font(name="Segoe UI", size=10)
+    
+    border_side = Side(border_style="thin", color="CBD5E1") # Light gray borders
+    border = Border(left=border_side, right=border_side, top=border_side, bottom=border_side)
+    
+    # Apply header styling
+    for col_idx in range(1, len(df.columns) + 1):
+        cell = worksheet.cell(row=1, column=col_idx)
+        cell.font = header_font
+        cell.fill = header_fill
+        # Heading should be middle center (vertically and horizontally aligned)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = border
+        
+    # Row heights
+    worksheet.row_dimensions[1].height = 28
+    
+    # Style data cells
+    for row_idx in range(2, len(df) + 2):
+        worksheet.row_dimensions[row_idx].height = 20
+        for col_idx in range(1, len(df.columns) + 1):
+            cell = worksheet.cell(row=row_idx, column=col_idx)
+            cell.font = data_font
+            cell.border = border
+            
+            # Default alignment: left align text, center numeric keys, right align money/floats
+            col_name = df.columns[col_idx - 1]
+            val = cell.value
+            
+            # Alignments
+            if col_name in [
+                "S.NO", "S. NO", "EMPLOYEE ID", "STATUS", "PRIORITY", "WORK PRIORITY", 
+                "JOINED", "DATE", "CHECK IN", "CHECK OUT", "DEVICE FINGERPRINT", 
+                "DEAD-LINE", "COMPLETED TIME", "CREATED TIME", "IS AUTO CLOSED"
+            ]:
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+            elif isinstance(val, (int, float)):
+                cell.alignment = Alignment(horizontal="right", vertical="center")
+                if col_name in ["REWARD POINTS", "POINTS", "BASE SALARY"]:
+                    cell.number_format = "#,##0.00"
+                else:
+                    cell.number_format = "#,##0"
+            else:
+                cell.alignment = Alignment(horizontal="left", vertical="center")
+                
+    # Auto-adjust column widths
+    for col in worksheet.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            val_str = str(cell.value or '')
+            if len(val_str) > max_len:
+                max_len = len(val_str)
+        # Ensure we take the maximum length of heading and column data, plus some padding (e.g., +4)
+        # and set a sensible minimum width of 12
+        worksheet.column_dimensions[col_letter].width = max(max_len + 4, 12)
+
+
 async def _get_task_data(
     current_user: User,
     status: Optional[str] = None,
@@ -198,6 +269,8 @@ async def generate_tasks_excel(
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Tasks", index=False)
+        worksheet = writer.sheets["Tasks"]
+        _style_excel_sheet(worksheet, df)
     output.seek(0)
     return output
 
@@ -235,6 +308,8 @@ async def generate_employees_excel(current_user: User) -> BytesIO:
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Employees", index=False)
+        worksheet = writer.sheets["Employees"]
+        _style_excel_sheet(worksheet, df)
     output.seek(0)
     return output
 
@@ -350,6 +425,8 @@ async def generate_attendance_excel(
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Attendance", index=False)
+        worksheet = writer.sheets["Attendance"]
+        _style_excel_sheet(worksheet, df)
     output.seek(0)
     return output
 

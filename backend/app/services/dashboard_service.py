@@ -17,10 +17,13 @@ async def get_admin_dashboard(current_user: User):
     from app.services import user_service
     from beanie.operators import In
 
-    if current_user.role == UserRole.SUPER_ADMIN:
-        total_employees = await User.find(User.role != UserRole.SUPER_ADMIN).count()
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str == "super_admin":
+        total_employees = await User.find(User.role != UserRole.SUPER_ADMIN.value).count()
         active_employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN, User.is_active == True
+            User.role != UserRole.SUPER_ADMIN.value, User.is_active == True
         ).count()
 
         task_counts = await get_task_counts()
@@ -39,7 +42,7 @@ async def get_admin_dashboard(current_user: User):
         total_rewards = await Task.find(Task.reward_given == True).count()
 
         attendance_stats = await _get_today_attendance_stats(total_employees)
-    elif current_user.role == UserRole.ADMIN:
+    elif arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
@@ -57,13 +60,13 @@ async def get_admin_dashboard(current_user: User):
             }
 
         total_employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
-            User.role != UserRole.ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
+            User.role != UserRole.ADMIN.value,
             In(User.company_id, co_ids)
         ).count()
         active_employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN,
-            User.role != UserRole.ADMIN,
+            User.role != UserRole.SUPER_ADMIN.value,
+            User.role != UserRole.ADMIN.value,
             User.is_active == True,
             In(User.company_id, co_ids)
         ).count()

@@ -64,7 +64,10 @@ async def create_task(
     
     # 1. Determine target employees based on hierarchy
     target_employees = []
-    if current_user.role == UserRole.ADMIN:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str in ["admin", "super_admin", "hr", "finance", "it", "auditor"]:
         if request.for_all:
             target_employees = await User.find(User.role != UserRole.ADMIN, User.is_active == True).to_list()
         elif request.assigned_to_list:
@@ -73,7 +76,7 @@ async def create_task(
             emp = await User.get(PydanticObjectId(request.assigned_to))
             if emp: target_employees = [emp]
             
-    elif current_user.role == UserRole.MANAGER:
+    elif arch_str == "manager":
         asms = await User.find(User.role == UserRole.ASSISTANT_MANAGER, User.parent_id == current_user.id).to_list()
         asm_ids = [asm.id for asm in asms]
         subordinates = await User.find(
@@ -103,7 +106,7 @@ async def create_task(
             emp = await User.get(uid)
             if emp: target_employees = [emp]
             
-    elif current_user.role == UserRole.ASSISTANT_MANAGER:
+    elif arch_str == "assistant_manager":
         subordinates = await User.find(User.role == UserRole.EMPLOYEE, User.parent_id == current_user.id, User.is_active == True).to_list()
         subordinate_ids = {emp.id for emp in subordinates}
         
@@ -142,14 +145,17 @@ async def create_task(
         target_companies = [None]
 
     # Validate target companies
-    if current_user.role == UserRole.ADMIN:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
         for cid in target_companies:
             if cid is not None and cid not in co_ids:
                 raise HTTPException(status_code=403, detail="Not authorized to assign tasks to this company")
-    elif current_user.role != UserRole.SUPER_ADMIN:
+    elif arch_str != "super_admin":
         for cid in target_companies:
             if cid is not None and cid != current_user.company_id:
                 raise HTTPException(status_code=403, detail="Not authorized to assign tasks to this company")
@@ -277,9 +283,12 @@ async def list_recurring_rules(
     """List all recurring task rules."""
     from app.models.company import Company
     
-    if current_user.role == UserRole.SUPER_ADMIN:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str == "super_admin":
         rules = await RecurrenceRule.find_all().to_list()
-    elif current_user.role == UserRole.ADMIN:
+    elif arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = [c.id for c in companies]
         rules = await RecurrenceRule.find(
@@ -290,7 +299,7 @@ async def list_recurring_rules(
                 ]
             }
         ).to_list()
-    elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+    elif arch_str in ["manager", "assistant_manager"]:
         rules = await RecurrenceRule.find(
             {
                 "$or": [
@@ -346,11 +355,14 @@ async def update_recurring_rule(
         raise HTTPException(status_code=404, detail="Recurrence rule not found")
         
     can_edit = False
-    if current_user.role == UserRole.SUPER_ADMIN:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str == "super_admin":
         can_edit = True
     elif str(rule.created_by) == str(current_user.id):
         can_edit = True
-    elif current_user.role == UserRole.ADMIN:
+    elif arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
@@ -419,11 +431,14 @@ async def delete_recurring_rule(
         raise HTTPException(status_code=404, detail="Recurrence rule not found")
 
     can_delete = False
-    if current_user.role == UserRole.SUPER_ADMIN:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str == "super_admin":
         can_delete = True
     elif str(rule.created_by) == str(current_user.id):
         can_delete = True
-    elif current_user.role == UserRole.ADMIN:
+    elif arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
@@ -452,7 +467,9 @@ async def update_task(
         )
 
     is_assignee = str(task.assigned_to) == str(current_user.id)
-    is_management = current_user.role in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER, UserRole.SUPER_ADMIN]
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+    is_management = arch_str in ["admin", "manager", "assistant_manager", "super_admin", "hr", "finance", "it", "auditor"]
 
     if not is_assignee:
         if not is_management or not await can_manage_task(current_user, task):
@@ -531,7 +548,10 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a task (management only)."""
-    if current_user.role not in [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER, UserRole.SUPER_ADMIN]:
+    arch = current_user.role_archetype or current_user.role
+    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+
+    if arch_str not in ["admin", "manager", "assistant_manager", "super_admin", "hr", "finance", "it", "auditor"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions to delete tasks",

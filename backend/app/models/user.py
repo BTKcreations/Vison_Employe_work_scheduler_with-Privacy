@@ -43,6 +43,19 @@ class User(Document):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
 
+    async def get_permissions(self) -> list[str]:
+        from app.models.role import CompanyRole, get_default_permissions_for_archetype
+        
+        if self.role_id:
+            role = await CompanyRole.get(self.role_id)
+            if role:
+                return role.permissions
+        
+        arch = self.role_archetype or self.role
+        arch_str = arch.value if hasattr(arch, "value") else str(arch)
+        return get_default_permissions_for_archetype(arch_str)
+
+
     class Settings:
         name = "users"
         indexes = ["email"]
