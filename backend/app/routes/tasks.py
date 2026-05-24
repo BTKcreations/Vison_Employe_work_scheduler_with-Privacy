@@ -12,6 +12,11 @@ from beanie.operators import In
 from typing import List, Optional
 from app.models.category import Category
 from app.models.recurring_task import RecurrenceRule, RecurrenceType, RecurrenceEndType
+from app.services.authorization_service import (
+    can_access_task,
+    get_archetype_value,
+    is_management_user,
+)
 
 router = APIRouter(prefix="/tasks", tags=["Task Management"])
 
@@ -26,32 +31,7 @@ async def _resolve_company_name(company_id) -> Optional[str]:
 
 async def can_manage_task(current_user: User, task) -> bool:
     """Check if current_user has management rights over the task."""
-    from app.models.role import BaseArchetype
-    from app.models.user import UserRole
-
-    arch = current_user.role_archetype or current_user.role
-    if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
-        return True
-    if task.company_id is None:
-        return str(task.created_by) == str(current_user.id) or str(task.assigned_to) == str(current_user.id)
-    if arch in [BaseArchetype.ADMIN, UserRole.ADMIN]:
-        from app.models.company import Company
-        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
-        co_ids = {c.id for c in companies}
-        return task.company_id in co_ids
-    if arch in [BaseArchetype.MANAGER, BaseArchetype.ASSISTANT_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
-        # Task must be in their company
-        if task.company_id != current_user.company_id:
-            return False
-        # User created the task
-        if task.created_by == current_user.id:
-            return True
-        # Or assignee is a subordinate
-        from app.routes.employees import check_hierarchy
-        assignee = await User.get(task.assigned_to)
-        if assignee and await check_hierarchy(current_user, assignee):
-            return True
-    return False
+    return await can_access_task(current_user, task, action="manage")
 
 
 
@@ -75,8 +55,7 @@ async def create_task(
     
     # 1. Determine target employees based on hierarchy
     target_employees = []
-    arch = current_user.role_archetype or current_user.role
-    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+    arch_str = get_archetype_value(current_user)
 
     if arch_str in ["admin", "super_admin", "hr", "finance", "it", "auditor"]:
         scoped_user_query = {"is_active": True}
@@ -173,8 +152,7 @@ async def create_task(
         target_companies = [None]
 
     # Validate target companies
-    arch = current_user.role_archetype or current_user.role
-    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+    arch_str = get_archetype_value(current_user)
 
     if arch_str in ["admin", "hr", "finance", "it", "auditor"]:
         from app.models.company import Company
@@ -311,8 +289,7 @@ async def list_recurring_rules(
     """List all recurring task rules."""
     from app.models.company import Company
     
-    arch = current_user.role_archetype or current_user.role
-    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+    arch_str = get_archetype_value(current_user)
 
     if arch_str == "super_admin":
         rules = await RecurrenceRule.find_all().to_list()
@@ -495,9 +472,7 @@ async def update_task(
         )
 
     is_assignee = str(task.assigned_to) == str(current_user.id)
-    arch = current_user.role_archetype or current_user.role
-    arch_str = arch.value if hasattr(arch, "value") else str(arch)
-    is_management = arch_str in ["admin", "manager", "assistant_manager", "super_admin", "hr", "finance", "it", "auditor"]
+    is_management = is_management_user(current_user)
 
     if not is_assignee:
         if not is_management or not await can_manage_task(current_user, task):
@@ -576,8 +551,7 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a task (management only)."""
-    arch = current_user.role_archetype or current_user.role
-    arch_str = arch.value if hasattr(arch, "value") else str(arch)
+    arch_str = get_archetype_value(current_user)
 
     if arch_str not in ["admin", "manager", "assistant_manager", "super_admin", "hr", "finance", "it", "auditor"]:
         raise HTTPException(

@@ -1,23 +1,33 @@
 """
 Search service - cross-collection searching with tenant and role segregation.
 """
+import re
+
 from app.models.user import User, UserRole
 from app.models.task import Task
 from app.models.company import Company
-from beanie import PydanticObjectId
 from typing import List, Dict, Any
+from beanie.operators import In
+
+from app.services.authorization_service import (
+    get_accessible_company_ids,
+    get_accessible_user_ids,
+    get_archetype_value,
+)
 
 async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[str, Any]]]:
     """
     Search across employees, companies, and tasks, enforcing strict multi-tenancy and hierarchical boundaries.
     """
-    if not query or len(query) < 2:
+    normalized_query = (query or "").strip()
+    if len(normalized_query) < 2:
         return {"employees": [], "companies": [], "tasks": []}
 
-    search_filter = {"$regex": query, "$options": "i"}
+    search_filter = {"$regex": re.escape(normalized_query), "$options": "i"}
+    arch = get_archetype_value(current_user)
     
     # 1. Search Employees
-    if current_user.role == UserRole.SUPER_ADMIN:
+    if arch == "super_admin":
         employees = await User.find(
             User.role != UserRole.SUPER_ADMIN.value,
             {"$or": [
@@ -25,27 +35,19 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
                 {"email": search_filter}
             ]}
         ).limit(5).to_list()
-    elif current_user.role == UserRole.ADMIN:
-        # Admin can search all users in their managed companies
-        companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
-        co_ids = [c.id for c in companies]
-        from beanie.operators import In
+    elif arch in ["admin", "hr", "finance", "it", "auditor"]:
+        user_ids = await get_accessible_user_ids(current_user)
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN.value,
-            In(User.company_id, co_ids),
+            In(User.id, user_ids),
             {"$or": [
                 {"name": search_filter},
                 {"email": search_filter}
             ]}
         ).limit(5).to_list()
-    elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
-        # Managers can only search users in their company tree
-        from app.services import user_service
-        subordinates = await user_service.get_all_employees(current_user)
-        sub_ids = [emp.id for emp in subordinates] + [current_user.id]
-        from beanie.operators import In
+    elif arch in ["manager", "assistant_manager"]:
+        user_ids = await get_accessible_user_ids(current_user)
         employees = await User.find(
-            In(User.id, sub_ids),
+            In(User.id, user_ids),
             {"$or": [
                 {"name": search_filter},
                 {"email": search_filter}
@@ -53,9 +55,9 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
         ).limit(5).to_list()
     else:
         # Employee can only search users in their own company to maintain privacy
+        user_ids = await get_accessible_user_ids(current_user, employee_scope="company")
         employees = await User.find(
-            User.role != UserRole.SUPER_ADMIN.value,
-            User.company_id == current_user.company_id,
+            In(User.id, user_ids),
             {"$or": [
                 {"name": search_filter},
                 {"email": search_filter}
@@ -63,12 +65,12 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
         ).limit(5).to_list()
         
     # 2. Search Companies
-    if current_user.role == UserRole.SUPER_ADMIN:
+    if arch == "super_admin":
         companies = await Company.find({"name": search_filter}).limit(5).to_list()
-    elif current_user.role == UserRole.ADMIN:
-        # Admin can search only companies they manage
+    elif arch in ["admin", "hr", "finance", "it", "auditor"]:
+        company_ids = await get_accessible_company_ids(current_user)
         companies = await Company.find(
-            {"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]},
+            In(Company.id, company_ids),
             {"name": search_filter}
         ).limit(5).to_list()
     else:
@@ -79,27 +81,24 @@ async def global_search(query: str, current_user: User) -> Dict[str, List[Dict[s
         ).limit(5).to_list()
     
     # 3. Search Tasks
-    if current_user.role == UserRole.SUPER_ADMIN:
+    if arch == "super_admin":
         tasks = await Task.find({"work_description": search_filter}).limit(5).to_list()
-    elif current_user.role == UserRole.ADMIN:
-        # Admin can search all tasks in their company/companies
-        companies_owned = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
-        co_ids = [c.id for c in companies_owned]
-        from beanie.operators import In
-        tasks = await Task.find(
-            In(Task.company_id, co_ids),
-            {"work_description": search_filter}
-        ).limit(5).to_list()
-    elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
-        # Manager / ASM can search tasks within their hierarchy
-        from app.services import user_service
-        subordinates = await user_service.get_all_employees(current_user)
-        sub_ids = [emp.id for emp in subordinates] + [current_user.id]
-        from beanie.operators import In
+    elif arch in ["admin", "hr", "finance", "it", "auditor"]:
+        permissions = await current_user.get_permissions()
+        if {"tasks:create", "tasks:assign", "tasks:qa"}.intersection(permissions):
+            company_ids = await get_accessible_company_ids(current_user)
+            tasks = await Task.find(
+                In(Task.company_id, company_ids),
+                {"work_description": search_filter}
+            ).limit(5).to_list()
+        else:
+            tasks = []
+    elif arch in ["manager", "assistant_manager"]:
+        user_ids = await get_accessible_user_ids(current_user)
         tasks = await Task.find(
             {"work_description": search_filter},
             {"$or": [
-                {"assigned_to": {"$in": sub_ids}},
+                {"assigned_to": {"$in": user_ids}},
                 {"created_by": current_user.id}
             ]}
         ).limit(5).to_list()

@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'super_admin' | 'admin' | 'manager' | 'assistant_manager' | 'employee';
+  role: 'super_admin' | 'support' | 'admin' | 'it' | 'hr' | 'finance' | 'manager' | 'assistant_manager' | 'employee' | 'contractor' | 'auditor';
   reward_points: number;
   is_active: boolean;
   created_at: string;

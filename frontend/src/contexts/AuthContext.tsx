@@ -21,6 +21,47 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
+  super_admin: [
+    'tasks:create',
+    'tasks:assign',
+    'tasks:qa',
+    'attendance:read_team',
+    'attendance:edit_team',
+    'leaves:approve_team',
+    'leaves:manage_policies',
+    'payroll:read_salaries',
+    'payroll:run',
+    'roles:manage',
+    'billing:manage',
+    'tenants:manage',
+  ],
+  admin: [
+    'tasks:create',
+    'tasks:assign',
+    'tasks:qa',
+    'attendance:read_team',
+    'attendance:edit_team',
+    'leaves:approve_team',
+    'leaves:manage_policies',
+    'payroll:read_salaries',
+    'payroll:run',
+    'roles:manage',
+    'reports:read_all',
+    'integrations:manage',
+    'users:manage',
+  ],
+  manager: ['tasks:create', 'tasks:assign', 'tasks:qa', 'attendance:read_team', 'leaves:approve_team', 'payroll:read_salaries'],
+  assistant_manager: ['tasks:assign', 'tasks:qa', 'attendance:read_team', 'leaves:approve_team', 'payroll:read_salaries'],
+  employee: ['tasks:read_assigned', 'tasks:update_status', 'attendance:clock_in_out', 'leaves:apply'],
+  contractor: ['tasks:read_assigned', 'tasks:update_status', 'attendance:clock_in_out'],
+  hr: ['attendance:read_team', 'leaves:approve_team', 'leaves:manage_policies', 'payroll:read_salaries', 'payroll:run', 'reports:read_all', 'users:manage'],
+  finance: ['payroll:read_salaries', 'payroll:run', 'reports:read_all'],
+  it: ['users:manage', 'integrations:manage', 'roles:manage'],
+  auditor: ['reports:read_all', 'attendance:read_team', 'payroll:read_salaries'],
+  support: ['billing:read', 'billing:write', 'reports:read_all'],
+};
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -68,8 +109,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const role = user?.role;
+  const archetype = user?.role_archetype || role;
   const hasPermission = useCallback((permission: string) => {
-    return (user?.permissions || []).includes(permission);
+    if (!user) return false;
+    if (user.permissions && user.permissions.length > 0) {
+      return user.permissions.includes(permission);
+    }
+    return DEFAULT_ROLE_PERMISSIONS[user.role_archetype || user.role]?.includes(permission) || false;
   }, [user]);
 
   return (
@@ -77,13 +123,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         isLoading,
-        isSuperAdmin: role === 'super_admin',
-        isAdmin: role === 'admin' || role === 'super_admin',
-        isManager: role === 'manager',
-        isAssistantManager: role === 'assistant_manager',
-        isEmployee: role === 'employee',
+        isSuperAdmin: archetype === 'super_admin',
+        isAdmin: archetype === 'admin' || archetype === 'super_admin',
+        isManager: archetype === 'manager',
+        isAssistantManager: archetype === 'assistant_manager',
+        isEmployee: archetype === 'employee',
         canManageAttendance:
-          role === 'super_admin' ||
+          archetype === 'super_admin' ||
           hasPermission('attendance:edit_team') ||
           hasPermission('attendance:read_team'),
         hasPermission,
