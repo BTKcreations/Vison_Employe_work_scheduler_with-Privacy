@@ -76,7 +76,6 @@ async def create_employee(
         name=name,
         email=email,
         password_hash=hash_password(password),
-        raw_password=password,
         role=UserRole(role_archetype.value),
         role_id=role_id,
         role_display_name=role_display_name,
@@ -188,7 +187,6 @@ async def update_employee(employee_id: str, **kwargs) -> Optional[User]:
         password = update_data.pop("password")
         if password is not None:
             update_data["password_hash"] = hash_password(password)
-            update_data["raw_password"] = password
 
     if "parent_id" in update_data:
         p_id = update_data["parent_id"]

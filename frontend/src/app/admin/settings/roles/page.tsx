@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
 import { CompanyRole, Employee } from '@/types';
+import { AxiosError } from 'axios';
+import { useAuth } from '@/contexts/AuthContext';
 import {
-  Shield, Plus, Trash2, Edit3, Users, Lock, Key, AlertCircle, X, Check, Info, Loader2
+  Shield, Plus, Trash2, Edit3, Users, Lock, Key, AlertCircle, X, Check, Loader2
 } from 'lucide-react';
 
 const ARCHETYPE_DEFAULTS: Record<string, string[]> = {
@@ -82,7 +84,9 @@ const PERMISSION_GROUPS = [
 ];
 
 export default function RolesPage() {
+  const { hasPermission } = useAuth();
   const [roles, setRoles] = useState<CompanyRole[]>([]);
+  const [templates, setTemplates] = useState<CompanyRole[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -92,8 +96,17 @@ export default function RolesPage() {
   // Form states
   const [displayName, setDisplayName] = useState('');
   const [baseArchetype, setBaseArchetype] = useState('employee');
+  const [templateRoleId, setTemplateRoleId] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [error, setError] = useState('');
+
+  const extractErrorMessage = (err: unknown, fallback: string) => {
+    if (err instanceof AxiosError) {
+      const detail = (err.response?.data as { detail?: string } | undefined)?.detail;
+      return detail || fallback;
+    }
+    return fallback;
+  };
 
   const fetchRoles = useCallback(async () => {
     try {
@@ -101,6 +114,16 @@ export default function RolesPage() {
       setRoles(res.data);
     } catch (err) {
       console.error('Failed to fetch roles:', err);
+    }
+  }, []);
+
+  const fetchTemplates = useCallback(async () => {
+    try {
+      const res = await api.get('/roles/templates');
+      setTemplates(res.data || []);
+    } catch (err) {
+      console.error('Failed to fetch templates:', err);
+      setTemplates([]);
     }
   }, []);
 
@@ -116,16 +139,17 @@ export default function RolesPage() {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchRoles(), fetchEmployees()]);
+      await Promise.all([fetchRoles(), fetchEmployees(), fetchTemplates()]);
       setLoading(false);
     };
     loadData();
-  }, [fetchRoles, fetchEmployees]);
+  }, [fetchRoles, fetchEmployees, fetchTemplates]);
 
   const handleOpenCreate = () => {
     setEditingRole(null);
     setDisplayName('');
     setBaseArchetype('employee');
+    setTemplateRoleId('');
     setSelectedPermissions(ARCHETYPE_DEFAULTS['employee'] || []);
     setError('');
     setShowModal(true);
@@ -135,7 +159,7 @@ export default function RolesPage() {
     setEditingRole(role);
     setDisplayName(role.display_name);
     setBaseArchetype(role.base_archetype);
-    setSelectedPermissions(role.permissions);
+    setSelectedPermissions(role.effective_permissions || role.permissions);
     setError('');
     setShowModal(true);
   };
@@ -174,14 +198,16 @@ export default function RolesPage() {
         await api.post('/roles', {
           display_name: displayName,
           base_archetype: baseArchetype,
+          template_role_id: templateRoleId || undefined,
           permissions: selectedPermissions
         });
       }
       setShowModal(false);
       await fetchRoles();
+      await fetchTemplates();
       await fetchEmployees();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save role settings');
+    } catch (err: unknown) {
+      setError(extractErrorMessage(err, 'Failed to save role settings'));
     } finally {
       setSaving(false);
     }
@@ -195,8 +221,8 @@ export default function RolesPage() {
     try {
       await api.delete(`/roles/${role.id}`);
       await fetchRoles();
-    } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete role');
+    } catch (err: unknown) {
+      alert(extractErrorMessage(err, 'Failed to delete role'));
     }
   };
 
@@ -214,9 +240,12 @@ export default function RolesPage() {
     );
   }
 
+  const canManageRoles = hasPermission('roles:manage');
+
   // Separate system templates from custom company roles
   const systemRoles = roles.filter(r => !r.is_custom);
-  const customRoles = roles.filter(r => r.is_custom);
+  const customRoles = roles.filter(r => r.is_custom && !r.is_template);
+  const customTemplates = roles.filter(r => r.is_custom && r.is_template);
 
   return (
     <div className="p-1 sm:p-4">
@@ -230,15 +259,26 @@ export default function RolesPage() {
           <p className="text-muted-foreground text-sm mt-1">
             Decouple display names from permission sets. Create custom company-specific roles easily.
           </p>
+          <p className="text-xs text-indigo-600 mt-1 font-semibold">
+            Templates available: {templates.length}
+          </p>
         </div>
         <button
           onClick={handleOpenCreate}
           className="btn btn-primary flex items-center gap-2 self-start md:self-auto"
+          disabled={!canManageRoles}
+          title={!canManageRoles ? 'Missing permission: roles:manage' : 'Create Custom Role'}
         >
           <Plus className="w-4 h-4" />
           Create Custom Role
         </button>
       </div>
+
+      {!canManageRoles && (
+        <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-700">
+          You can view roles, but cannot modify them because your role is missing <span className="font-mono">roles:manage</span>.
+        </div>
+      )}
 
       {/* Main Grid */}
       <div className="space-y-8">
@@ -252,7 +292,7 @@ export default function RolesPage() {
           </h2>
           {customRoles.length === 0 ? (
             <div className="glass rounded-xl p-8 text-center text-muted-foreground italic text-sm">
-              No custom roles created yet. Click "Create Custom Role" above to configure your first one.
+              No custom roles created yet. Click &quot;Create Custom Role&quot; above to configure your first one.
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
@@ -266,6 +306,11 @@ export default function RolesPage() {
                           Base: {role.base_archetype.replace('_', ' ')}
                         </p>
                       </div>
+                      {role.is_template && (
+                        <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
+                          Template
+                        </span>
+                      )}
                       <span className="flex items-center gap-1 bg-slate-100 border border-slate-200 rounded-full px-2.5 py-1 text-xs font-semibold text-slate-700">
                         <Users className="w-3.5 h-3.5" />
                         {getMembersCount(role)} members
@@ -276,7 +321,7 @@ export default function RolesPage() {
                     <div className="space-y-1.5 mb-6">
                       <p className="text-xs font-bold text-slate-600">Capabilities:</p>
                       <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
-                        {role.permissions.map((p) => (
+                        {(role.effective_permissions || role.permissions).map((p) => (
                           <span key={p} className="bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded text-[10px] font-medium font-mono">
                             {p}
                           </span>
@@ -289,6 +334,7 @@ export default function RolesPage() {
                     <button
                       onClick={() => handleOpenEdit(role)}
                       className="flex-1 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                      disabled={!canManageRoles}
                     >
                       <Edit3 className="w-3.5 h-3.5" />
                       Edit Role
@@ -296,7 +342,7 @@ export default function RolesPage() {
                     <button
                       onClick={() => handleDelete(role)}
                       className="py-2 px-3 bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 rounded-xl font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                      disabled={getMembersCount(role) > 0}
+                      disabled={!canManageRoles || getMembersCount(role) > 0}
                       title={getMembersCount(role) > 0 ? "Cannot delete roles with active members assigned." : "Delete custom role"}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -306,6 +352,24 @@ export default function RolesPage() {
               ))}
             </div>
           )}
+        </div>
+
+        {/* Custom Reusable Templates */}
+        <div>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-amber-700">
+            <span>Custom Templates</span>
+            <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-bold">
+              {customTemplates.length}
+            </span>
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {customTemplates.map((role) => (
+              <div key={role.id} className="glass rounded-2xl border border-amber-200 p-6 bg-amber-50/40">
+                <h3 className="font-bold text-slate-800">{role.display_name}</h3>
+                <p className="text-[11px] text-slate-500 mt-1">Base: {role.base_archetype.replace('_', ' ')}</p>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Global System Templates */}
@@ -383,6 +447,23 @@ export default function RolesPage() {
 
             <form onSubmit={handleSubmit} className="space-y-6 flex-1">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {!editingRole && (
+                  <div className="md:col-span-2">
+                    <label className="label text-xs font-bold text-slate-700 mb-1.5 block">Optional Role Template</label>
+                    <select
+                      value={templateRoleId}
+                      onChange={(e) => setTemplateRoleId(e.target.value)}
+                      className="input w-full bg-white"
+                    >
+                      <option value="">No template (manual setup)</option>
+                      {templates.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.display_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div>
                   <label className="label text-xs font-bold text-slate-700 mb-1.5 block">Role Display Name</label>
                   <input

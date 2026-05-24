@@ -59,8 +59,12 @@ export default function LoginPage() {
         router.push('/employee/dashboard');
       }
     } catch (err: unknown) {
-      const axiosError = err as { response?: { data?: { detail?: string } } };
-      setError(axiosError.response?.data?.detail || 'Login failed. Please try again.');
+      const axiosError = err as { response?: { data?: { detail?: string } }, code?: string, message?: string };
+      if (!axiosError.response) {
+        setError('Cannot connect to server. Please ensure backend is running and API URL is configured.');
+      } else {
+        setError(axiosError.response?.data?.detail || axiosError.message || 'Login failed. Please try again.');
+      }
     } finally {
       setIsSubmitting(false);
     }
