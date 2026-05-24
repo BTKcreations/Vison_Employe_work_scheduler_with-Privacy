@@ -111,7 +111,12 @@ class PermissionChecker:
         self.required_permission = required_permission
 
     async def __call__(self, user: User = Depends(get_current_user)) -> User:
-        from app.models.role import BaseArchetype, CompanyRole, get_default_permissions_for_archetype
+        from app.models.role import (
+            BaseArchetype,
+            CompanyRole,
+            get_default_permissions_for_archetype,
+            resolve_effective_permissions_for_role,
+        )
 
         arch = user.role_archetype or user.role
         # Super admin always bypasses all permission checks
@@ -122,7 +127,7 @@ class PermissionChecker:
         if user.role_id:
             role = await CompanyRole.get(user.role_id)
             if role:
-                permissions = role.permissions
+                permissions = await resolve_effective_permissions_for_role(role)
         else:
             # Fallback to default archetype permissions
             permissions = get_default_permissions_for_archetype(arch)
@@ -138,7 +143,12 @@ class PermissionChecker:
 
 async def has_permission(user: User, permission: str) -> bool:
     """Helper to check if a user has a specific permission (with fallback to defaults)."""
-    from app.models.role import BaseArchetype, CompanyRole, get_default_permissions_for_archetype
+    from app.models.role import (
+        BaseArchetype,
+        CompanyRole,
+        get_default_permissions_for_archetype,
+        resolve_effective_permissions_for_role,
+    )
 
     arch = user.role_archetype or user.role
     if arch in [BaseArchetype.SUPER_ADMIN, UserRole.SUPER_ADMIN]:
@@ -148,10 +158,9 @@ async def has_permission(user: User, permission: str) -> bool:
     if user.role_id:
         role = await CompanyRole.get(user.role_id)
         if role:
-            permissions = role.permissions
+            permissions = await resolve_effective_permissions_for_role(role)
     else:
         permissions = get_default_permissions_for_archetype(arch)
 
     return permission in permissions
-
 
