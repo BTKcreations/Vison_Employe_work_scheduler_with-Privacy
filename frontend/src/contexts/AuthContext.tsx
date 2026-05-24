@@ -13,6 +13,7 @@ interface AuthContextType {
   isAssistantManager: boolean;
   isEmployee: boolean;
   canManageAttendance: boolean;
+  hasPermission: (permission: string) => boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -67,6 +68,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const role = user?.role;
+  const hasPermission = useCallback((permission: string) => {
+    return (user?.permissions || []).includes(permission);
+  }, [user]);
 
   return (
     <AuthContext.Provider
@@ -78,7 +82,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isManager: role === 'manager',
         isAssistantManager: role === 'assistant_manager',
         isEmployee: role === 'employee',
-        canManageAttendance: role === 'admin' || role === 'super_admin' || role === 'manager' || role === 'assistant_manager',
+        canManageAttendance:
+          role === 'super_admin' ||
+          hasPermission('attendance:edit_team') ||
+          hasPermission('attendance:read_team'),
+        hasPermission,
         login,
         logout,
         refreshUser: fetchUser,

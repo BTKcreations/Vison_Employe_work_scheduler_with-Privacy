@@ -14,6 +14,7 @@ export interface User {
   role_id?: string;
   role_display_name?: string;
   role_archetype?: string;
+  permissions?: string[];
   base_salary?: number;
   company_name?: string;
 }
@@ -109,7 +110,6 @@ export interface Employee {
   reward_points: number;
   is_active: boolean;
   created_at: string;
-  raw_password?: string;
   mobile?: string;
   alternate_mobile?: string;
   base_salary?: number;
@@ -263,6 +263,9 @@ export interface CompanyRole {
   display_name: string;
   base_archetype: string;
   permissions: string[];
+  denied_permissions?: string[];
+  parent_role_ids?: string[];
+  effective_permissions?: string[];
+  is_template?: boolean;
   is_custom: boolean;
 }
-
