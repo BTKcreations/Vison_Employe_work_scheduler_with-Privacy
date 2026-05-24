@@ -5,8 +5,23 @@ from app.auth.dependencies import get_current_user
 
 from beanie import PydanticObjectId
 from typing import Optional
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+class SettingsUpdateRequest(BaseModel):
+    priority_points: Optional[dict[str, float]] = None
+    delay_reductions: Optional[dict[str, float]] = None
+    early_completion_bonus: Optional[float] = Field(default=None, ge=0)
+    quality_modifiers: Optional[dict[str, float]] = None
+    complexity_multipliers: Optional[dict[str, float]] = None
+    attendance_impact: Optional[dict[str, float]] = None
+    incentive_tiers: Optional[dict[str, float]] = None
+    negative_incentive_threshold: Optional[int] = Field(default=None, ge=0)
+    negative_incentive_deduction: Optional[float] = Field(default=None, ge=0)
+    attendance_bonus_threshold: Optional[float] = Field(default=None, ge=0, le=1)
+    attendance_bonus_percentage: Optional[float] = Field(default=None, ge=0)
 
 async def check_admin_company_access(current_user: User, company_id: PydanticObjectId):
     """Ensure the user is authorized to manage settings for this company."""
@@ -82,7 +97,7 @@ async def get_settings(
 
 @router.put("", response_model=SystemSettings)
 async def update_settings(
-    settings_update: dict,
+    settings_update: SettingsUpdateRequest,
     company_id: Optional[str] = None,
     current_user: User = Depends(get_current_user)
 ):
@@ -129,9 +144,10 @@ async def update_settings(
         "attendance_bonus_percentage"
     ]
     
+    update_payload = settings_update.model_dump(exclude_none=True)
     for field in allowed_fields:
-        if field in settings_update:
-            setattr(settings, field, settings_update[field])
+        if field in update_payload:
+            setattr(settings, field, update_payload[field])
             
     await settings.save()
     return settings

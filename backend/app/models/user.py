@@ -28,7 +28,6 @@ class User(Document):
     name: str = Field(..., min_length=1, max_length=100)
     email: EmailStr = Field(..., unique=True)
     password_hash: str
-    raw_password: Optional[str] = None  # Store plain text password for admin view
     role: UserRole = UserRole.EMPLOYEE
     role_id: Optional[PydanticObjectId] = None
     role_display_name: Optional[str] = None
@@ -44,12 +43,12 @@ class User(Document):
     updated_at: Optional[datetime] = None
 
     async def get_permissions(self) -> list[str]:
-        from app.models.role import CompanyRole, get_default_permissions_for_archetype
+        from app.models.role import CompanyRole, get_default_permissions_for_archetype, resolve_effective_permissions_for_role
         
         if self.role_id:
             role = await CompanyRole.get(self.role_id)
             if role:
-                return role.permissions
+                return await resolve_effective_permissions_for_role(role)
         
         arch = self.role_archetype or self.role
         arch_str = arch.value if hasattr(arch, "value") else str(arch)
