@@ -29,6 +29,9 @@ class CompanyRole(Document):
     display_name: str = Field(..., min_length=1, max_length=100)
     base_archetype: BaseArchetype
     permissions: List[str] = Field(default_factory=list)
+    denied_permissions: List[str] = Field(default_factory=list)
+    parent_role_ids: List[PydanticObjectId] = Field(default_factory=list)
+    is_template: bool = Field(default=False)
     is_custom: bool = Field(default=True)
 
     class Settings:
@@ -160,3 +163,22 @@ async def seed_default_roles():
             )
             await role.insert()
 
+
+async def resolve_effective_permissions_for_role(role: CompanyRole) -> List[str]:
+    """Resolve effective permissions via parent inheritance with deny overrides."""
+    visited = set()
+    allow: set[str] = set()
+    deny: set[str] = set()
+
+    async def walk(r: CompanyRole):
+        if not r or not r.id or r.id in visited:
+            return
+        visited.add(r.id)
+        allow.update(r.permissions or [])
+        deny.update(r.denied_permissions or [])
+        for pid in (r.parent_role_ids or []):
+            parent = await CompanyRole.get(pid)
+            await walk(parent)
+
+    await walk(role)
+    return sorted(list(allow - deny))

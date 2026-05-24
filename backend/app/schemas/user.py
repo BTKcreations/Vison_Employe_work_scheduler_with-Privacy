@@ -40,7 +40,6 @@ class EmployeeResponse(BaseModel):
     base_salary: float
     is_active: bool
     created_at: str
-    raw_password: Optional[str] = None
     mobile: Optional[str] = None
     alternate_mobile: Optional[str] = None
     parent_id: Optional[str] = None
@@ -62,7 +61,6 @@ class EmployeeResponse(BaseModel):
             base_salary=getattr(user, "base_salary", 30000.0),
             is_active=user.is_active,
             created_at=user.created_at.isoformat() + 'Z',
-            raw_password=user.raw_password,
             mobile=user.mobile,
             alternate_mobile=user.alternate_mobile,
             parent_id=str(user.parent_id) if getattr(user, "parent_id", None) else None,
