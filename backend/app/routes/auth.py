@@ -133,7 +133,6 @@ async def change_password(
         )
 
     current_user.password_hash = hash_password(request.new_password)
-    current_user.raw_password = request.new_password  # Update plain text for admin view if needed
     await current_user.save()
 
     return {"message": "Password updated successfully"}

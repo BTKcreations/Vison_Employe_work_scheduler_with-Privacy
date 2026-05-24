@@ -6,7 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import {
   LayoutDashboard, Users, ClipboardList, FileBarChart,
-  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Menu, X as CloseIcon,
+  Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Menu,
   Settings, Calendar, Network
 } from 'lucide-react';
 import { useState } from 'react';
@@ -17,24 +17,27 @@ import { Key, Shield } from 'lucide-react';
 
 const navItems = [
   { href: '/admin/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { href: '/admin/employees', label: 'Employees', icon: Users },
-  { href: '/admin/hierarchy', label: 'Org Hierarchy', icon: Network },
-  { href: '/admin/companies', label: 'Companies', icon: Building2 },
-  { href: '/admin/tasks', label: 'Tasks', icon: ClipboardList },
-  { href: '/admin/attendance', label: 'Attendance Logs', icon: MapPin },
-  { href: '/admin/reports', label: 'Reports', icon: FileBarChart },
+  { href: '/admin/employees', label: 'Employees', icon: Users, permissions: ['users:manage'] },
+  { href: '/admin/hierarchy', label: 'Org Hierarchy', icon: Network, permissions: ['users:manage'] },
+  { href: '/admin/companies', label: 'Companies', icon: Building2, permissions: ['users:manage'] },
+  { href: '/admin/tasks', label: 'Tasks', icon: ClipboardList, permissions: ['tasks:create', 'tasks:assign', 'tasks:read_assigned'] },
+  { href: '/admin/attendance', label: 'Attendance Logs', icon: MapPin, permissions: ['attendance:read_team', 'attendance:edit_team'] },
+  { href: '/admin/reports', label: 'Reports', icon: FileBarChart, permissions: ['reports:read_all'] },
   { href: '/admin/leaderboard', label: 'Leaderboard', icon: Trophy },
-  { href: '/admin/settings', label: 'Settings', icon: Settings },
-  { href: '/admin/leaves', label: 'Leaves', icon: Calendar },
+  { href: '/admin/settings', label: 'Settings', icon: Settings, permissions: ['roles:manage'] },
+  { href: '/admin/leaves', label: 'Leaves', icon: Calendar, permissions: ['leaves:approve_team', 'leaves:manage_policies'] },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, isAdmin, logout } = useAuth();
+  const { user, isLoading, logout, hasPermission } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-
+  const visibleNavItems = navItems.filter((item) => {
+    if (!item.permissions || item.permissions.length === 0) return true;
+    return item.permissions.some((perm) => hasPermission(perm));
+  });
   // Admin layout is for tenant admins only — super_admin has their own layout
   const canAccess = user?.role === 'admin';
 
@@ -90,7 +93,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Navigation */}
         <nav className="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const isActive = pathname === item.href;
             const Icon = item.icon;
             return (
@@ -163,42 +166,50 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
               <div className="absolute right-0 top-full pt-2 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
                 <div className="bg-white border border-slate-200 rounded-xl shadow-xl p-2 w-48">
-                  <Link 
-                    href="/admin/settings/rules" 
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
-                      <Zap className="w-3.5 h-3.5" />
-                    </div>
-                    Rules
-                  </Link>
-                  <Link 
-                    href="/admin/settings/holidays" 
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
-                      <Calendar className="w-3.5 h-3.5" />
-                    </div>
-                    Holidays
-                  </Link>
-                  <Link 
-                    href="/admin/settings/categories" 
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
-                      <ClipboardList className="w-3.5 h-3.5" />
-                    </div>
-                    Categories
-                  </Link>
-                  <Link 
-                    href="/admin/settings/roles" 
-                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
-                  >
-                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
-                      <Shield className="w-3.5 h-3.5" />
-                    </div>
-                    Roles
-                  </Link>
+                  {hasPermission('tasks:qa') && (
+                    <Link 
+                      href="/admin/settings/rules" 
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <Zap className="w-3.5 h-3.5" />
+                      </div>
+                      Rules
+                    </Link>
+                  )}
+                  {hasPermission('leaves:manage_policies') && (
+                    <Link 
+                      href="/admin/settings/holidays" 
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <Calendar className="w-3.5 h-3.5" />
+                      </div>
+                      Holidays
+                    </Link>
+                  )}
+                  {hasPermission('tasks:create') && (
+                    <Link 
+                      href="/admin/settings/categories" 
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <ClipboardList className="w-3.5 h-3.5" />
+                      </div>
+                      Categories
+                    </Link>
+                  )}
+                  {hasPermission('roles:manage') && (
+                    <Link 
+                      href="/admin/settings/roles" 
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <Shield className="w-3.5 h-3.5" />
+                      </div>
+                      Roles
+                    </Link>
+                  )}
                   <button 
                     onClick={() => setShowChangePassword(true)}
                     className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-rose-50 hover:text-rose-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"

@@ -4,7 +4,7 @@ Task management routes - CRUD for tasks.
 from fastapi import APIRouter, HTTPException, status, Depends, Query
 from app.schemas.task import CreateTaskRequest, UpdateTaskRequest, TaskResponse, RecurrenceRuleResponse, UpdateRecurrenceRuleRequest
 from app.services import task_service
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, has_permission
 from app.models.user import User, UserRole
 from app.models.company import Company
 from beanie import PydanticObjectId
@@ -61,6 +61,17 @@ async def create_task(
     current_user: User = Depends(get_current_user),
 ):
     """Create a new task. Supports multiple assignees, multiple companies, and recurrence."""
+    can_create = await has_permission(current_user, "tasks:create")
+    can_assign = await has_permission(current_user, "tasks:assign")
+
+    is_assigning_others = bool(request.for_all or request.assigned_to_list)
+    if request.assigned_to:
+        is_assigning_others = is_assigning_others or str(request.assigned_to) != str(current_user.id)
+
+    if not can_create:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing required permission: tasks:create")
+    if is_assigning_others and not can_assign:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing required permission: tasks:assign")
     
     # 1. Determine target employees based on hierarchy
     target_employees = []
@@ -68,13 +79,30 @@ async def create_task(
     arch_str = arch.value if hasattr(arch, "value") else str(arch)
 
     if arch_str in ["admin", "super_admin", "hr", "finance", "it", "auditor"]:
+        scoped_user_query = {"is_active": True}
+        if arch_str != "super_admin":
+            companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
+            co_ids = [c.id for c in companies]
+            scoped_user_query["company_id"] = {"$in": co_ids}
+
         if request.for_all:
-            target_employees = await User.find(User.role != UserRole.ADMIN, User.is_active == True).to_list()
+            target_employees = await User.find({
+                **scoped_user_query,
+                "role": {"$nin": [UserRole.SUPER_ADMIN.value, UserRole.ADMIN.value]}
+            }).to_list()
         elif request.assigned_to_list:
-            target_employees = await User.find(In(User.id, [PydanticObjectId(uid) for uid in request.assigned_to_list])).to_list()
+            requested_ids = [PydanticObjectId(uid) for uid in request.assigned_to_list]
+            target_employees = await User.find(In(User.id, requested_ids)).to_list()
+            if arch_str != "super_admin":
+                for emp in target_employees:
+                    if emp.company_id not in scoped_user_query["company_id"]["$in"]:
+                        raise HTTPException(status_code=403, detail="Cannot assign task to users outside your company scope.")
         elif request.assigned_to:
             emp = await User.get(PydanticObjectId(request.assigned_to))
-            if emp: target_employees = [emp]
+            if emp:
+                if arch_str != "super_admin" and emp.company_id not in scoped_user_query["company_id"]["$in"]:
+                    raise HTTPException(status_code=403, detail="Cannot assign task to users outside your company scope.")
+                target_employees = [emp]
             
     elif arch_str == "manager":
         asms = await User.find(User.role == UserRole.ASSISTANT_MANAGER, User.parent_id == current_user.id).to_list()
