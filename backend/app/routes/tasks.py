@@ -48,7 +48,10 @@ async def create_task(
     if request.assigned_to:
         is_assigning_others = is_assigning_others or str(request.assigned_to) != str(current_user.id)
 
-    if not can_create:
+    # A user can always create a personal task (assigned to self, no company scope) without tasks:create permission
+    is_personal = not is_assigning_others and not request.company_id and not request.company_id_list
+
+    if not is_personal and not can_create:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing required permission: tasks:create")
     if is_assigning_others and not can_assign:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Missing required permission: tasks:assign")
@@ -74,12 +77,12 @@ async def create_task(
             target_employees = await User.find(In(User.id, requested_ids)).to_list()
             if arch_str != "super_admin":
                 for emp in target_employees:
-                    if emp.company_id not in scoped_user_query["company_id"]["$in"]:
+                    if emp.id != current_user.id and emp.company_id not in scoped_user_query["company_id"]["$in"]:
                         raise HTTPException(status_code=403, detail="Cannot assign task to users outside your company scope.")
         elif request.assigned_to:
             emp = await User.get(PydanticObjectId(request.assigned_to))
             if emp:
-                if arch_str != "super_admin" and emp.company_id not in scoped_user_query["company_id"]["$in"]:
+                if arch_str != "super_admin" and emp.id != current_user.id and emp.company_id not in scoped_user_query["company_id"]["$in"]:
                     raise HTTPException(status_code=403, detail="Cannot assign task to users outside your company scope.")
                 target_employees = [emp]
             
@@ -155,7 +158,6 @@ async def create_task(
     arch_str = get_archetype_value(current_user)
 
     if arch_str in ["admin", "hr", "finance", "it", "auditor"]:
-        from app.models.company import Company
         companies = await Company.find({"$or": [{"owner_id": current_user.id}, {"_id": current_user.company_id}]}).to_list()
         co_ids = {c.id for c in companies}
         for cid in target_companies:
