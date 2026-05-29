@@ -3,7 +3,7 @@
 
 ## 1. Executive Summary
 
-Vision SaaS is a highly scalable, full-stack enterprise web application specifically designed to overhaul modern workforce management. By bringing together task assignment, precise location-aware attendance tracking, and performance-based reward systems, it drives efficiency across organizations. The platform features strict multi-tier role-based access control (RBAC), multi-tenant SaaS architecture concepts, and real-time operational insights—packaged in a zero-latency, high-performance UI tailored for enterprise usability.
+Vision SaaS is a highly scalable, full-stack enterprise web application specifically designed to overhaul modern workforce management. By bringing together task assignment, precise location-aware attendance tracking, performance-based reward systems, intelligent payroll modeling, AI insight caching, and direct real-time chat, it drives efficiency across organizations. The platform features strict multi-tier role-based access control (RBAC), multi-tenant SaaS architecture concepts, and real-time operational insights—packaged in a zero-latency, high-performance UI tailored for enterprise usability.
 
 ---
 
@@ -13,70 +13,77 @@ Vision SaaS employs a robust, decoupled architecture separating the front-end pr
 
 ### 2.1 Backend: High-Performance Python API
 *   **Framework:** FastAPI - chosen for its exceptional speed, asynchronous support, and automatic OpenAPI schema generation.
-*   **Database:** MongoDB via **Beanie ODM**. Beanie, built on top of Motor and Pydantic, seamlessly bridges asynchronous database operations with strict data validation. The document-based schema is ideal for heterogeneous data like dynamic company settings and complex recurring task structures.
-*   **Authentication & Security:** JWT (JSON Web Tokens) provides stateless, secure, token-based authentication. Passwords are cryptographically hashed using standard algorithms (bcrypt). The application enforces data isolation down to the `company_id` level, ensuring strict multi-tenant data safety.
-*   **Background Processing:** Native `asyncio` loops are implemented directly within FastAPI's lifespan handlers to continuously process recurring tasks and execute "auto-checkout" logic for stale attendance sessions without requiring heavy external dependencies like Celery.
+*   **Database:** MongoDB via **Beanie ODM**. Beanie seamlessly bridges asynchronous database operations with strict Pydantic data validation.
+*   **Authentication & Security:** JWT (JSON Web Tokens) provides stateless, secure, token-based authentication. The application enforces data isolation down to the `company_id` level, ensuring multi-tenant data safety.
+*   **Background Processing:** Native `asyncio` loops run within FastAPI's lifespan handlers to continuously process recurring tasks (`recurrence_service.process_recurrence`) and execute "auto-checkout" logic for stale attendance sessions.
 
 ### 2.2 Frontend: Modern Reactive UI
-*   **Framework:** Next.js 16 with React 19 (App Router) to handle robust routing, server-side rendering, and optimal performance.
-*   **Styling:** Tailwind CSS v4 delivers a utility-first approach, facilitating a light-themed, professional Glassmorphism aesthetic tailored for corporate SaaS environments without performance-draining animations.
-*   **Data Visualization:** Recharts is heavily integrated to provide complex interactive dashboards, translating backend data metrics into digestible graphical formats (e.g., performance metrics, status distributions).
-*   **State Management:** Leveraging React Context (AuthContext) combined with specialized Axios interceptors that seamlessly attach JWT tokens to secure API calls.
+*   **Framework:** Next.js 16 with React 19 (App Router).
+*   **Styling:** Tailwind CSS v4 delivers a utility-first approach.
+*   **Data Visualization:** Recharts is integrated to provide complex interactive dashboards, translating metrics into graphical formats.
+*   **State Management:** React Context (AuthContext) and Axios interceptors for attaching JWT tokens to API calls.
 
 ---
 
 ## 3. Dedicated Feature Breakdown
 
 ### 3.1 Advanced 5-Tier SaaS RBAC
-The system utilizes a hierarchical Role-Based Access Control structure that restricts functionality and visibility:
-1.  **Super Admin:** Global oversight, system-wide settings, and multi-tenant management (if exposed).
-2.  **Admin:** Full access within a specific Company boundary. They handle organizational settings, broad employee onboarding, rule definitions, and payroll execution.
-3.  **Manager:** Focused on a specific team or department. They have the authority to assign tasks, audit attendance, and monitor the direct productivity of their team.
-4.  **Assistant Manager:** Operational support to Managers, providing real-time task oversight and assisting in workload distribution.
-5.  **Employee:** The baseline user. Their dashboard is highly focused on execution—viewing personal tasks, clocking in/out, updating task statuses, and tracking their personal reward points ledger.
+Hierarchical role-based access control restriction:
+1.  **Super Admin:** Global oversight, system-wide settings.
+2.  **Admin:** Full access within a specific Company boundary.
+3.  **Manager:** Focused on specific teams.
+4.  **Assistant Manager:** Operational support.
+5.  **Employee:** Baseline user for work execution and tracking.
+6.  **HR Roles:** The `UserRole` enum also includes `HR_MANAGER` and `ASSISTANT_HR_MANAGER` for payroll and leave operations.
 
-### 3.2 Smart Geolocation Attendance
-Vision SaaS goes far beyond simple timestamps to provide undeniable proof of work presence.
-*   **Automated Location Capture:** When an employee clicks "Check In" or "Check Out", the frontend uses the browser's Geolocation API to capture precise Lat/Long coordinates.
-*   **Drift & Distance Analytics:** The backend receives these coordinates and calculates distances against predefined office geofences. It calculates "Location Drift" (difference between check-in and check-out location) to flag anomalies.
-*   **Auto-Checkout Protection:** A background asynchronous worker continually audits open sessions. If an employee forgets to clock out, the system automatically closes the session 14 hours post-login or slightly after standard company working hours, appending an "auto-closed" remark to maintain data integrity.
+### 3.2 Smart Geolocation & Attendance
+*   **Automated Location Capture:** Captures precise Lat/Long coordinates.
+*   **Drift & Distance Analytics:** Uses `Company` model configurations like `office_lat/lng`, `geofence_radius_meters`, and `location_drift_threshold_km`.
+*   **Auto-Checkout Protection:** Analyzes sessions via an asynchronous worker. If a session is open 14 hours post-login or past company standard hours (e.g., `work_end_time`), the system auto-closes it and appends `[Auto-closed by system]`.
+*   **Regularization:** Employees can request attendance anomaly corrections via the `AttendanceRegularization` model, tracked through PENDING, VERIFIED, and APPROVED/REJECTED states.
 
 ### 3.3 Work-Centric Task Engine
-Task management abandons traditional verbose project management bloat in favor of a **Work-Description-First** model.
-*   **Dynamic Prioritization & Deadlines:** Tasks are assigned critical, high, medium, or low priorities alongside precise, time-bound deadlines.
-*   **Time Variance Calculation:** Upon task completion, the system automatically generates a "Time Variance" metric, showing exactly how early or late the task was completed relative to the deadline.
-*   **Recurring Tasks:** A built-in recurrence engine allows managers to set tasks to automatically duplicate daily, weekly, or monthly, reducing administrative overhead.
-*   **Auditability:** Every task maintains an immutable Remarks history, creating a detailed audit trail of communication and status updates.
+*   **Dynamic Prioritization & Deadlines:** Tasks are assigned critical, high, medium, or low priorities alongside precise deadlines.
+*   **Time Variance Calculation:** Automatically tracks early/late task completions relative to deadlines.
+*   **Recurring Tasks Engine:** Configured via `RecurrenceRule` with daily, weekly, monthly frequencies. It monitors `next_run` to automatically spawn new `Task` clones from a `task_template_id`.
+*   **Categorization:** Tasks can have multiple associated categories (`category_ids`).
 
 ### 3.4 Gamified Performance & Reward Ledger
-A unique feature of Vision SaaS is the integrated points system designed to incentivize timely work execution.
-*   **Dynamic Point Calculation:** Rather than static points, companies can configure complex rules (via `Company` settings) to modify point rewards. For example, completing a task early might apply an `early_completion_multiplier`, whereas delays incur `delay_penalties`.
-*   **Points Ledger:** Every employee accumulates points which are visibly tracked on their dashboard and aggregated into a company-wide Leaderboard to foster healthy competition.
-*   **Automated Distribution:** The system automatically executes the reward assignment logic precisely at the moment a task status shifts to "completed".
+*   **Dynamic Configurations:** The `Company` model manages configurable parameters like `task_priority_points`, `delay_penalties`, `early_completion_multiplier`, and `quality_multipliers`.
+*   **Incentives:** Predefined `incentive_tiers` and performance scores.
+*   **Points Ledger:** Every employee accumulates points automatically computed and credited when task statuses reach `COMPLETED`.
 
-### 3.5 Comprehensive Reporting & Exports
-Data-driven decision-making is powered by rich reporting capabilities.
-*   **Export Formats:** One-click generation of fully formatted CSV and Excel documents via Pandas and OpenPyXL integrations on the backend.
-*   **Holistic Data View:** Export schemas are exhaustive, featuring `S.No | Employee Name | Company Name | Work Description | Work Priority | Dead-line | Completed Time | Time Variance | Status | Remarks | Points`.
+### 3.5 Complete Payroll & Leave Management
+*   **Leave Types:** Supported via the `Leave` model (Casual, Sick, Earned, LOP, WFH).
+*   **Payroll Generation:** Handled by the `Payroll` model linking `SalaryStructure` components (Basic, HRA, PF, etc.) with dynamic day aggregates (Present, Absent, Leaves). Status flows from DRAFT to PAID.
+*   **Company Limits:** Leave thresholds (like `sick_leave_limit`, `casual_leave_limit`) are centrally defined in the company settings.
+
+### 3.6 Communication & Intelligence Modules
+*   **Internal Chat System:** Powered by `ChatMessage` models supporting texts, attachments, linked task cards (`task_card_id`), and tip mechanisms (`tip_points`).
+*   **AI Insights:** System caches computed intelligence metrics (like `dashboard_summary` or `payroll_anomaly`) in the `CachedAIInsight` collection to offload repetitive generation costs while ensuring managers see rapid analytical feedback.
 
 ---
 
 ## 4. Application Workflows
 
 ### Workflow 1: Employee Onboarding & Setup (Admin)
-1.  **Frontend Action:** Admin navigates to the `/admin/employees` page and clicks "Add Employee". They fill out a comprehensive form including job title, department, shift timing, hierarchy links (reporting manager), and identity specifics.
-2.  **API Call:** A `POST` request with the `CreateEmployeeRequest` schema is sent to `/admin/employees`.
-3.  **Backend Logic:** The FastAPI route validates the payload, cryptographically hashes the password, ensures no email duplication, and associates the user with the Admin's `company_id`. The new `User` document is saved via Beanie ODM.
+1.  **Frontend Action:** Admin fills an employee form mapping HR roles, direct reporting managers, and identifying details (`identity_card_url`, etc.).
+2.  **API Call:** A `POST /admin/employees` request.
+3.  **Backend Logic:** Validates the payload against `CreateEmployeeRequest`, hashes passwords, attaches `company_id`, initializes `reward_points` to 0.0, and saves to MongoDB.
 
 ### Workflow 2: Daily Employee Check-In
-1.  **Frontend Action:** The Employee logs into `/employee/dashboard`. The browser requests location permissions. Once granted, the employee clicks the "Check In" toggle.
-2.  **API Call:** A `POST` request containing `{ lat, lng }` is sent to `/attendance/check-in`.
-3.  **Backend Logic:** The backend compares the employee's location against the `office_lat/lng` set in the Company profile. It records the session start time (standardized to IST), tags any distance anomalies, and opens an `Attendance` document.
-4.  **UI Update:** The employee dashboard immediately reflects an "Active" state and starts tracking logged hours for the day.
+1.  **Frontend Action:** Employee accesses Dashboard; browser grants location API permissions; user checks in.
+2.  **API Call:** `POST /attendance/check-in` sending current coordinates.
+3.  **Backend Logic:** Distance/drift is evaluated against `office_lat/lng`. An `Attendance` document creates.
+4.  **Failure Net:** The `auto_checkout_stale_sessions` background coroutine checks hourly to force-close any stale `check_out == None` sessions.
 
 ### Workflow 3: Task Assignment to Completion
-1.  **Assignment (Manager/Admin):** A Manager creates a task detailing the "Work Description" and setting a hard deadline via the "Create Task" modal.
-2.  **Notification:** The backend creates a `Task` document with a "Pending" or "Assigned" status.
-3.  **Execution (Employee):** The Employee views the task on their specific `/employee/tasks` board. As they work, they change the status to "In Progress".
-4.  **Completion & Reward:** Upon finishing, the Employee changes the status to "Completed".
-5.  **Backend Calculation:** The backend intercepts this `PUT /tasks/{id}` request. It records `completed_at`, calculates the "Time Variance" against the `deadline`, applies the company's reward multipliers based on timeliness, credits the `User.reward_points` ledger, and flags `reward_given=True` on the task.
+1.  **Assignment:** Manager creates task sending `POST /tasks`.
+2.  **Backend Logic:** System resolves `TaskPriority`, stores the `deadline`, initializes `reward_given=False`, and handles recurrence if `is_recurrent` is checked.
+3.  **Execution & Completion:** Employee marks `COMPLETED` via `PUT /tasks/{id}`.
+4.  **Backend Reward Processing:** System records `completed_at`, computes variances, checks `delay_penalties` vs `early_completion_multiplier`, mutates the user's `reward_points`, and commits the transaction.
+
+### Workflow 4: Monthly Payroll Processing
+1.  **Preparation:** HR Manager requests draft via `/payroll`.
+2.  **Aggregation:** System calculates `present_days` from `Attendance`, subtracts limits evaluated against `Leave` objects, calculates `bonuses` based on task performance metrics, and calculates `deductions`.
+3.  **Execution:** The `Payroll` object moves from `DRAFT` to `APPROVED` and finally `PAID`, making it available for Employee portal viewing.
