@@ -324,10 +324,10 @@ async def update_task(
     company_name = await _resolve_company_name(updated_task.company_id)
 
     cat_names = []
-    for cid in (updated_task.category_ids or []):
-        cat = await Category.get(cid)
-        if cat:
-            cat_names.append(cat.name)
+    if updated_task.category_ids:
+        categories = await Category.find({"_id": {"$in": updated_task.category_ids}}).to_list()
+        cat_map = {cat.id: cat.name for cat in categories}
+        cat_names = [cat_map[cid] for cid in updated_task.category_ids if cid in cat_map]
 
     return TaskResponse.from_task(
         updated_task,
