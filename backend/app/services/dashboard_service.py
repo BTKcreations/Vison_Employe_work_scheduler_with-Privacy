@@ -355,12 +355,20 @@ async def _get_today_attendance_stats(total_employees: int, user_ids: Optional[L
     today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     
     # Unique users who checked in today
+    # ⚡ Bolt Optimization: Use DB-level aggregation to prevent loading all documents into memory
+    # when computing the unique count of users present today.
     query = {"check_in": {"$gte": today_start}}
     if user_ids is not None:
         query["user_id"] = {"$in": user_ids}
         
-    present_records = await Attendance.find(query).to_list()
-    present_count = len({str(r.user_id) for r in present_records})
+    pipeline = [
+        {"$match": query},
+        {"$group": {"_id": "$user_id"}},
+        {"$count": "present_count"}
+    ]
+
+    result = await Attendance.aggregate(pipeline).to_list()
+    present_count = result[0]["present_count"] if result else 0
     absent_count = max(0, total_employees - present_count)
     
     return {
