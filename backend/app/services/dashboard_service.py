@@ -359,8 +359,14 @@ async def _get_today_attendance_stats(total_employees: int, user_ids: Optional[L
     if user_ids is not None:
         query["user_id"] = {"$in": user_ids}
         
-    present_records = await Attendance.find(query).to_list()
-    present_count = len({str(r.user_id) for r in present_records})
+    # Optimized: DB-level distinct user_id count using aggregation
+    pipeline = [
+        {"$match": query},
+        {"$group": {"_id": "$user_id"}},
+        {"$count": "present_count"}
+    ]
+    res = await Attendance.aggregate(pipeline).to_list()
+    present_count = res[0]["present_count"] if res else 0
     absent_count = max(0, total_employees - present_count)
     
     return {
