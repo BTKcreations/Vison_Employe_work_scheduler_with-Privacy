@@ -3,9 +3,10 @@ Migration script to map all legacy/past data in MongoDB
 to the tenant admin 'admin@company.com' and their company.
 Run: python migrate_legacy_data.py
 """
+
 import asyncio
 from pymongo import AsyncMongoClient
-from beanie import init_beanie, PydanticObjectId
+from beanie import init_beanie
 from app.config import settings
 from app.models.user import User, UserRole
 from app.models.company import Company
@@ -21,8 +22,7 @@ async def run_migration():
 
     # Initialize beanie
     await init_beanie(
-        database=database,
-        document_models=[User, Company, Task, Attendance]
+        database=database, document_models=[User, Company, Task, Attendance]
     )
 
     # 1. Find the target tenant admin
@@ -37,18 +37,22 @@ async def run_migration():
 
     # 2. Find or create a company to assign everything to
     target_company = None
-    
+
     # Check if the admin is already mapped to a company
     if admin.company_id:
         target_company = await Company.get(admin.company_id)
         if target_company:
-            print(f"[OK] Admin is already associated with company: {target_company.name} ID: {target_company.id}")
+            print(
+                f"[OK] Admin is already associated with company: {target_company.name} ID: {target_company.id}"
+            )
 
     # If no valid company is mapped, look for existing companies owned by this admin
     if not target_company:
         target_company = await Company.find_one(Company.owner_id == admin.id)
         if target_company:
-            print(f"[OK] Found company owned by admin: {target_company.name} ID: {target_company.id}")
+            print(
+                f"[OK] Found company owned by admin: {target_company.name} ID: {target_company.id}"
+            )
 
     # If still no company, take the first company in the system and assign it to the admin
     if not target_company:
@@ -56,7 +60,9 @@ async def run_migration():
         if target_company:
             target_company.owner_id = admin.id
             await target_company.save()
-            print(f"[OK] Re-assigned existing company '{target_company.name}' (ID: {target_company.id}) to Admin.")
+            print(
+                f"[OK] Re-assigned existing company '{target_company.name}' (ID: {target_company.id}) to Admin."
+            )
 
     # If there are absolutely no companies in the system, create a default one
     if not target_company:
@@ -77,10 +83,12 @@ async def run_migration():
             geofence_policy="flexible",
             min_session_minutes=30,
             auto_checkout_enabled=True,
-            location_drift_threshold_km=5.0
+            location_drift_threshold_km=5.0,
         )
         await target_company.insert()
-        print(f"[OK] Created a new company: {target_company.name} ID: {target_company.id}")
+        print(
+            f"[OK] Created a new company: {target_company.name} ID: {target_company.id}"
+        )
 
     target_company_id = target_company.id
 
@@ -94,7 +102,7 @@ async def run_migration():
     users_to_migrate = await User.find(
         User.role != UserRole.SUPER_ADMIN,
         User.role != UserRole.ADMIN,
-        User.company_id == None
+        User.company_id == None,
     ).to_list()
 
     users_updated = 0
@@ -103,12 +111,12 @@ async def run_migration():
         await u.save()
         users_updated += 1
 
-    print(f"[OK] Migrated {users_updated} employees/managers to Company '{target_company.name}'")
+    print(
+        f"[OK] Migrated {users_updated} employees/managers to Company '{target_company.name}'"
+    )
 
     # 5. Migrate all tasks to this company if they don't have one
-    tasks_to_migrate = await Task.find(
-        Task.company_id == None
-    ).to_list()
+    tasks_to_migrate = await Task.find(Task.company_id == None).to_list()
 
     tasks_updated = 0
     for t in tasks_to_migrate:
@@ -121,9 +129,7 @@ async def run_migration():
 
     # 6. Migrate all attendance logs to this company if they have None or mismatched/missing company_id
     # Beanie finds documents with missing fields via dict lookup or find()
-    attendance_to_migrate = await Attendance.find(
-        {"company_id": None}
-    ).to_list()
+    attendance_to_migrate = await Attendance.find({"company_id": None}).to_list()
 
     attendance_updated = 0
     for att in attendance_to_migrate:
@@ -131,8 +137,12 @@ async def run_migration():
         await att.save()
         attendance_updated += 1
 
-    print(f"[OK] Migrated {attendance_updated} attendance logs to Company '{target_company.name}'")
-    print("\n[COMPLETE] Migration ran successfully. All legacy data is now scoped to the tenant admin.")
+    print(
+        f"[OK] Migrated {attendance_updated} attendance logs to Company '{target_company.name}'"
+    )
+    print(
+        "\n[COMPLETE] Migration ran successfully. All legacy data is now scoped to the tenant admin."
+    )
 
 
 if __name__ == "__main__":
