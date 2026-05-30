@@ -124,14 +124,27 @@ async def generate_tasks_excel(
 async def generate_employees_excel() -> BytesIO:
     """Generate Excel file of employee data with reward info."""
     employees = await User.find(User.role == UserRole.EMPLOYEE).sort("-reward_points").to_list()
+    employee_ids = [emp.id for emp in employees]
+
+    # Optimized batch task count using aggregation
+    pipeline = [
+        {"$match": {"assigned_to": {"$in": employee_ids}}},
+        {"$group": {
+            "_id": "$assigned_to",
+            "total_tasks": {"$sum": 1},
+            "completed_tasks": {
+                "$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}
+            }
+        }}
+    ]
+    task_stats_list = await Task.aggregate(pipeline).to_list()
+    task_stats_map = {str(stat["_id"]): stat for stat in task_stats_list}
 
     rows = []
     for emp in employees:
-        # Get task counts for this employee
-        total_tasks = await Task.find(Task.assigned_to == emp.id).count()
-        completed_tasks = await Task.find(
-            Task.assigned_to == emp.id, Task.status == "completed"
-        ).count()
+        stats = task_stats_map.get(str(emp.id), {"total_tasks": 0, "completed_tasks": 0})
+        total_tasks = stats["total_tasks"]
+        completed_tasks = stats["completed_tasks"]
 
         rows.append({
             "Employee ID": str(emp.id),

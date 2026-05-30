@@ -567,6 +567,19 @@ async def run_payroll_engine(
     attn_start = datetime(year, month_num, 1)
     attn_end = datetime(year + 1, 1, 1) if month_num == 12 else datetime(year, month_num + 1, 1)
     
+    # Pre-fetch attendance counts to avoid N+1 queries
+    employee_ids = [e.id for e in employees]
+    attn_stats = await Attendance.aggregate([
+        {
+            "$match": {
+                "user_id": {"$in": employee_ids},
+                "check_in": {"$gte": attn_start, "$lt": attn_end}
+            }
+        },
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
+    ]).to_list()
+    attn_counts_map = {str(stat["_id"]): stat["count"] for stat in attn_stats}
+
     for emp in employees:
         if visible_ids is not None and emp.id not in visible_ids:
             continue
@@ -582,12 +595,8 @@ async def run_payroll_engine(
                 total_processed += 1
                 total_payout += payroll.net_salary
                 
-                # Check for zero attendance
-                attn_count = await Attendance.find(
-                    Attendance.user_id == emp.id,
-                    Attendance.check_in >= attn_start,
-                    Attendance.check_in < attn_end
-                ).count()
+                # Check for zero attendance using pre-fetched map
+                attn_count = attn_counts_map.get(str(emp.id), 0)
                 if attn_count == 0:
                     missing_attendance.append(f"{emp.name} ({emp.email}) - No attendance captured for {request.month}")
         except Exception as e:

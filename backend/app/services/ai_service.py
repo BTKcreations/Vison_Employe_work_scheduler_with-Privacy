@@ -241,6 +241,20 @@ async def run_performance_analysis(user_scope: Optional[List[PydanticObjectId]] 
         user_query["_id"] = {"$in": user_scope}
     users = await User.find(user_query).to_list()
 
+    # Pre-fetch attendance logs for all users in scope (last 30 days)
+    thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
+    attendance_query = {"check_in": {"$gte": thirty_days_ago}}
+    if user_scope:
+        attendance_query["user_id"] = {"$in": user_scope}
+
+    all_attendance_logs = await Attendance.find(attendance_query).to_list()
+    attendance_by_user = {}
+    for log in all_attendance_logs:
+        uid_str = str(log.user_id)
+        if uid_str not in attendance_by_user:
+            attendance_by_user[uid_str] = []
+        attendance_by_user[uid_str].append(log)
+
     performance_records = []
     team_total_productivity = 0.0
     valid_employees_count = 0
@@ -259,12 +273,8 @@ async def run_performance_analysis(user_scope: Optional[List[PydanticObjectId]] 
         eff_score = round((on_time / assigned * 100.0), 1) if assigned > 0 else 0.0
         avg_completion_time = round(stats["total_hours"] / completed, 1) if completed > 0 else 0.0
 
-        # Query attendance logs for consistency (last 30 days)
-        thirty_days_ago = datetime.now(timezone.utc) - timedelta(days=30)
-        attendance_logs = await Attendance.find(
-            Attendance.user_id == u.id,
-            Attendance.check_in >= thirty_days_ago
-        ).to_list()
+        # Use pre-fetched attendance logs
+        attendance_logs = attendance_by_user.get(uid, [])
 
         late_logs = [log for log in attendance_logs if log.status == "late"]
         total_days = len(attendance_logs)
