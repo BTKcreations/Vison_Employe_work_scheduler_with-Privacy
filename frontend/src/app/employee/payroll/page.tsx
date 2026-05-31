@@ -29,6 +29,8 @@ interface Payslip {
   total_working_days: number;
   lop_deduction: number;
   penalties: number;
+  payable_days?: number;
+  approved_regularization_days?: number;
   
   status: string;
   created_at: string;
@@ -142,22 +144,26 @@ export default function EmployeePayrollPage() {
               </div>
 
               {/* Working Days & Attendance Summary */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100 text-center font-bold">
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 bg-slate-50 p-4 rounded-xl border border-slate-100 text-center font-bold">
                 <div>
-                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Total Working Days</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Total Work Days</span>
                   <span className="text-slate-800 block text-sm mt-0.5">{selectedSlip.total_working_days}d</span>
                 </div>
                 <div>
-                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Present Days</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Payable</span>
+                  <span className="text-indigo-700 block text-sm mt-0.5">{selectedSlip.payable_days ?? 0}d</span>
+                </div>
+                <div>
+                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Present</span>
                   <span className="text-emerald-700 block text-sm mt-0.5">{selectedSlip.present_days}d</span>
                 </div>
                 <div>
-                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Paid Leaves</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Appr. Leaves</span>
                   <span className="text-indigo-600 block text-sm mt-0.5">{selectedSlip.paid_leaves}d</span>
                 </div>
                 <div>
-                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Holidays & Wknds</span>
-                  <span className="text-slate-600 block text-sm mt-0.5">{selectedSlip.holidays_weekends}d</span>
+                  <span className="block text-[9px] text-slate-400 uppercase font-extrabold">Regularized</span>
+                  <span className="text-blue-600 block text-sm mt-0.5">{selectedSlip.approved_regularization_days ?? 0}d</span>
                 </div>
                 <div>
                   <span className="block text-[9px] text-slate-400 uppercase font-extrabold">LOP Absences</span>

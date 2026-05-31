@@ -29,6 +29,8 @@ A modern full-stack web application for managing employees, assigning tasks, tra
 - ✅ Employee personal dashboard
 - ✅ CSV/Excel report export
 - ✅ Leaderboard
+- ✅ Payroll Management & Tracking (Leaves, Regularizations, & LOP)
+- ✅ Automated Payroll Recalculations & Version History
 
 ## 🏁 Quick Start
 
@@ -107,3 +109,7 @@ npm run dev
 | GET | /reports/tasks/csv | Export tasks CSV |
 | GET | /reports/tasks/excel | Export tasks Excel |
 | GET | /reports/employees/excel | Export employees Excel |
+| GET | /payroll/my-payslips | Get Employee payslips |
+| POST| /payroll/recalculate/{id} | Recalculate a draft payroll |
+| GET | /payroll/{id}/history | Get version history of a payslip |
+| DELETE| /payroll/{id} | Delete a payroll |
