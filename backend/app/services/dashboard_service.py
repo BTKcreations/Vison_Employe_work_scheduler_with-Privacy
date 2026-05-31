@@ -359,8 +359,10 @@ async def _get_today_attendance_stats(total_employees: int, user_ids: Optional[L
     if user_ids is not None:
         query["user_id"] = {"$in": user_ids}
         
-    present_records = await Attendance.find(query).to_list()
-    present_count = len({str(r.user_id) for r in present_records})
+    # ⚡ Bolt: Optimized unique attendance counting by pushing distinct operation to database
+    # Prevents O(N) memory allocation and Pydantic model instantiations of all daily records
+    unique_user_ids = await Attendance.distinct("user_id", query)
+    present_count = len(unique_user_ids)
     absent_count = max(0, total_employees - present_count)
     
     return {
