@@ -1,22 +1,26 @@
 import pytest
 import pytest_asyncio
+import os
 from datetime import datetime, timezone, timedelta
 from app.models.payroll import Payroll, SalaryStructure, PayrollStatus, PayrollHistory
 from app.models.user import User, UserRole
 from app.models.company import Company
 from app.models.attendance import Attendance
+from app.models.holiday import Holiday
+from app.models.task import Task
 from app.models.leave import Leave, LeaveStatus, LeaveType
 from app.models.regularization import AttendanceRegularization, RegularizationStatus
 from app.routes.payroll import calculate_corporate_payroll
 from app.models.attendance import IST
 from beanie import init_beanie
-from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import AsyncMongoClient
 
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
-    client = AsyncIOMotorClient("mongodb://localhost:27017")
+    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    client = AsyncMongoClient(mongodb_url)
     await init_beanie(database=client.test_db, document_models=[
-        User, Company, Payroll, SalaryStructure, Attendance, Leave, AttendanceRegularization, PayrollHistory
+        User, Company, Payroll, SalaryStructure, Attendance, Leave, AttendanceRegularization, PayrollHistory, Holiday, Task
     ])
 
     # clear db
@@ -28,6 +32,8 @@ async def setup_db():
     await Leave.find_all().delete()
     await AttendanceRegularization.find_all().delete()
     await PayrollHistory.find_all().delete()
+    await Holiday.find_all().delete()
+    await Task.find_all().delete()
 
     yield
     await client.drop_database("test_db")
@@ -57,6 +63,9 @@ async def test_calculate_corporate_payroll_basic():
     )
     await struct.insert()
 
+    # May 1, 2, 3, 4, 5 2024.
+    # May 1 (Wed), May 2 (Thu), May 3 (Fri) are working days.
+    # May 4 (Sat), May 5 (Sun) are weekends.
     start_date = datetime(2024, 5, 1, 9, 0, tzinfo=timezone.utc)
     for i in range(5):
         attn = Attendance(
@@ -70,7 +79,7 @@ async def test_calculate_corporate_payroll_basic():
     payroll = await calculate_corporate_payroll(user, "2024-05")
 
     assert payroll.month == "2024-05"
-    assert payroll.present_days == 5
+    assert payroll.present_days == 3  # Only Wed, Thu, Fri count. Sat, Sun are weekends.
     assert payroll.base_salary == 20000.0
 
 @pytest.mark.asyncio
