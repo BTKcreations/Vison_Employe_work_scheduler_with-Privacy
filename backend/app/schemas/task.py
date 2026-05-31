@@ -1,6 +1,7 @@
 """
 Task request/response schemas.
 """
+
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import datetime
@@ -21,6 +22,7 @@ class RecurrenceRuleSchema(BaseModel):
     end_type: str = "never"  # never, count, date
     end_value: Optional[str] = None
 
+
 class CreateTaskRequest(BaseModel):
     work_description: str = Field(..., min_length=1, max_length=2000)
     assigned_to: Optional[str] = None  # Single employee
@@ -37,6 +39,7 @@ class CreateTaskRequest(BaseModel):
     def deadline_must_be_future(cls, v, values):
         """For recurring tasks, deadline must be provided and be in the future. Non‑recurring tasks may omit deadline."""
         from datetime import datetime, timezone
+
         if values.get("is_recurrent"):
             if v is None:
                 raise ValueError("Deadline is required for recurring tasks")
@@ -48,13 +51,15 @@ class CreateTaskRequest(BaseModel):
                 raise ValueError("Deadline must be a future date for recurring tasks")
         return v
 
-
     category_ids: Optional[List[str]] = None
 
 
 class UpdateTaskRequest(BaseModel):
     work_description: Optional[str] = Field(None, min_length=1, max_length=2000)
-    status: Optional[str] = Field(None, pattern="^(pending|in_progress|completed|overdue|completed_late|rejected)$")
+    status: Optional[str] = Field(
+        None,
+        pattern="^(pending|in_progress|completed|overdue|completed_late|rejected)$",
+    )
     priority: Optional[str] = Field(None, pattern="^(regular|medium|high|critical)$")
     deadline: Optional[datetime] = None
     remarks: Optional[str] = Field(None, max_length=1000)  # New remark text to append
@@ -87,10 +92,18 @@ class TaskResponse(BaseModel):
     created_at: str
 
     is_recurring: bool = False
-    
+
     @classmethod
-    def from_task(cls, task, assigned_name: str = None, creator_name: str = None, company_name: str = None, category_names: list = None) -> "TaskResponse":
+    def from_task(
+        cls,
+        task,
+        assigned_name: str = None,
+        creator_name: str = None,
+        company_name: str = None,
+        category_names: list = None,
+    ) -> "TaskResponse":
         from app.utils.ist_time import to_utc_iso
+
         return cls(
             id=str(task.id),
             work_description=task.work_description,
@@ -109,10 +122,12 @@ class TaskResponse(BaseModel):
             company_id=str(task.company_id) if task.company_id else None,
             company_name=company_name or task.company_name or "Personal / Internal",
             category_ids=[str(cid) for cid in (task.category_ids or [])],
-            category_names=category_names if category_names is not None else (task.category_names or []),
+            category_names=(
+                category_names
+                if category_names is not None
+                else (task.category_names or [])
+            ),
             remarks=[RemarkEntry(**r) for r in (task.remarks or [])],
             created_at=to_utc_iso(task.created_at),
             is_recurring=bool(task.recurring_task_id),
         )
-
-

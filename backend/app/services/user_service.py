@@ -1,6 +1,7 @@
 """
 User/Employee service - business logic for user operations.
 """
+
 from app.models.user import User, UserRole
 from app.auth.password import hash_password
 from app.models.activity_log import ActivityLog
@@ -19,11 +20,11 @@ NON_ADMIN_ROLES = [
 
 
 async def create_employee(
-    name: str, 
-    email: str, 
-    password: str, 
-    mobile: str = None, 
-    alternate_mobile: str = None, 
+    name: str,
+    email: str,
+    password: str,
+    mobile: str = None,
+    alternate_mobile: str = None,
     role: str = "employee",
     reporting_manager_id: str = None,
     hr_reporting_manager_id: str = None,
@@ -49,8 +50,14 @@ async def create_employee(
         role=role,
         mobile=mobile,
         alternate_mobile=alternate_mobile,
-        reporting_manager_id=PydanticObjectId(reporting_manager_id) if reporting_manager_id else None,
-        hr_reporting_manager_id=PydanticObjectId(hr_reporting_manager_id) if hr_reporting_manager_id else None,
+        reporting_manager_id=(
+            PydanticObjectId(reporting_manager_id) if reporting_manager_id else None
+        ),
+        hr_reporting_manager_id=(
+            PydanticObjectId(hr_reporting_manager_id)
+            if hr_reporting_manager_id
+            else None
+        ),
         identity_card_type=identity_card_type,
         identity_card_url=identity_card_url,
         emergency_contact=emergency_contact,
@@ -94,7 +101,7 @@ async def update_employee(employee_id: str, **kwargs) -> Optional[User]:
         if field in update_data:
             val = update_data[field]
             update_data[field] = PydanticObjectId(val) if val else None
-    
+
     if "email" in update_data and update_data["email"] != user.email:
         existing = await User.find_one(User.email == update_data["email"])
         if existing:
@@ -190,7 +197,9 @@ async def hard_delete_employee(employee_id: str) -> bool:
     await SalaryStructure.find(SalaryStructure.user_id == uid).delete()
     await ActivityLog.find(ActivityLog.user_id == uid).delete()
     await Notification.find(Notification.user_id == uid).delete()
-    await AttendanceRegularization.find(AttendanceRegularization.user_id == uid).delete()
+    await AttendanceRegularization.find(
+        AttendanceRegularization.user_id == uid
+    ).delete()
 
     # Remove employee from any Recurrence Rules they are assigned to
     await RecurrenceRule.find(RecurrenceRule.created_by == uid).delete()

@@ -3,6 +3,7 @@ from pydantic import Field
 from datetime import datetime
 from typing import Optional, List
 
+
 class ChatMessage(Document):
     group_id: Optional[PydanticObjectId] = None
     sender_id: PydanticObjectId

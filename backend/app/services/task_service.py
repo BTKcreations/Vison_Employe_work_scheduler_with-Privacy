@@ -1,6 +1,7 @@
 """
 Task service - business logic for task operations.
 """
+
 from app.models.task import Task, TaskStatus, TaskPriority, TaskType
 from app.models.user import User
 from app.models.company import Company
@@ -62,7 +63,7 @@ async def create_task(
         task_id=task.id,
         details=f"Work '{work_description[:50]}...' assigned to {assigned_user.name if assigned_user else 'Unknown'}",
     ).insert()
-    
+
     # Notify employee if assigned by someone else
     if str(assigned_to) != str(created_by):
         await Notification(
@@ -70,7 +71,7 @@ async def create_task(
             sender_id=PydanticObjectId(created_by),
             title="New Task Assigned",
             message=f"You have been assigned a new task: {work_description[:100]}",
-            type="task_assigned"
+            type="task_assigned",
         ).insert()
 
     return task
@@ -98,9 +99,13 @@ async def get_tasks(
 
     # Auto-mark overdue tasks
     from datetime import timezone
+
     now = datetime.now(timezone.utc)
     for task in tasks:
-        if task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] and task.deadline < now:
+        if (
+            task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]
+            and task.deadline < now
+        ):
             await task.set({"status": TaskStatus.OVERDUE, "updated_at": now})
             task.status = TaskStatus.OVERDUE
 
@@ -112,7 +117,9 @@ async def get_task_by_id(task_id: str) -> Optional[Task]:
     return await Task.get(PydanticObjectId(task_id))
 
 
-async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> Optional[Task]:
+async def update_task(
+    task_id: str, user_id: str, is_admin: bool, **kwargs
+) -> Optional[Task]:
     """Update a task. Handles status changes, remarks, and reward logic."""
     task = await Task.get(PydanticObjectId(task_id))
     if not task:
@@ -140,7 +147,9 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
             elif key == "company_id":
                 update_data["company_id"] = PydanticObjectId(value)
                 company = await Company.get(PydanticObjectId(value))
-                update_data["company_name"] = company.name if company else "Personal / Internal"
+                update_data["company_name"] = (
+                    company.name if company else "Personal / Internal"
+                )
             elif key == "category_ids":
                 resolved_ids = []
                 resolved_names = []
@@ -158,6 +167,7 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
     if remark_text:
         user = await User.get(PydanticObjectId(user_id))
         from datetime import timezone
+
         new_remark = {
             "user_id": user_id,
             "user_name": user.name if user else "Unknown",
@@ -170,8 +180,17 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
 
     # Handle completion
     new_status = update_data.get("status")
-    if new_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE, TaskStatus.DELAYED] and task.status not in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE, TaskStatus.DELAYED]:
+    if new_status in [
+        TaskStatus.COMPLETED,
+        TaskStatus.COMPLETED_LATE,
+        TaskStatus.DELAYED,
+    ] and task.status not in [
+        TaskStatus.COMPLETED,
+        TaskStatus.COMPLETED_LATE,
+        TaskStatus.DELAYED,
+    ]:
         from datetime import timezone
+
         now = datetime.now(timezone.utc)
         update_data["completed_at"] = now
         # If past deadline, set status to DELAYED or COMPLETED_LATE
@@ -179,6 +198,7 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
             update_data["status"] = TaskStatus.DELAYED
 
     from datetime import timezone
+
     update_data["updated_at"] = datetime.now(timezone.utc)
     await task.set(update_data)
 
@@ -187,13 +207,21 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
 
     # Apply Performance Scoring
     final_status = task.status
-    if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE, TaskStatus.DELAYED] and not task.reward_given:
+    if (
+        final_status
+        in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE, TaskStatus.DELAYED]
+        and not task.reward_given
+    ):
         await apply_performance_score(task, is_rejection=False)
     elif final_status == TaskStatus.REJECTED and not task.reward_given:
         await apply_performance_score(task, is_rejection=True)
 
     # Log actions
-    if final_status in [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE, TaskStatus.DELAYED]:
+    if final_status in [
+        TaskStatus.COMPLETED,
+        TaskStatus.COMPLETED_LATE,
+        TaskStatus.DELAYED,
+    ]:
         await ActivityLog(
             user_id=task.assigned_to,
             action="task_completed",
@@ -208,7 +236,7 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
                 sender_id=task.assigned_to,
                 title="Task Completed",
                 message=f"{task.assigned_to_name} completed the task: {task.work_description[:100]}",
-                type="task_completed"
+                type="task_completed",
             ).insert()
 
     return task
@@ -223,7 +251,9 @@ async def delete_task(task_id: str) -> bool:
     return True
 
 
-async def get_task_counts(user_id: Optional[str] = None, user_ids: Optional[list] = None):
+async def get_task_counts(
+    user_id: Optional[str] = None, user_ids: Optional[list] = None
+):
     """Get task count summary using a single aggregation pipeline."""
     base_query = {}
     if user_id:
@@ -233,11 +263,16 @@ async def get_task_counts(user_id: Optional[str] = None, user_ids: Optional[list
 
     # Auto-update overdue tasks first (this still requires an update_many or individual updates)
     from datetime import timezone
+
     now = datetime.now(timezone.utc)
     # Use find().set() for batch update if supported, or loop for simple logic.
     # Beanie supports update_many:
     await Task.find(
-        {**base_query, "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]}, "deadline": {"$lt": now}}
+        {
+            **base_query,
+            "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]},
+            "deadline": {"$lt": now},
+        }
     ).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
 
     # Single aggregation for all counts
@@ -245,9 +280,9 @@ async def get_task_counts(user_id: Optional[str] = None, user_ids: Optional[list
         {"$match": base_query},
         {"$group": {"_id": "$status", "count": {"$sum": 1}}},
     ]
-    
+
     aggregation_results = await Task.aggregate(pipeline).to_list()
-    
+
     # Initialize defaults
     counts = {
         "total": 0,
@@ -257,7 +292,7 @@ async def get_task_counts(user_id: Optional[str] = None, user_ids: Optional[list
         "in_progress": 0,
         "overdue": 0,
     }
-    
+
     for res in aggregation_results:
         status = res["_id"]
         count = res["count"]

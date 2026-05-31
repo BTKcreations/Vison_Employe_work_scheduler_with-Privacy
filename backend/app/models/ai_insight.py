@@ -1,6 +1,7 @@
 """
 Cached AI Insight model for MongoDB cached_ai_insights collection.
 """
+
 from beanie import Document
 from pydantic import Field
 from datetime import datetime, timezone

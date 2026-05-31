@@ -1,6 +1,7 @@
 """
 Category model for MongoDB categories collection.
 """
+
 from beanie import Document
 from pydantic import Field
 from datetime import datetime

@@ -3,6 +3,7 @@ from pydantic import Field
 from datetime import datetime
 from typing import Optional
 
+
 class Notification(Document):
     user_id: PydanticObjectId
     sender_id: Optional[PydanticObjectId] = None

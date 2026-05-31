@@ -1,6 +1,7 @@
 """
 Geofence and attendance anti-manipulation utilities.
 """
+
 import math
 from typing import List, Optional, Dict
 from datetime import datetime, timedelta
@@ -18,17 +19,17 @@ def haversine_distance(lat1: float, lng1: float, lat2: float, lng2: float) -> fl
     delta_phi = math.radians(lat2 - lat1)
     delta_lambda = math.radians(lng2 - lng1)
 
-    a = (math.sin(delta_phi / 2) ** 2 +
-         math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2)
+    a = (
+        math.sin(delta_phi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    )
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
     return R * c
 
 
 def is_within_geofence(
-    lat: float, lng: float,
-    office_lat: float, office_lng: float,
-    radius_meters: float
+    lat: float, lng: float, office_lat: float, office_lng: float, radius_meters: float
 ) -> bool:
     """Check if coordinates are within the geofence radius of the office."""
     distance = haversine_distance(lat, lng, office_lat, office_lng)
@@ -36,8 +37,7 @@ def is_within_geofence(
 
 
 def calculate_drift_km(
-    loc_in: Optional[Dict[str, float]],
-    loc_out: Optional[Dict[str, float]]
+    loc_in: Optional[Dict[str, float]], loc_out: Optional[Dict[str, float]]
 ) -> Optional[float]:
     """
     Calculate the distance drift between check-in and check-out locations.
@@ -47,8 +47,7 @@ def calculate_drift_km(
         return None
 
     distance_m = haversine_distance(
-        loc_in["lat"], loc_in["lng"],
-        loc_out["lat"], loc_out["lng"]
+        loc_in["lat"], loc_in["lng"], loc_out["lat"], loc_out["lng"]
     )
     return round(distance_m / 1000, 2)
 
@@ -97,16 +96,18 @@ def detect_anomalies(
             flags.append("short_session")
 
     # 5. Device fingerprint change
-    if (device_fingerprint and previous_fingerprint and
-            device_fingerprint != previous_fingerprint):
+    if (
+        device_fingerprint
+        and previous_fingerprint
+        and device_fingerprint != previous_fingerprint
+    ):
         flags.append("device_changed")
 
     return flags
 
 
 def get_distance_to_office(
-    lat: float, lng: float,
-    office_lat: Optional[float], office_lng: Optional[float]
+    lat: float, lng: float, office_lat: Optional[float], office_lng: Optional[float]
 ) -> Optional[float]:
     """Get distance from current location to office in meters. Returns None if office not configured."""
     if office_lat is None or office_lng is None:

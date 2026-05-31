@@ -34,7 +34,7 @@ class Payroll(Document):
     user_name: str
     month: str  # Format: YYYY-MM
     status: PayrollStatus = PayrollStatus.DRAFT
-    
+
     # Base configuration structure copy
     basic: float = Field(default=0.0)
     hra: float = Field(default=0.0)
@@ -42,7 +42,7 @@ class Payroll(Document):
     pf_deduction: float = Field(default=0.0)
     esi_deduction: float = Field(default=0.0)
     tax_deduction: float = Field(default=0.0)
-    
+
     # Days details
     present_days: int = Field(default=0)
     absent_days: int = Field(default=0)
@@ -51,7 +51,7 @@ class Payroll(Document):
     payable_days: int = Field(default=0)
     holidays_weekends: int = Field(default=0)
     total_working_days: int = Field(default=0)
-    
+
     # Financial details
     base_salary: float = Field(default=0.0)
     earned_salary: float = Field(default=0.0)
@@ -62,7 +62,7 @@ class Payroll(Document):
     penalties: float = Field(default=0.0)
     deductions: float = Field(default=0.0)
     net_salary: float = Field(default=0.0)
-    
+
     drafted_by: Optional[PydanticObjectId] = None
     drafted_by_name: Optional[str] = None
     reviewed_by: Optional[PydanticObjectId] = None

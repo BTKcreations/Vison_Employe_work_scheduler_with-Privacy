@@ -1,6 +1,7 @@
 """
 User/Employee request/response schemas.
 """
+
 from pydantic import BaseModel, EmailStr, Field
 from typing import Optional
 
@@ -14,7 +15,7 @@ class CreateEmployeeRequest(BaseModel):
     alternate_mobile: Optional[str] = None
     reporting_manager_id: Optional[str] = None
     hr_reporting_manager_id: Optional[str] = None
-    
+
     # New fields
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
@@ -37,7 +38,7 @@ class UpdateEmployeeRequest(BaseModel):
     password: Optional[str] = Field(None, min_length=6, max_length=100)
     reporting_manager_id: Optional[str] = None
     hr_reporting_manager_id: Optional[str] = None
-    
+
     # New fields
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
@@ -62,7 +63,7 @@ class EmployeeResponse(BaseModel):
     alternate_mobile: Optional[str] = None
     reporting_manager_id: Optional[str] = None
     hr_reporting_manager_id: Optional[str] = None
-    
+
     # New fields
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
@@ -76,8 +77,8 @@ class EmployeeResponse(BaseModel):
     @classmethod
     def from_user(cls, user) -> "EmployeeResponse":
         from app.utils.ist_time import to_utc_iso
-        return cls(
 
+        return cls(
             id=str(user.id),
             name=user.name,
             email=user.email,
@@ -85,12 +86,17 @@ class EmployeeResponse(BaseModel):
             reward_points=user.reward_points,
             is_active=user.is_active,
             created_at=to_utc_iso(user.created_at),
-
             raw_password=user.raw_password,
             mobile=user.mobile,
             alternate_mobile=user.alternate_mobile,
-            reporting_manager_id=str(user.reporting_manager_id) if user.reporting_manager_id else None,
-            hr_reporting_manager_id=str(user.hr_reporting_manager_id) if user.hr_reporting_manager_id else None,
+            reporting_manager_id=(
+                str(user.reporting_manager_id) if user.reporting_manager_id else None
+            ),
+            hr_reporting_manager_id=(
+                str(user.hr_reporting_manager_id)
+                if user.hr_reporting_manager_id
+                else None
+            ),
             identity_card_type=user.identity_card_type,
             identity_card_url=user.identity_card_url,
             emergency_contact=user.emergency_contact,

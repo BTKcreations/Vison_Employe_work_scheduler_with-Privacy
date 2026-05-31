@@ -15,13 +15,26 @@ from app.models.attendance import IST
 from beanie import init_beanie
 from pymongo import AsyncMongoClient
 
+
 @pytest_asyncio.fixture(autouse=True)
 async def setup_db():
     mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
     client = AsyncMongoClient(mongodb_url)
-    await init_beanie(database=client.test_db, document_models=[
-        User, Company, Payroll, SalaryStructure, Attendance, Leave, AttendanceRegularization, PayrollHistory, Holiday, Task
-    ])
+    await init_beanie(
+        database=client.test_db,
+        document_models=[
+            User,
+            Company,
+            Payroll,
+            SalaryStructure,
+            Attendance,
+            Leave,
+            AttendanceRegularization,
+            PayrollHistory,
+            Holiday,
+            Task,
+        ],
+    )
 
     # clear db
     await User.find_all().delete()
@@ -38,6 +51,7 @@ async def setup_db():
     yield
     await client.drop_database("test_db")
 
+
 @pytest.mark.asyncio
 async def test_calculate_corporate_payroll_basic():
     company = Company(name="Test Corp", geofence_radius_meters=100)
@@ -49,7 +63,7 @@ async def test_calculate_corporate_payroll_basic():
         role=UserRole.EMPLOYEE,
         company_id=company.id,
         hiring_date="2023-01-01",
-        password_hash="mock_hash"
+        password_hash="mock_hash",
     )
     await user.insert()
 
@@ -59,7 +73,7 @@ async def test_calculate_corporate_payroll_basic():
         hra=5000,
         special_allowance=5000,
         pf_deduction=1000,
-        tax_deduction=500
+        tax_deduction=500,
     )
     await struct.insert()
 
@@ -72,7 +86,7 @@ async def test_calculate_corporate_payroll_basic():
             user_id=user.id,
             company_id=company.id,
             check_in=start_date + timedelta(days=i),
-            status="present"
+            status="present",
         )
         await attn.insert()
 
@@ -82,11 +96,19 @@ async def test_calculate_corporate_payroll_basic():
     assert payroll.present_days == 3  # Only Wed, Thu, Fri count. Sat, Sun are weekends.
     assert payroll.base_salary == 20000.0
 
+
 @pytest.mark.asyncio
 async def test_calculate_corporate_payroll_with_regularization():
     company = Company(name="Test Corp")
     await company.insert()
-    user = User(email="test2@example.com", name="Test User 2", role=UserRole.EMPLOYEE, company_id=company.id, hiring_date="2023-01-01", password_hash="mock_hash")
+    user = User(
+        email="test2@example.com",
+        name="Test User 2",
+        role=UserRole.EMPLOYEE,
+        company_id=company.id,
+        hiring_date="2023-01-01",
+        password_hash="mock_hash",
+    )
     await user.insert()
 
     struct = SalaryStructure(
@@ -96,12 +118,19 @@ async def test_calculate_corporate_payroll_with_regularization():
 
     check_in_date = datetime(2024, 5, 1, 9, 0, tzinfo=timezone.utc)
     attn = Attendance(
-        user_id=user.id, company_id=company.id, check_in=check_in_date, status="present", remarks="Regularized"
+        user_id=user.id,
+        company_id=company.id,
+        check_in=check_in_date,
+        status="present",
+        remarks="Regularized",
     )
     await attn.insert()
 
     reg = AttendanceRegularization(
-        user_id=user.id, attendance_id=attn.id, reason="Forgot", status=RegularizationStatus.APPROVED
+        user_id=user.id,
+        attendance_id=attn.id,
+        reason="Forgot",
+        status=RegularizationStatus.APPROVED,
     )
     await reg.insert()
 
@@ -111,11 +140,19 @@ async def test_calculate_corporate_payroll_with_regularization():
     assert payroll.approved_regularization_days == 1
     assert payroll.payable_days == 1
 
+
 @pytest.mark.asyncio
 async def test_calculate_corporate_payroll_with_leaves():
     company = Company(name="Test Corp")
     await company.insert()
-    user = User(email="test3@example.com", name="Test User 3", role=UserRole.EMPLOYEE, company_id=company.id, hiring_date="2023-01-01", password_hash="mock_hash")
+    user = User(
+        email="test3@example.com",
+        name="Test User 3",
+        role=UserRole.EMPLOYEE,
+        company_id=company.id,
+        hiring_date="2023-01-01",
+        password_hash="mock_hash",
+    )
     await user.insert()
 
     struct = SalaryStructure(
@@ -127,8 +164,13 @@ async def test_calculate_corporate_payroll_with_leaves():
     leave_end = datetime(2024, 5, 7, tzinfo=timezone.utc)
 
     leave = Leave(
-        user_id=user.id, user_name=user.name, leave_type=LeaveType.SICK,
-        start_date=leave_start, end_date=leave_end, reason="Sick", status=LeaveStatus.APPROVED
+        user_id=user.id,
+        user_name=user.name,
+        leave_type=LeaveType.SICK,
+        start_date=leave_start,
+        end_date=leave_end,
+        reason="Sick",
+        status=LeaveStatus.APPROVED,
     )
     await leave.insert()
 
@@ -137,11 +179,19 @@ async def test_calculate_corporate_payroll_with_leaves():
     assert payroll.paid_leaves == 2
     assert payroll.payable_days == 2
 
+
 @pytest.mark.asyncio
 async def test_payroll_recalculation_history():
     company = Company(name="Test Corp")
     await company.insert()
-    user = User(email="test4@example.com", name="Test User 4", role=UserRole.EMPLOYEE, company_id=company.id, hiring_date="2023-01-01", password_hash="mock_hash")
+    user = User(
+        email="test4@example.com",
+        name="Test User 4",
+        role=UserRole.EMPLOYEE,
+        company_id=company.id,
+        hiring_date="2023-01-01",
+        password_hash="mock_hash",
+    )
     await user.insert()
 
     struct = SalaryStructure(user_id=user.id, basic=10000)
@@ -151,7 +201,10 @@ async def test_payroll_recalculation_history():
     assert payroll_v1.version_number == 1
 
     attn = Attendance(
-        user_id=user.id, company_id=company.id, check_in=datetime(2024, 5, 10, 9, 0, tzinfo=timezone.utc), status="present"
+        user_id=user.id,
+        company_id=company.id,
+        check_in=datetime(2024, 5, 10, 9, 0, tzinfo=timezone.utc),
+        status="present",
     )
     await attn.insert()
 
@@ -160,7 +213,9 @@ async def test_payroll_recalculation_history():
     assert payroll_v2.version_number == 2
     assert payroll_v2.present_days == 1
 
-    history = await PayrollHistory.find(PayrollHistory.payroll_id == payroll_v2.id).to_list()
+    history = await PayrollHistory.find(
+        PayrollHistory.payroll_id == payroll_v2.id
+    ).to_list()
     assert len(history) == 1
     assert history[0].version_number == 1
     assert history[0].payroll_snapshot["present_days"] == 0
@@ -170,7 +225,14 @@ async def test_payroll_recalculation_history():
 async def test_payroll_recalculation_locked():
     company = Company(name="Test Corp")
     await company.insert()
-    user = User(email="test5@example.com", name="Test User 5", role=UserRole.EMPLOYEE, company_id=company.id, hiring_date="2023-01-01", password_hash="mock_hash")
+    user = User(
+        email="test5@example.com",
+        name="Test User 5",
+        role=UserRole.EMPLOYEE,
+        company_id=company.id,
+        hiring_date="2023-01-01",
+        password_hash="mock_hash",
+    )
     await user.insert()
 
     struct = SalaryStructure(user_id=user.id, basic=12000)
@@ -178,7 +240,7 @@ async def test_payroll_recalculation_locked():
 
     payroll = await calculate_corporate_payroll(user, "2024-05")
     assert payroll.version_number == 1
-    
+
     # Lock payroll
     payroll.status = PayrollStatus.LOCKED
     await payroll.save()
@@ -189,7 +251,10 @@ async def test_payroll_recalculation_locked():
 
     # Add attendance log
     attn = Attendance(
-        user_id=user.id, company_id=company.id, check_in=datetime(2024, 5, 10, 9, 0, tzinfo=timezone.utc), status="present"
+        user_id=user.id,
+        company_id=company.id,
+        check_in=datetime(2024, 5, 10, 9, 0, tzinfo=timezone.utc),
+        status="present",
     )
     await attn.insert()
 
@@ -199,7 +264,9 @@ async def test_payroll_recalculation_locked():
     assert result_forced.present_days == 1
     assert result_forced.status == PayrollStatus.LOCKED
 
-    history = await PayrollHistory.find(PayrollHistory.payroll_id == result_forced.id).to_list()
+    history = await PayrollHistory.find(
+        PayrollHistory.payroll_id == result_forced.id
+    ).to_list()
     assert len(history) == 1
     assert history[0].version_number == 1
     assert history[0].payroll_snapshot["present_days"] == 0
@@ -209,7 +276,7 @@ async def test_payroll_recalculation_locked():
 async def test_payroll_active_window_full_month():
     company = Company(name="Test Corp")
     await company.insert()
-    
+
     # Hired mid-month on May 15th, 2024
     user = User(
         email="midmonth@example.com",
@@ -217,15 +284,12 @@ async def test_payroll_active_window_full_month():
         role=UserRole.EMPLOYEE,
         company_id=company.id,
         hiring_date="2024-05-15",
-        password_hash="mock_hash"
+        password_hash="mock_hash",
     )
     await user.insert()
 
     struct = SalaryStructure(
-        user_id=user.id,
-        basic=10000,
-        hra=5000,
-        special_allowance=5000
+        user_id=user.id, basic=10000, hra=5000, special_allowance=5000
     )
     await struct.insert()
 
@@ -246,7 +310,7 @@ async def test_payroll_custom_company_work_days():
     # 4-day workweek (Monday to Thursday). Friday, Saturday, Sunday are weekoffs (weekends).
     company = Company(
         name="Custom Workweek Corp",
-        work_days=["Monday", "Tuesday", "Wednesday", "Thursday"]
+        work_days=["Monday", "Tuesday", "Wednesday", "Thursday"],
     )
     await company.insert()
 
@@ -256,15 +320,12 @@ async def test_payroll_custom_company_work_days():
         role=UserRole.EMPLOYEE,
         company_id=company.id,
         hiring_date="2024-01-01",
-        password_hash="mock_hash"
+        password_hash="mock_hash",
     )
     await user.insert()
 
     struct = SalaryStructure(
-        user_id=user.id,
-        basic=10000,
-        hra=5000,
-        special_allowance=5000
+        user_id=user.id, basic=10000, hra=5000, special_allowance=5000
     )
     await struct.insert()
 

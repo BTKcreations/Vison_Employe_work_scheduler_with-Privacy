@@ -5,10 +5,10 @@ from app.services.search_service import global_search
 
 router = APIRouter(tags=["Search"])
 
+
 @router.get("/search")
 async def search(
-    q: str = Query(..., min_length=2),
-    current_user: User = Depends(get_current_user)
+    q: str = Query(..., min_length=2), current_user: User = Depends(get_current_user)
 ):
     """
     Global search endpoint.

@@ -6,19 +6,20 @@ from app.services import task_service
 from beanie import PydanticObjectId
 from typing import List, Optional
 
+
 def calculate_next_run(rule: RecurrenceRule) -> Optional[datetime]:
     """Calculate the next run time based on the recurrence rule."""
     now = datetime.now(timezone.utc)
     # Use the rule's start_date if next_run not set
     reference = rule.next_run or rule.start_date
-    
+
     if rule.recurrence_type == RecurrenceType.DAILY:
         return reference + timedelta(days=rule.interval)
-    
+
     if rule.recurrence_type == RecurrenceType.WEEKLY:
         if not rule.weekdays:
             return reference + timedelta(weeks=rule.interval)
-        
+
         sorted_weekdays = sorted(rule.weekdays)
         current_weekday = reference.weekday()
         for wd in sorted_weekdays:
@@ -39,17 +40,25 @@ def calculate_next_run(rule: RecurrenceRule) -> Optional[datetime]:
     # Fallback – treat as daily
     return reference + timedelta(days=1)
 
+
 async def spawn_tasks_from_rule(rule: RecurrenceRule):
     """Create individual tasks from a recurring rule."""
     if not rule.is_active:
         return
 
     # End condition – date or count
-    if rule.end_type == RecurrenceEndType.AFTER_OCCURRENCES and rule.occurrence_count >= (rule.occurrences or 0):
+    if (
+        rule.end_type == RecurrenceEndType.AFTER_OCCURRENCES
+        and rule.occurrence_count >= (rule.occurrences or 0)
+    ):
         rule.is_active = False
         await rule.save()
         return
-    if rule.end_type == RecurrenceEndType.ON_DATE and rule.end_date and datetime.now(timezone.utc) > rule.end_date:
+    if (
+        rule.end_type == RecurrenceEndType.ON_DATE
+        and rule.end_date
+        and datetime.now(timezone.utc) > rule.end_date
+    ):
         rule.is_active = False
         await rule.save()
         return
@@ -70,12 +79,15 @@ async def spawn_tasks_from_rule(rule: RecurrenceRule):
             if not assignee_ids:
                 assignee_ids = [template_task.assigned_to]
             if not company_ids:
-                company_ids = [template_task.company_id] if template_task.company_id else []
+                company_ids = (
+                    [template_task.company_id] if template_task.company_id else []
+                )
         else:
             # Blueprint task deleted and no configuration exists on the rule
             rule.is_active = False
             await rule.save()
             import logging
+
             logging.getLogger("app").warning(
                 f"Deactivated recurring rule {rule.id} ('{rule.name}') because its template task was deleted "
                 "and no decoupled configuration exists."
@@ -90,12 +102,14 @@ async def spawn_tasks_from_rule(rule: RecurrenceRule):
         for uid in assignee_ids:
             # Preserve the original time of day
             deadline = rule.next_run
-            
+
             await task_service.create_task(
                 work_description=work_description,
                 assigned_to=str(uid),
                 created_by=str(rule.created_by),
-                priority=priority.value if hasattr(priority, "value") else str(priority),
+                priority=(
+                    priority.value if hasattr(priority, "value") else str(priority)
+                ),
                 deadline=deadline,
                 task_type="assigned" if uid != rule.created_by else "personal",
                 company_id=str(cid) if cid else None,
@@ -108,6 +122,7 @@ async def spawn_tasks_from_rule(rule: RecurrenceRule):
     rule.occurrence_count += 1
     await rule.save()
 
+
 async def process_recurrence() -> None:
     """Background loop to check and spawn recurring tasks."""
     now = datetime.now(timezone.utc)
@@ -115,6 +130,6 @@ async def process_recurrence() -> None:
         RecurrenceRule.is_active == True,
         RecurrenceRule.next_run <= now,
     ).to_list()
-    
+
     for rule in pending_rules:
         await spawn_tasks_from_rule(rule)

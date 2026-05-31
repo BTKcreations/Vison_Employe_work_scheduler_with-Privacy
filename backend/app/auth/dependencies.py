@@ -1,6 +1,7 @@
 """
 FastAPI dependencies for authentication and authorization.
 """
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.auth.jwt_handler import decode_access_token
@@ -50,6 +51,7 @@ async def get_current_user(
 
 class RoleChecker:
     """Dependency factory for checking if a user has specific roles."""
+
     def __init__(self, allowed_roles: List[UserRole]):
         self.allowed_roles = allowed_roles
 
@@ -75,14 +77,30 @@ async def require_admin(
 
 
 # Enterprise RBAC Role Helpers
-require_hr_team = RoleChecker([UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER])
-require_task_team = RoleChecker([UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER])
-require_any_hr_manager = RoleChecker([UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER, UserRole.MANAGER])
+require_hr_team = RoleChecker(
+    [UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER]
+)
+require_task_team = RoleChecker(
+    [UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]
+)
+require_any_hr_manager = RoleChecker(
+    [
+        UserRole.ADMIN,
+        UserRole.HR_MANAGER,
+        UserRole.ASSISTANT_HR_MANAGER,
+        UserRole.MANAGER,
+    ]
+)
 require_any_manager = RoleChecker([UserRole.ADMIN, UserRole.MANAGER])
-require_management_team = RoleChecker([UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER])
+require_management_team = RoleChecker(
+    [
+        UserRole.ADMIN,
+        UserRole.HR_MANAGER,
+        UserRole.ASSISTANT_HR_MANAGER,
+        UserRole.MANAGER,
+        UserRole.ASSISTANT_MANAGER,
+    ]
+)
 # HR admin dependency – only ADMIN and HR_MANAGER can manage recurrences
 require_hr_admin = RoleChecker([UserRole.ADMIN, UserRole.HR_MANAGER])
 require_hr_manager = RoleChecker([UserRole.ADMIN, UserRole.HR_MANAGER])
-
-
-

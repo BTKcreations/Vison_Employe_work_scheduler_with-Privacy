@@ -19,13 +19,16 @@ router = APIRouter(prefix="/chat", tags=["Chat Collaboration"])
 
 # --- schemas ---
 
+
 class GroupCreateRequest(BaseModel):
     name: str
     members: List[str]
 
+
 class GroupUpdateRequest(BaseModel):
     name: Optional[str] = None
     members: Optional[List[str]] = None
+
 
 class MessageSendRequest(BaseModel):
     group_id: Optional[str] = None
@@ -36,46 +39,59 @@ class MessageSendRequest(BaseModel):
     attachment_name: Optional[str] = None
     task_card_id: Optional[str] = None
 
+
 class TipRequest(BaseModel):
     recipient_id: str
     points: float
     message: str
 
+
 class ReadMessageRequest(BaseModel):
     group_id: Optional[str] = None
     sender_id: Optional[str] = None
+
 
 # Helper to check if a user can manage groups / send tips
 def is_manager(user: User) -> bool:
     return user.role != UserRole.EMPLOYEE
 
+
 # --- API Endpoints ---
+
 
 @router.get("/users", response_model=List[dict])
 async def get_active_chat_users(current_user: User = Depends(get_current_user)):
     """Retrieve all active, non-deleted employees for direct chats, with last message, unread count, sorted by recent activity."""
     users = await User.find(User.is_deleted != True).to_list()
-    
+
     hydrated_users = []
     for u in users:
         if u.id == current_user.id:
             continue
-            
+
         # Get the last message between current_user and this contact
-        last_msg = await ChatMessage.find({
-            "$or": [
-                {"sender_id": current_user.id, "recipient_id": u.id},
-                {"sender_id": u.id, "recipient_id": current_user.id}
-            ]
-        }).sort("-created_at").first_or_none()
-        
+        last_msg = (
+            await ChatMessage.find(
+                {
+                    "$or": [
+                        {"sender_id": current_user.id, "recipient_id": u.id},
+                        {"sender_id": u.id, "recipient_id": current_user.id},
+                    ]
+                }
+            )
+            .sort("-created_at")
+            .first_or_none()
+        )
+
         # Calculate unread count (messages sent by u to current_user, that current_user has not read)
-        unread_count = await ChatMessage.find({
-            "sender_id": u.id,
-            "recipient_id": current_user.id,
-            "read_by": {"$ne": current_user.id}
-        }).count()
-        
+        unread_count = await ChatMessage.find(
+            {
+                "sender_id": u.id,
+                "recipient_id": current_user.id,
+                "read_by": {"$ne": current_user.id},
+            }
+        ).count()
+
         last_msg_text = ""
         last_msg_time = None
         if last_msg:
@@ -90,41 +106,54 @@ async def get_active_chat_users(current_user: User = Depends(get_current_user)):
                 last_msg_text = f"🏆 Appreciated +{last_msg.tip_points} pts"
             else:
                 last_msg_text = last_msg.text
-                
-        hydrated_users.append({
-            "id": str(u.id),
-            "name": u.name,
-            "email": u.email,
-            "role": u.role.value,
-            "last_active": to_utc_iso(u.last_active) if u.last_active else None,
-            "last_message_text": last_msg_text,
-            "last_message_time": last_msg_time,
-            "unread_count": unread_count
-        })
-        
+
+        hydrated_users.append(
+            {
+                "id": str(u.id),
+                "name": u.name,
+                "email": u.email,
+                "role": u.role.value,
+                "last_active": to_utc_iso(u.last_active) if u.last_active else None,
+                "last_message_text": last_msg_text,
+                "last_message_time": last_msg_time,
+                "unread_count": unread_count,
+            }
+        )
+
     def get_sort_key(item):
-        return item["last_message_time"] if item["last_message_time"] else "1970-01-01T00:00:00Z"
-        
+        return (
+            item["last_message_time"]
+            if item["last_message_time"]
+            else "1970-01-01T00:00:00Z"
+        )
+
     hydrated_users.sort(key=get_sort_key, reverse=True)
     return hydrated_users
+
 
 @router.get("/groups", response_model=List[dict])
 async def get_my_chat_groups(current_user: User = Depends(get_current_user)):
     """Retrieve all groups current user is a member of, with last message, unread count, sorted by recent activity."""
     groups = await ChatGroup.find(ChatGroup.members == current_user.id).to_list()
-    
+
     hydrated_groups = []
     for g in groups:
         # Get the last message in this group
-        last_msg = await ChatMessage.find(ChatMessage.group_id == g.id).sort("-created_at").first_or_none()
-        
+        last_msg = (
+            await ChatMessage.find(ChatMessage.group_id == g.id)
+            .sort("-created_at")
+            .first_or_none()
+        )
+
         # Calculate unread count in this group (messages not sent by current_user, and not read by current_user)
-        unread_count = await ChatMessage.find({
-            "group_id": g.id,
-            "sender_id": {"$ne": current_user.id},
-            "read_by": {"$ne": current_user.id}
-        }).count()
-        
+        unread_count = await ChatMessage.find(
+            {
+                "group_id": g.id,
+                "sender_id": {"$ne": current_user.id},
+                "read_by": {"$ne": current_user.id},
+            }
+        ).count()
+
         last_msg_text = ""
         last_msg_time = None
         if last_msg:
@@ -136,38 +165,46 @@ async def get_my_chat_groups(current_user: User = Depends(get_current_user)):
             elif last_msg.type == "task":
                 last_msg_text = f"{last_msg.sender_name}: 📋 Shared Task"
             elif last_msg.type == "tip":
-                last_msg_text = f"{last_msg.sender_name}: 🏆 Appreciated +{last_msg.tip_points} pts"
+                last_msg_text = (
+                    f"{last_msg.sender_name}: 🏆 Appreciated +{last_msg.tip_points} pts"
+                )
             else:
                 last_msg_text = f"{last_msg.sender_name}: {last_msg.text}"
-                
-        hydrated_groups.append({
-            "id": str(g.id),
-            "name": g.name,
-            "members": [str(m) for m in g.members],
-            "created_by": str(g.created_by),
-            "created_at": g.created_at.isoformat(),
-            "updated_at": g.updated_at.isoformat(),
-            "last_message_text": last_msg_text,
-            "last_message_time": last_msg_time,
-            "unread_count": unread_count
-        })
-        
+
+        hydrated_groups.append(
+            {
+                "id": str(g.id),
+                "name": g.name,
+                "members": [str(m) for m in g.members],
+                "created_by": str(g.created_by),
+                "created_at": g.created_at.isoformat(),
+                "updated_at": g.updated_at.isoformat(),
+                "last_message_text": last_msg_text,
+                "last_message_time": last_msg_time,
+                "unread_count": unread_count,
+            }
+        )
+
     def get_sort_key(item):
-        return item["last_message_time"] if item["last_message_time"] else "1970-01-01T00:00:00Z"
-        
+        return (
+            item["last_message_time"]
+            if item["last_message_time"]
+            else "1970-01-01T00:00:00Z"
+        )
+
     hydrated_groups.sort(key=get_sort_key, reverse=True)
     return hydrated_groups
 
+
 @router.post("/groups", status_code=status.HTTP_201_CREATED)
 async def create_chat_group(
-    request: GroupCreateRequest,
-    current_user: User = Depends(get_current_user)
+    request: GroupCreateRequest, current_user: User = Depends(get_current_user)
 ):
     """Create a new group chat. (Restricted to Managers/HR/Admins)"""
     if not is_manager(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only managers and administrators are authorized to create groups."
+            detail="Only managers and administrators are authorized to create groups.",
         )
 
     # Prepare members list (always include the creator)
@@ -179,9 +216,7 @@ async def create_chat_group(
             continue
 
     group = ChatGroup(
-        name=request.name.strip(),
-        members=list(member_ids),
-        created_by=current_user.id
+        name=request.name.strip(), members=list(member_ids), created_by=current_user.id
     )
     await group.insert()
     return {
@@ -189,26 +224,29 @@ async def create_chat_group(
         "group": {
             "id": str(group.id),
             "name": group.name,
-            "members": [str(m) for m in group.members]
-        }
+            "members": [str(m) for m in group.members],
+        },
     }
+
 
 @router.put("/groups/{group_id}")
 async def update_chat_group(
     group_id: str,
     request: GroupUpdateRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Modify group name or member list. (Restricted to Managers/HR/Admins)"""
     if not is_manager(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only managers and administrators are authorized to manage groups."
+            detail="Only managers and administrators are authorized to manage groups.",
         )
 
     group = await ChatGroup.get(PydanticObjectId(group_id))
     if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
 
     if request.name is not None:
         group.name = request.name.strip()
@@ -229,25 +267,27 @@ async def update_chat_group(
         "group": {
             "id": str(group.id),
             "name": group.name,
-            "members": [str(m) for m in group.members]
-        }
+            "members": [str(m) for m in group.members],
+        },
     }
+
 
 @router.delete("/groups/{group_id}")
 async def delete_chat_group(
-    group_id: str,
-    current_user: User = Depends(get_current_user)
+    group_id: str, current_user: User = Depends(get_current_user)
 ):
     """Delete a group chat completely. (Restricted to Managers/HR/Admins)"""
     if not is_manager(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only managers and administrators are authorized to delete groups."
+            detail="Only managers and administrators are authorized to delete groups.",
         )
 
     group = await ChatGroup.get(PydanticObjectId(group_id))
     if not group:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Group not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
+        )
 
     # Delete all messages inside this group
     await ChatMessage.find(ChatMessage.group_id == group.id).delete()
@@ -255,18 +295,19 @@ async def delete_chat_group(
 
     return {"message": "Group and its conversation logs deleted successfully"}
 
+
 @router.get("/history", response_model=List[dict])
 async def get_chat_history(
     group_id: Optional[str] = None,
     recipient_id: Optional[str] = None,
     q: Optional[str] = None,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Fetch message history for direct or group chats. Supports case-insensitive content query `q`."""
     if not group_id and not recipient_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Must provide either group_id or recipient_id"
+            detail="Must provide either group_id or recipient_id",
         )
 
     query = {}
@@ -277,7 +318,7 @@ async def get_chat_history(
         other_uid = PydanticObjectId(recipient_id)
         query["$or"] = [
             {"sender_id": current_user.id, "recipient_id": other_uid},
-            {"sender_id": other_uid, "recipient_id": current_user.id}
+            {"sender_id": other_uid, "recipient_id": current_user.id},
         ]
 
     # Exclude messages deleted for current user
@@ -304,31 +345,33 @@ async def get_chat_history(
                     "work_description": task.work_description,
                     "status": task.status.value,
                     "priority": task.priority.value,
-                    "deadline": task.deadline.isoformat() if task.deadline else None
+                    "deadline": task.deadline.isoformat() if task.deadline else None,
                 }
-        
-        hydrated.append({
-            "id": str(msg.id),
-            "group_id": str(msg.group_id) if msg.group_id else None,
-            "sender_id": str(msg.sender_id),
-            "sender_name": msg.sender_name,
-            "recipient_id": str(msg.recipient_id) if msg.recipient_id else None,
-            "text": msg.text,
-            "type": msg.type,
-            "attachment_url": msg.attachment_url,
-            "attachment_name": msg.attachment_name,
-            "task_card_id": str(msg.task_card_id) if msg.task_card_id else None,
-            "task_details": task_details,
-            "tip_points": msg.tip_points,
-            "deleted_for_everyone": msg.deleted_for_everyone,
-            "created_at": to_utc_iso(msg.created_at)
-        })
+
+        hydrated.append(
+            {
+                "id": str(msg.id),
+                "group_id": str(msg.group_id) if msg.group_id else None,
+                "sender_id": str(msg.sender_id),
+                "sender_name": msg.sender_name,
+                "recipient_id": str(msg.recipient_id) if msg.recipient_id else None,
+                "text": msg.text,
+                "type": msg.type,
+                "attachment_url": msg.attachment_url,
+                "attachment_name": msg.attachment_name,
+                "task_card_id": str(msg.task_card_id) if msg.task_card_id else None,
+                "task_details": task_details,
+                "tip_points": msg.tip_points,
+                "deleted_for_everyone": msg.deleted_for_everyone,
+                "created_at": to_utc_iso(msg.created_at),
+            }
+        )
     return hydrated
+
 
 @router.post("/messages", status_code=status.HTTP_201_CREATED)
 async def send_chat_message(
-    request: MessageSendRequest,
-    current_user: User = Depends(get_current_user)
+    request: MessageSendRequest, current_user: User = Depends(get_current_user)
 ):
     """Post a new message in direct or group chats."""
     g_id = PydanticObjectId(request.group_id) if request.group_id else None
@@ -344,7 +387,7 @@ async def send_chat_message(
         type=request.type,
         attachment_url=request.attachment_url,
         attachment_name=request.attachment_name,
-        task_card_id=t_id
+        task_card_id=t_id,
     )
     await msg.insert()
 
@@ -364,7 +407,7 @@ async def send_chat_message(
             sender_id=current_user.id,
             title=f"New message from {current_user.name}",
             message=preview_text,
-            type="chat"
+            type="chat",
         )
         await notif.insert()
     elif g_id:
@@ -378,22 +421,22 @@ async def send_chat_message(
                         chat_group_id=g_id,
                         title=f"New message in {group.name}",
                         message=f"{current_user.name}: {preview_text}",
-                        type="chat"
+                        type="chat",
                     )
                     await notif.insert()
 
     return {"message": "Message sent", "id": str(msg.id)}
 
+
 @router.post("/read")
 async def mark_messages_as_read(
-    request: ReadMessageRequest,
-    current_user: User = Depends(get_current_user)
+    request: ReadMessageRequest, current_user: User = Depends(get_current_user)
 ):
     """Mark messages as read in a direct chat or group."""
     if not request.group_id and not request.sender_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Must provide either group_id or sender_id"
+            detail="Must provide either group_id or sender_id",
         )
 
     collection = ChatMessage.get_motor_collection()
@@ -402,43 +445,40 @@ async def mark_messages_as_read(
         query = {
             "group_id": PydanticObjectId(request.group_id),
             "sender_id": {"$ne": current_user.id},
-            "read_by": {"$ne": current_user.id}
+            "read_by": {"$ne": current_user.id},
         }
         # Mark corresponding chat notifications as read
         await Notification.find(
             Notification.user_id == current_user.id,
             Notification.chat_group_id == PydanticObjectId(request.group_id),
             Notification.type == "chat",
-            Notification.is_read == False
+            Notification.is_read == False,
         ).update({"$set": {"is_read": True}})
     else:
         query = {
             "sender_id": PydanticObjectId(request.sender_id),
             "recipient_id": current_user.id,
-            "read_by": {"$ne": current_user.id}
+            "read_by": {"$ne": current_user.id},
         }
         # Mark corresponding chat notifications as read
         await Notification.find(
             Notification.user_id == current_user.id,
             Notification.sender_id == PydanticObjectId(request.sender_id),
             Notification.type == "chat",
-            Notification.is_read == False
+            Notification.is_read == False,
         ).update({"$set": {"is_read": True}})
 
-    await collection.update_many(
-        query,
-        {"$addToSet": {"read_by": current_user.id}}
-    )
+    await collection.update_many(query, {"$addToSet": {"read_by": current_user.id}})
     return {"status": "success"}
+
 
 @router.post("/upload")
 async def upload_chat_attachment(
-    file: UploadFile = File(...),
-    current_user: User = Depends(get_current_user)
+    file: UploadFile = File(...), current_user: User = Depends(get_current_user)
 ):
     """Upload file attachments for sharing inside conversations."""
     os.makedirs("uploads/chat", exist_ok=True)
-    
+
     timestamp = int(datetime.utcnow().timestamp())
     filename = f"{timestamp}_{file.filename.replace(' ', '_')}"
     filepath = os.path.join("uploads", "chat", filename)
@@ -448,44 +488,47 @@ async def upload_chat_attachment(
 
     # Return local access URL
     public_url = f"/uploads/chat/{filename}"
-    return {
-        "url": public_url,
-        "name": file.filename
-    }
+    return {"url": public_url, "name": file.filename}
+
 
 @router.post("/presence/heartbeat")
 async def register_presence_heartbeat(current_user: User = Depends(get_current_user)):
     """Keep the current employee's active presence updated in the system."""
     current_user.last_active = datetime.utcnow()
     await current_user.save()
-    return {"status": "heartbeat recorded", "last_active": current_user.last_active.isoformat()}
+    return {
+        "status": "heartbeat recorded",
+        "last_active": current_user.last_active.isoformat(),
+    }
+
 
 @router.post("/tip")
 async def gift_points_in_chat(
-    request: TipRequest,
-    current_user: User = Depends(get_current_user)
+    request: TipRequest, current_user: User = Depends(get_current_user)
 ):
     """Gift reward points (Tipping) to another employee inside their direct conversation chat."""
     if not is_manager(current_user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only managers and administrators are authorized to gift reward points."
+            detail="Only managers and administrators are authorized to gift reward points.",
         )
 
     recipient = await User.get(PydanticObjectId(request.recipient_id))
     if not recipient:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Recipient not found"
+        )
 
     if recipient.id == current_user.id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="You cannot tip reward points to yourself."
+            detail="You cannot tip reward points to yourself.",
         )
 
     if request.points <= 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Gifted points value must be greater than zero."
+            detail="Gifted points value must be greater than zero.",
         )
 
     # Add points to employee balance
@@ -497,9 +540,10 @@ async def gift_points_in_chat(
         sender_id=current_user.id,
         sender_name=current_user.name,
         recipient_id=recipient.id,
-        text=request.message.strip() or f"Appreciated you with +{request.points} reward points!",
+        text=request.message.strip()
+        or f"Appreciated you with +{request.points} reward points!",
         type="tip",
-        tip_points=request.points
+        tip_points=request.points,
     )
     await tip_msg.insert()
 
@@ -509,7 +553,7 @@ async def gift_points_in_chat(
         sender_id=current_user.id,
         title=f"New message from {current_user.name}",
         message=f"🏆 Appreciated you with +{request.points} reward points!",
-        type="chat"
+        type="chat",
     )
     await notif.insert()
 
@@ -524,19 +568,22 @@ async def gift_points_in_chat(
 
     return {
         "message": f"Successfully tipped {request.points} reward points!",
-        "new_balance": recipient.reward_points
+        "new_balance": recipient.reward_points,
     }
+
 
 @router.delete("/messages/{message_id}")
 async def delete_chat_message(
     message_id: str,
     delete_type: str = "me",  # Options: "me", "everyone"
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     """Delete a message. Offers 'me' (hide for current user) or 'everyone' (redact for all)."""
     msg = await ChatMessage.get(PydanticObjectId(message_id))
     if not msg:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Message not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Message not found"
+        )
 
     if delete_type == "me":
         # Add user to hidden list
@@ -551,7 +598,7 @@ async def delete_chat_message(
         if not is_sender and not is_manager(current_user):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You are not authorized to redact this message for everyone."
+                detail="You are not authorized to redact this message for everyone.",
             )
 
         msg.text = "[Message deleted]"
@@ -567,5 +614,5 @@ async def delete_chat_message(
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid delete_type. Must be either 'me' or 'everyone'."
+            detail="Invalid delete_type. Must be either 'me' or 'everyone'.",
         )

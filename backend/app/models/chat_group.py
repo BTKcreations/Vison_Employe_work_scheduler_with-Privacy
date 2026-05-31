@@ -3,6 +3,7 @@ from pydantic import Field
 from datetime import datetime
 from typing import List
 
+
 class ChatGroup(Document):
     name: str
     members: List[PydanticObjectId] = Field(default_factory=list)

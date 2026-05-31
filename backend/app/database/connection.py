@@ -1,6 +1,7 @@
 """
 MongoDB connection setup using PyMongo Async and Beanie ODM.
 """
+
 from pymongo import AsyncMongoClient
 from beanie import init_beanie
 from app.config import settings
@@ -29,7 +30,7 @@ async def auto_seed_if_needed():
         count = await User.count()
         if count > 0:
             return
-        
+
         print("[INFO] No users found in database. Seeding default users...")
         # Seed admin user
         admin_user = User(
@@ -49,7 +50,9 @@ async def auto_seed_if_needed():
             role=UserRole.EMPLOYEE,
         )
         await employee_user.insert()
-        print(f"[OK] Seeded default users: admin@company.com ({UserRole.ADMIN}), nishitha@vision.com ({UserRole.EMPLOYEE})")
+        print(
+            f"[OK] Seeded default users: admin@company.com ({UserRole.ADMIN}), nishitha@vision.com ({UserRole.EMPLOYEE})"
+        )
     except Exception as e:
         print(f"[WARNING] Automatic database seeding failed: {str(e)}")
 
@@ -58,49 +61,87 @@ async def init_db():
     """Initialize MongoDB connection and Beanie ODM."""
     try:
         # Set a 2-second timeout for server selection to quickly detect if local mongo is down
-        client = AsyncMongoClient(settings.MONGODB_URL, serverSelectionTimeoutMS=2000, tz_aware=True)
+        client = AsyncMongoClient(
+            settings.MONGODB_URL, serverSelectionTimeoutMS=2000, tz_aware=True
+        )
         database = client[settings.DATABASE_NAME]
-        
+
         # Force a connection check
         await database.command({"buildInfo": 1})
- 
+
         await init_beanie(
             database=database,
             document_models=[
-                User, Task, ActivityLog, Company, Attendance, Holiday, 
-                RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
-                AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
-                ChatGroup, ChatMessage, CachedAIInsight
-            ]
+                User,
+                Task,
+                ActivityLog,
+                Company,
+                Attendance,
+                Holiday,
+                RecurrenceRule,
+                Notification,
+                Category,
+                Leave,
+                LeaveBalance,
+                AttendanceRegularization,
+                SalaryStructure,
+                Payroll,
+                PayrollHistory,
+                ChatGroup,
+                ChatMessage,
+                CachedAIInsight,
+            ],
         )
         print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
         await auto_seed_if_needed()
     except Exception as e:
         print(f"[WARNING] Failed to connect to MongoDB: {str(e)}")
-        print("[INFO] Falling back to in-memory mongomock database so you can use the application immediately!")
+        print(
+            "[INFO] Falling back to in-memory mongomock database so you can use the application immediately!"
+        )
         try:
             import mongomock
+
             # Monkeypatch mongomock to support Beanie's call to list_collection_names with extra kwargs
             orig_list_collection_names = mongomock.Database.list_collection_names
-            def patched_list_collection_names(self, filter=None, session=None, *args, **kwargs):
+
+            def patched_list_collection_names(
+                self, filter=None, session=None, *args, **kwargs
+            ):
                 return orig_list_collection_names(self, filter=filter, session=session)
+
             mongomock.Database.list_collection_names = patched_list_collection_names
- 
+
             from mongomock_motor import AsyncMongoMockClient
+
             mock_client = AsyncMongoMockClient(tz_aware=True)
             mock_database = mock_client[settings.DATABASE_NAME]
-            
+
             await init_beanie(
                 database=mock_database,
                 document_models=[
-                    User, Task, ActivityLog, Company, Attendance, Holiday, 
-                    RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
-                    AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
-                    ChatGroup, ChatMessage, CachedAIInsight
-                ]
+                    User,
+                    Task,
+                    ActivityLog,
+                    Company,
+                    Attendance,
+                    Holiday,
+                    RecurrenceRule,
+                    Notification,
+                    Category,
+                    Leave,
+                    LeaveBalance,
+                    AttendanceRegularization,
+                    SalaryStructure,
+                    Payroll,
+                    PayrollHistory,
+                    ChatGroup,
+                    ChatMessage,
+                    CachedAIInsight,
+                ],
             )
             print(f"[OK] Connected to mock in-memory MongoDB: {settings.DATABASE_NAME}")
-            
+
             # Seed the database so they can log in
             await auto_seed_if_needed()
         except Exception as mock_e:

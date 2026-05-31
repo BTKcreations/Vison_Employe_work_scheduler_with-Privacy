@@ -1,6 +1,7 @@
 """
 Report routes - CSV and Excel export endpoints.
 """
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from app.auth.dependencies import require_admin, get_current_user
@@ -144,7 +145,9 @@ async def export_my_attendance_excel(
     return StreamingResponse(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=my_attendance_report.xlsx"},
+        headers={
+            "Content-Disposition": "attachment; filename=my_attendance_report.xlsx"
+        },
     )
 
 

@@ -1,6 +1,7 @@
 """
 Task model for MongoDB tasks collection.
 """
+
 from beanie import Document
 from pydantic import Field
 from datetime import datetime
@@ -52,7 +53,9 @@ class Task(Document):
     company_name: Optional[str] = None
     category_ids: List[PydanticObjectId] = Field(default_factory=list)
     category_names: List[str] = Field(default_factory=list)
-    remarks: List[dict] = Field(default_factory=list)  # [{"user_id": str, "user_name": str, "text": str, "timestamp": str}]
+    remarks: List[dict] = Field(
+        default_factory=list
+    )  # [{"user_id": str, "user_name": str, "text": str, "timestamp": str}]
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
     recurring_task_id: Optional[PydanticObjectId] = None

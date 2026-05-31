@@ -1,8 +1,10 @@
-'''Employee model for MongoDB employees collection.'''
+"""Employee model for MongoDB employees collection."""
+
 from beanie import Document, PydanticObjectId
 from pydantic import Field, EmailStr
 from datetime import datetime
 from typing import Optional
+
 
 class Employee(Document):
     # Core personal details
@@ -12,11 +14,15 @@ class Employee(Document):
     role: str = Field(..., max_length=50)
 
     # Company affiliation – links to a Company document
-    company_id: PydanticObjectId = Field(..., description="Reference to the subsidiary/company the employee belongs to")
+    company_id: PydanticObjectId = Field(
+        ..., description="Reference to the subsidiary/company the employee belongs to"
+    )
     location: str = Field(..., description="Work location / office name")
 
     # Hierarchy
-    manager_id: Optional[PydanticObjectId] = Field(default=None, description="Reference to the employee's direct manager, if any")
+    manager_id: Optional[PydanticObjectId] = Field(
+        default=None, description="Reference to the employee's direct manager, if any"
+    )
 
     # Compliance / legal fields – optional and can be extended per jurisdiction
     work_permit_number: Optional[str] = Field(default=None, max_length=50)

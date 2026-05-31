@@ -1,6 +1,7 @@
 """
 Activity Log model for MongoDB activity_logs collection.
 """
+
 from beanie import Document
 from pydantic import Field
 from datetime import datetime

@@ -1,9 +1,14 @@
 """
 Company management routes - admin CRUD + public list for dropdowns.
 """
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from app.models.company import Company
-from app.auth.dependencies import get_current_user, require_admin, require_any_hr_manager
+from app.auth.dependencies import (
+    get_current_user,
+    require_admin,
+    require_any_hr_manager,
+)
 from app.models.user import User
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -108,7 +113,6 @@ class CompanyResponse(BaseModel):
     location_drift_threshold_km: float = 5.0
 
 
-
 def parse_time_str(time_str: str) -> datetime:
     raw_time = time_str.strip().upper()
     formats = ["%I:%M %p", "%I:%M%p", "%H:%M"]
@@ -123,10 +127,13 @@ def parse_time_str(time_str: str) -> datetime:
 def get_attendance_status(check_in: datetime, work_start_time_str: str) -> str:
     try:
         from app.models.attendance import IST
+
         check_in_ist = check_in.astimezone(IST)
         work_start = parse_time_str(work_start_time_str)
-        work_start_dt = check_in_ist.replace(hour=work_start.hour, minute=work_start.minute, second=0, microsecond=0)
-        
+        work_start_dt = check_in_ist.replace(
+            hour=work_start.hour, minute=work_start.minute, second=0, microsecond=0
+        )
+
         if check_in_ist <= work_start_dt:
             return "present"
         else:
@@ -141,8 +148,8 @@ def get_attendance_status(check_in: datetime, work_start_time_str: str) -> str:
 
 def _build_company_response(c: Company) -> CompanyResponse:
     from app.utils.ist_time import to_utc_iso
-    return CompanyResponse(
 
+    return CompanyResponse(
         id=str(c.id),
         name=c.name,
         description=c.description,
@@ -154,7 +161,6 @@ def _build_company_response(c: Company) -> CompanyResponse:
         flexible_hours=c.flexible_hours,
         cut_out_time=c.cut_out_time,
         created_at=to_utc_iso(c.created_at),
-
         task_priority_points=c.task_priority_points,
         delay_penalties=c.delay_penalties,
         early_completion_multiplier=c.early_completion_multiplier,
@@ -209,20 +215,28 @@ async def create_company(
     company_data = {
         "name": request.name,
         "description": request.description,
-        "work_days": request.work_days or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
+        "work_days": request.work_days
+        or ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         "work_start_time": request.work_start_time or "09:00",
         "work_end_time": request.work_end_time or "18:00",
         "work_type": request.work_type or "fixed",
         "flexible_hours": request.flexible_hours or 8,
-        "cut_out_time": request.cut_out_time or "10:00"
+        "cut_out_time": request.cut_out_time or "10:00",
     }
     for field in [
-        "task_priority_points", "delay_penalties", "early_completion_multiplier",
-        "quality_multipliers", "incentive_tiers", "attendance_points",
-        "attendance_bonus_threshold", "attendance_bonus_percentage",
+        "task_priority_points",
+        "delay_penalties",
+        "early_completion_multiplier",
+        "quality_multipliers",
+        "incentive_tiers",
+        "attendance_points",
+        "attendance_bonus_threshold",
+        "attendance_bonus_percentage",
         "performance_incentive_pool_percentage",
-        "sick_leave_limit", "earned_leave_limit", "casual_leave_limit",
-        "max_paid_casual_leaves_per_month"
+        "sick_leave_limit",
+        "earned_leave_limit",
+        "casual_leave_limit",
+        "max_paid_casual_leaves_per_month",
     ]:
         val = getattr(request, field, None)
         if val is not None:
@@ -242,7 +256,9 @@ async def update_company(
     """Update a company (admin, HR and Manager authorized)."""
     company = await Company.get(PydanticObjectId(company_id))
     if not company:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
+        )
 
     # Detect if work_start_time is changing
     work_start_time_changed = (
@@ -252,9 +268,18 @@ async def update_company(
 
     # Detect if leave limits are changing
     leave_limits_changed = (
-        (request.sick_leave_limit is not None and request.sick_leave_limit != company.sick_leave_limit)
-        or (request.earned_leave_limit is not None and request.earned_leave_limit != company.earned_leave_limit)
-        or (request.casual_leave_limit is not None and request.casual_leave_limit != company.casual_leave_limit)
+        (
+            request.sick_leave_limit is not None
+            and request.sick_leave_limit != company.sick_leave_limit
+        )
+        or (
+            request.earned_leave_limit is not None
+            and request.earned_leave_limit != company.earned_leave_limit
+        )
+        or (
+            request.casual_leave_limit is not None
+            and request.casual_leave_limit != company.casual_leave_limit
+        )
     )
 
     update_data = {k: v for k, v in request.model_dump().items() if v is not None}
@@ -265,17 +290,22 @@ async def update_company(
     # 1. Update Leave Balance records if limits changed
     if leave_limits_changed:
         from app.models.leave_balance import LeaveBalance
+
         users = await User.find(User.company_id == company.id).to_list()
         user_ids = [u.id for u in users]
         if user_ids:
             # Update existing balances
-            await LeaveBalance.find({"user_id": {"$in": user_ids}}).set({
-                LeaveBalance.casual_allocated: company.casual_leave_limit,
-                LeaveBalance.sick_allocated: company.sick_leave_limit,
-                LeaveBalance.earned_allocated: company.earned_leave_limit,
-            })
+            await LeaveBalance.find({"user_id": {"$in": user_ids}}).set(
+                {
+                    LeaveBalance.casual_allocated: company.casual_leave_limit,
+                    LeaveBalance.sick_allocated: company.sick_leave_limit,
+                    LeaveBalance.earned_allocated: company.earned_leave_limit,
+                }
+            )
             # Initialize for users without leave balances
-            existing_balances = await LeaveBalance.find({"user_id": {"$in": user_ids}}).to_list()
+            existing_balances = await LeaveBalance.find(
+                {"user_id": {"$in": user_ids}}
+            ).to_list()
             existing_user_ids = {b.user_id for b in existing_balances}
             for u in users:
                 if u.id not in existing_user_ids:
@@ -291,16 +321,20 @@ async def update_company(
     if work_start_time_changed:
         from app.models.attendance import Attendance, IST
         from datetime import timezone
-        
+
         # Determine the current month window in IST and convert to UTC
         now_utc = datetime.now(timezone.utc)
         now_ist = now_utc.astimezone(IST)
         start_of_month_ist = datetime(now_ist.year, now_ist.month, 1, tzinfo=IST)
         if now_ist.month == 12:
-            end_of_month_ist = datetime(now_ist.year + 1, 1, 1, tzinfo=IST) - timedelta(microseconds=1)
+            end_of_month_ist = datetime(now_ist.year + 1, 1, 1, tzinfo=IST) - timedelta(
+                microseconds=1
+            )
         else:
-            end_of_month_ist = datetime(now_ist.year, now_ist.month + 1, 1, tzinfo=IST) - timedelta(microseconds=1)
-            
+            end_of_month_ist = datetime(
+                now_ist.year, now_ist.month + 1, 1, tzinfo=IST
+            ) - timedelta(microseconds=1)
+
         start_of_month = start_of_month_ist.astimezone(timezone.utc)
         end_of_month = end_of_month_ist.astimezone(timezone.utc)
 
@@ -308,14 +342,16 @@ async def update_company(
         attendance_logs = await Attendance.find(
             Attendance.company_id == company.id,
             Attendance.check_in >= start_of_month,
-            Attendance.check_in <= end_of_month
+            Attendance.check_in <= end_of_month,
         ).to_list()
 
         target_statuses = ["present", "late", "late_under_30", "late_over_30"]
         for log in attendance_logs:
             if log.status in target_statuses:
                 # Recalculate status based on new start time
-                new_status = get_attendance_status(log.check_in, company.work_start_time)
+                new_status = get_attendance_status(
+                    log.check_in, company.work_start_time
+                )
                 if new_status != log.status:
                     log.status = new_status
                     await log.save()
@@ -326,21 +362,28 @@ async def update_company(
         from app.routes.payroll import calculate_corporate_payroll
         from app.models.attendance import IST
         from datetime import timezone
-        
+
         now_ist = datetime.now(timezone.utc).astimezone(IST)
         month_str = now_ist.strftime("%Y-%m")
-        
+
         users = await User.find(User.company_id == company.id).to_list()
         for u in users:
-            existing_payroll = await Payroll.find_one(Payroll.user_id == u.id, Payroll.month == month_str)
-            if existing_payroll and existing_payroll.status in [PayrollStatus.DRAFT, PayrollStatus.UNDER_REVIEW, PayrollStatus.APPROVED]:
+            existing_payroll = await Payroll.find_one(
+                Payroll.user_id == u.id, Payroll.month == month_str
+            )
+            if existing_payroll and existing_payroll.status in [
+                PayrollStatus.DRAFT,
+                PayrollStatus.UNDER_REVIEW,
+                PayrollStatus.APPROVED,
+            ]:
                 try:
                     await calculate_corporate_payroll(employee=u, month=month_str)
                 except Exception as pe:
-                    logger.warning(f"Could not recalculate payroll for user {u.name}: {pe}")
+                    logger.warning(
+                        f"Could not recalculate payroll for user {u.name}: {pe}"
+                    )
 
     return _build_company_response(company)
-
 
 
 @router.delete("/{company_id}")
@@ -351,7 +394,9 @@ async def delete_company(
     """Deactivate a company (admin only)."""
     company = await Company.get(PydanticObjectId(company_id))
     if not company:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Company not found"
+        )
 
     await company.set({"is_active": False})
     return {"message": f"Company '{company.name}' deactivated"}

@@ -1,6 +1,7 @@
 """
 Category management routes - CRUD for task categories.
 """
+
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List

@@ -1,6 +1,7 @@
 """
 User model for MongoDB users collection.
 """
+
 from beanie import Document, PydanticObjectId
 from pydantic import EmailStr, Field
 from datetime import datetime

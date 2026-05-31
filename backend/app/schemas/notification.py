@@ -3,14 +3,17 @@ from datetime import datetime
 from beanie import PydanticObjectId
 from typing import Optional, List
 
+
 class NotificationBase(BaseModel):
     title: str
     message: str
     type: str
 
+
 class NotificationCreate(NotificationBase):
     user_id: PydanticObjectId
     sender_id: Optional[PydanticObjectId] = None
+
 
 class NotificationResponse(NotificationBase):
     id: str
@@ -23,18 +26,21 @@ class NotificationResponse(NotificationBase):
     @classmethod
     def from_notification(cls, notification) -> "NotificationResponse":
         from app.utils.ist_time import to_utc_iso
-        return cls(
 
+        return cls(
             id=str(notification.id),
             user_id=str(notification.user_id),
             sender_id=str(notification.sender_id) if notification.sender_id else None,
-            chat_group_id=str(notification.chat_group_id) if getattr(notification, "chat_group_id", None) else None,
+            chat_group_id=(
+                str(notification.chat_group_id)
+                if getattr(notification, "chat_group_id", None)
+                else None
+            ),
             title=notification.title,
             message=notification.message,
             type=notification.type,
             is_read=notification.is_read,
             created_at=to_utc_iso(notification.created_at),
-
         )
 
     class Config:
@@ -46,9 +52,10 @@ class NotificationResponse(NotificationBase):
                 "message": "You have been assigned a new task.",
                 "type": "task_assigned",
                 "is_read": False,
-                "created_at": "2024-05-14T12:00:00"
+                "created_at": "2024-05-14T12:00:00",
             }
         }
+
 
 class NotificationList(BaseModel):
     items: List[NotificationResponse]

@@ -3,7 +3,13 @@ from app.models.user import User, UserRole
 from app.models.leave import Leave, LeaveType, LeaveStatus
 from app.models.leave_balance import LeaveBalance
 from app.models.notification import Notification
-from app.auth.dependencies import get_current_user, require_hr_team, require_any_hr_manager, require_hr_manager, require_management_team
+from app.auth.dependencies import (
+    get_current_user,
+    require_hr_team,
+    require_any_hr_manager,
+    require_hr_manager,
+    require_management_team,
+)
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -24,6 +30,7 @@ async def _get_synced_leave_balance(user: User) -> LeaveBalance:
         await balance.insert()
 
     from app.models.company import Company
+
     company = None
     if user.company_id:
         company = await Company.get(user.company_id)
@@ -76,13 +83,15 @@ async def get_leave_balances_list(current_user: User = Depends(get_current_user)
     pending_requests = await Leave.find(
         Leave.user_id == current_user.id,
         Leave.status != LeaveStatus.APPROVED,
-        Leave.status != LeaveStatus.REJECTED
+        Leave.status != LeaveStatus.REJECTED,
     ).to_list()
-    
+
     pending_days = {"casual": 0, "sick": 0, "earned": 0}
     for req in pending_requests:
         days = (req.end_date - req.start_date).days + 1
-        lt = req.leave_type.value if hasattr(req.leave_type, "value") else req.leave_type
+        lt = (
+            req.leave_type.value if hasattr(req.leave_type, "value") else req.leave_type
+        )
         if lt in pending_days:
             pending_days[lt] += days
 
@@ -114,7 +123,9 @@ async def get_leave_balances_list(current_user: User = Depends(get_current_user)
 @router.get("/history", response_model=List[dict])
 async def get_leaves_history_alias(current_user: User = Depends(get_current_user)):
     """Get the current user's leave history (frontend alias)."""
-    leaves = await Leave.find(Leave.user_id == current_user.id).sort("-created_at").to_list()
+    leaves = (
+        await Leave.find(Leave.user_id == current_user.id).sort("-created_at").to_list()
+    )
     return [
         {
             "id": str(l.id),
@@ -124,7 +135,9 @@ async def get_leaves_history_alias(current_user: User = Depends(get_current_user
             "reason": l.reason,
             "status": l.status.value,
             "comments": l.comments,
-            "created_at": l.created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "created_at": l.created_at.astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "verified_by_name": l.verified_by_name,
             "approved_by_name": l.approved_by_name,
         }
@@ -133,7 +146,9 @@ async def get_leaves_history_alias(current_user: User = Depends(get_current_user
 
 
 @router.post("/apply", response_model=dict, status_code=status.HTTP_201_CREATED)
-async def apply_leave(request: LeaveApplyRequest, current_user: User = Depends(get_current_user)):
+async def apply_leave(
+    request: LeaveApplyRequest, current_user: User = Depends(get_current_user)
+):
     """Employee submits a new leave request, checking balances first."""
     if request.start_date > request.end_date:
         raise HTTPException(
@@ -187,9 +202,12 @@ async def apply_leave(request: LeaveApplyRequest, current_user: User = Depends(g
 
     # Notify all active HR team members
     hr_users = await User.find(
-        In(User.role, [UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER]),
+        In(
+            User.role,
+            [UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER],
+        ),
         User.is_active == True,
-        User.is_deleted == False
+        User.is_deleted == False,
     ).to_list()
     for hr in hr_users:
         recipient_ids.add(hr.id)
@@ -203,19 +221,24 @@ async def apply_leave(request: LeaveApplyRequest, current_user: User = Depends(g
                 sender_id=current_user.id,
                 title="New Leave Application",
                 message=f"{current_user.name} has applied for {request.leave_type.value.replace('_', ' ')} leave from {request.start_date.strftime('%Y-%m-%d')} to {request.end_date.strftime('%Y-%m-%d')}.",
-                type="system"
+                type="system",
             )
             for rid in recipient_ids
         ]
         await Notification.insert_many(notifications)
 
-    return {"message": "Leave application submitted successfully", "leave_id": str(leave.id)}
+    return {
+        "message": "Leave application submitted successfully",
+        "leave_id": str(leave.id),
+    }
 
 
 @router.get("/my", response_model=List[dict])
 async def get_my_leaves(current_user: User = Depends(get_current_user)):
     """Get the current user's leave history."""
-    leaves = await Leave.find(Leave.user_id == current_user.id).sort("-created_at").to_list()
+    leaves = (
+        await Leave.find(Leave.user_id == current_user.id).sort("-created_at").to_list()
+    )
     return [
         {
             "id": str(l.id),
@@ -225,7 +248,9 @@ async def get_my_leaves(current_user: User = Depends(get_current_user)):
             "reason": l.reason,
             "status": l.status.value,
             "comments": l.comments,
-            "created_at": l.created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "created_at": l.created_at.astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "verified_by_name": l.verified_by_name,
             "approved_by_name": l.approved_by_name,
         }
@@ -236,9 +261,13 @@ async def get_my_leaves(current_user: User = Depends(get_current_user)):
 @router.get("/pending", response_model=List[dict])
 async def get_pending_leaves(user: User = Depends(require_management_team)):
     """List all pending leave requests. Filters by hierarchy for all management roles except Admin."""
-    query_conditions = [Leave.status != LeaveStatus.APPROVED, Leave.status != LeaveStatus.REJECTED]
-    
+    query_conditions = [
+        Leave.status != LeaveStatus.APPROVED,
+        Leave.status != LeaveStatus.REJECTED,
+    ]
+
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
         query_conditions.append(In(Leave.user_id, list(visible_ids)))
@@ -255,7 +284,9 @@ async def get_pending_leaves(user: User = Depends(require_management_team)):
             "reason": l.reason,
             "status": l.status.value,
             "comments": l.comments,
-            "created_at": l.created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "created_at": l.created_at.astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "verified_by_name": l.verified_by_name,
             "approved_by_name": l.approved_by_name,
         }
@@ -267,8 +298,9 @@ async def get_pending_leaves(user: User = Depends(require_management_team)):
 async def get_all_leaves(user: User = Depends(require_management_team)):
     """List all leave requests (history). Filters by hierarchy for all management roles except Admin."""
     query_conditions = []
-    
+
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
         query_conditions.append(In(Leave.user_id, list(visible_ids)))
@@ -288,7 +320,9 @@ async def get_all_leaves(user: User = Depends(require_management_team)):
             "reason": l.reason,
             "status": l.status.value,
             "comments": l.comments,
-            "created_at": l.created_at.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
+            "created_at": l.created_at.astimezone(timezone.utc)
+            .isoformat()
+            .replace("+00:00", "Z"),
             "verified_by_name": l.verified_by_name,
             "approved_by_name": l.approved_by_name,
         }
@@ -297,18 +331,25 @@ async def get_all_leaves(user: User = Depends(require_management_team)):
 
 
 @router.post("/verify/{leave_id}")
-async def verify_leave(leave_id: str, action: LeaveActionRequest, hr_user: User = Depends(require_management_team)):
+async def verify_leave(
+    leave_id: str,
+    action: LeaveActionRequest,
+    hr_user: User = Depends(require_management_team),
+):
     """Verify leave request."""
     leave = await Leave.get(PydanticObjectId(leave_id))
     if not leave:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
+        )
 
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(hr_user)
     if visible_ids is not None and leave.user_id not in visible_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only manage leaves for employees under your hierarchy."
+            detail="You can only manage leaves for employees under your hierarchy.",
         )
         # Duplicate hierarchy check removed
 
@@ -330,7 +371,7 @@ async def verify_leave(leave_id: str, action: LeaveActionRequest, hr_user: User 
         sender_id=hr_user.id,
         title="Leave Request Verified",
         message=f"Your leave request from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been verified by {hr_user.name} and is awaiting final HR Manager approval.",
-        type="system"
+        type="system",
     ).insert()
 
     # Notify HR managers and Admin
@@ -338,7 +379,7 @@ async def verify_leave(leave_id: str, action: LeaveActionRequest, hr_user: User 
     hr_approvers = await User.find(
         In(User.role, [UserRole.ADMIN, UserRole.HR_MANAGER]),
         User.is_active == True,
-        User.is_deleted == False
+        User.is_deleted == False,
     ).to_list()
     for hr in hr_approvers:
         recipient_ids.add(hr.id)
@@ -349,33 +390,44 @@ async def verify_leave(leave_id: str, action: LeaveActionRequest, hr_user: User 
     recipient_ids.discard(hr_user.id)
 
     if recipient_ids:
-        await Notification.insert_many([
-            Notification(
-                user_id=rid,
-                sender_id=hr_user.id,
-                title="Leave Request Verified - Awaiting Approval",
-                message=f"Leave request for {leave.user_name} from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been verified by {hr_user.name} and is awaiting final approval.",
-                type="system"
-            )
-            for rid in recipient_ids
-        ])
+        await Notification.insert_many(
+            [
+                Notification(
+                    user_id=rid,
+                    sender_id=hr_user.id,
+                    title="Leave Request Verified - Awaiting Approval",
+                    message=f"Leave request for {leave.user_name} from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been verified by {hr_user.name} and is awaiting final approval.",
+                    type="system",
+                )
+                for rid in recipient_ids
+            ]
+        )
 
-    return {"message": "Leave request verified successfully, pending final HR Manager approval."}
+    return {
+        "message": "Leave request verified successfully, pending final HR Manager approval."
+    }
 
 
 @router.post("/approve/{leave_id}")
-async def approve_leave(leave_id: str, action: LeaveActionRequest, hr_manager: User = Depends(require_management_team)):
+async def approve_leave(
+    leave_id: str,
+    action: LeaveActionRequest,
+    hr_manager: User = Depends(require_management_team),
+):
     """Final approval of leave request. Deducts balances."""
     leave = await Leave.get(PydanticObjectId(leave_id))
     if not leave:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
+        )
 
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(hr_manager)
     if visible_ids is not None and leave.user_id not in visible_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only manage leaves for employees under your hierarchy."
+            detail="You can only manage leaves for employees under your hierarchy.",
         )
 
     if leave.status not in [LeaveStatus.PENDING, LeaveStatus.VERIFIED]:
@@ -414,7 +466,7 @@ async def approve_leave(leave_id: str, action: LeaveActionRequest, hr_manager: U
         sender_id=hr_manager.id,
         title="Leave Request Approved",
         message=f"Your leave request from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been approved by {hr_manager.name}.",
-        type="system"
+        type="system",
     ).insert()
 
     # Mark attendance as present for all days of this leave
@@ -423,19 +475,25 @@ async def approve_leave(leave_id: str, action: LeaveActionRequest, hr_manager: U
 
     # Fetch applicant once (reused below for notifications too)
     applicant = await User.get(leave.user_id)
-    comp_id = applicant.company_id if (applicant and applicant.company_id) else PydanticObjectId()
+    comp_id = (
+        applicant.company_id
+        if (applicant and applicant.company_id)
+        else PydanticObjectId()
+    )
 
     current_date = leave.start_date
     while current_date <= leave.end_date:
         start_of_day = current_date.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = current_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
+        end_of_day = current_date.replace(
+            hour=23, minute=59, second=59, microsecond=999999
+        )
+
         attendance = await Attendance.find_one(
             Attendance.user_id == leave.user_id,
             Attendance.check_in >= start_of_day,
-            Attendance.check_in <= end_of_day
+            Attendance.check_in <= end_of_day,
         )
-        
+
         if not attendance:
             attendance = Attendance(
                 user_id=leave.user_id,
@@ -443,14 +501,14 @@ async def approve_leave(leave_id: str, action: LeaveActionRequest, hr_manager: U
                 check_in=current_date.replace(hour=9, minute=0, second=0),
                 check_out=current_date.replace(hour=18, minute=0, second=0),
                 status="present",
-                remarks=f"Marked Present due to Approved Leave ({leave.leave_type.value}). Approved by {hr_manager.name}."
+                remarks=f"Marked Present due to Approved Leave ({leave.leave_type.value}). Approved by {hr_manager.name}.",
             )
             await attendance.insert()
         else:
             attendance.status = "present"
             attendance.remarks = f"Marked Present due to Approved Leave ({leave.leave_type.value}). Approved by {hr_manager.name}."
             await attendance.save()
-            
+
         current_date += timedelta(days=1)
 
     # Batch-notify applicant's managers
@@ -463,24 +521,29 @@ async def approve_leave(leave_id: str, action: LeaveActionRequest, hr_manager: U
     recipient_ids.discard(hr_manager.id)
 
     if recipient_ids:
-        await Notification.insert_many([
-            Notification(
-                user_id=rid,
-                sender_id=hr_manager.id,
-                title="Leave Request Approved",
-                message=f"Leave request for {leave.user_name} from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been approved.",
-                type="system"
-            )
-            for rid in recipient_ids
-        ])
+        await Notification.insert_many(
+            [
+                Notification(
+                    user_id=rid,
+                    sender_id=hr_manager.id,
+                    title="Leave Request Approved",
+                    message=f"Leave request for {leave.user_name} from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been approved.",
+                    type="system",
+                )
+                for rid in recipient_ids
+            ]
+        )
 
     # Trigger payroll recalculation logic if necessary
     from app.models.payroll import Payroll, PayrollStatus
     from app.routes.payroll import calculate_corporate_payroll
     from app.models.attendance import IST
+
     month_str = leave.start_date.astimezone(IST).strftime("%Y-%m")
     try:
-        payrolls = await Payroll.find(Payroll.user_id == leave.user_id, Payroll.month == month_str).to_list()
+        payrolls = await Payroll.find(
+            Payroll.user_id == leave.user_id, Payroll.month == month_str
+        ).to_list()
         for p in payrolls:
             if p.status == PayrollStatus.DRAFT:
                 await calculate_corporate_payroll(employee=applicant, month=month_str)
@@ -489,24 +552,36 @@ async def approve_leave(leave_id: str, action: LeaveActionRequest, hr_manager: U
                 await p.save()
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"Could not automatically recalculate payroll on leave approval: {e}")
 
-    return {"message": "Leave request approved, balance updated, and marked present successfully."}
+        logging.getLogger(__name__).warning(
+            f"Could not automatically recalculate payroll on leave approval: {e}"
+        )
+
+    return {
+        "message": "Leave request approved, balance updated, and marked present successfully."
+    }
 
 
 @router.post("/reject/{leave_id}")
-async def reject_leave(leave_id: str, action: LeaveActionRequest, hr_user: User = Depends(require_management_team)):
+async def reject_leave(
+    leave_id: str,
+    action: LeaveActionRequest,
+    hr_user: User = Depends(require_management_team),
+):
     """Reject leave request."""
     leave = await Leave.get(PydanticObjectId(leave_id))
     if not leave:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Leave request not found"
+        )
 
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(hr_user)
     if visible_ids is not None and leave.user_id not in visible_ids:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only manage leaves for employees under your hierarchy."
+            detail="You can only manage leaves for employees under your hierarchy.",
         )
 
     if leave.status in [LeaveStatus.APPROVED, LeaveStatus.REJECTED]:
@@ -527,7 +602,7 @@ async def reject_leave(leave_id: str, action: LeaveActionRequest, hr_user: User 
         sender_id=hr_user.id,
         title="Leave Request Rejected",
         message=f"Your leave request from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been rejected. Comments: {action.comments or 'None'}",
-        type="system"
+        type="system",
     ).insert()
 
     # Notify applicant's managers
@@ -547,7 +622,7 @@ async def reject_leave(leave_id: str, action: LeaveActionRequest, hr_user: User 
             sender_id=hr_user.id,
             title="Leave Request Rejected",
             message=f"Leave request for {leave.user_name} from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')} has been rejected.",
-            type="system"
+            type="system",
         ).insert()
 
     return {"message": "Leave request has been rejected."}

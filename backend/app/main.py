@@ -2,6 +2,7 @@
 FastAPI application entry point. Updated with Global Search.
 Employee Task & Reward Management System
 """
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,14 +10,31 @@ from app.config import settings
 from app.database.connection import init_db
 
 
-
-
-from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications, categories, leaves, regularization, payroll, chat, ai, simulation
+from app.routes import (
+    auth,
+    employees,
+    tasks,
+    dashboard,
+    reports,
+    companies,
+    attendance,
+    search,
+    holidays,
+    notifications,
+    categories,
+    leaves,
+    regularization,
+    payroll,
+    chat,
+    ai,
+    simulation,
+)
 
 
 import asyncio
 from app.services import recurrence_service
 from app.middleware import exception_handler_middleware
+
 
 async def auto_checkout_stale_sessions():
     """Auto-close attendance sessions that are still open past work hours."""
@@ -24,17 +42,18 @@ async def auto_checkout_stale_sessions():
     from app.models.company import Company
     from datetime import datetime, timedelta
     import logging
+
     _logger = logging.getLogger(__name__)
-    
+
     try:
         # Find all open sessions
         open_sessions = await Attendance.find(Attendance.check_out == None).to_list()
-        
+
         for session in open_sessions:
             company = await Company.get(session.company_id)
             if not company or not company.auto_checkout_enabled:
                 continue
-            
+
             # Parse work_end_time robustly
             try:
                 wt = company.work_end_time.strip().upper()
@@ -47,14 +66,15 @@ async def auto_checkout_stale_sessions():
                     end_hour += 12
             except Exception:
                 end_hour, end_min = 18, 0  # Default 6 PM IST
-            
+
             # Use timezone-aware calculations
             from datetime import timezone
             from app.models.attendance import IST
+
             now_utc = datetime.now(timezone.utc)
             local_now = now_utc.astimezone(IST)
             session_age_hours = (now_utc - session.check_in).total_seconds() / 3600
-            
+
             # Auto-close if: current IST hour is past (end + 1h) OR session > 14h
             if local_now.hour > end_hour + 1 or session_age_hours > 14:
                 session.check_out = now_utc
@@ -63,7 +83,9 @@ async def auto_checkout_stale_sessions():
                 if "auto_closed" not in session.flags:
                     session.flags.append("auto_closed")
                 await session.save()
-                _logger.info(f"[AUTO-CHECKOUT] Closed stale session for user {session.user_id}")
+                _logger.info(
+                    f"[AUTO-CHECKOUT] Closed stale session for user {session.user_id}"
+                )
     except Exception as e:
         _logger.error(f"Error in auto-checkout: {e}")
 
@@ -76,7 +98,8 @@ async def run_periodic_tasks():
             await auto_checkout_stale_sessions()
         except Exception as e:
             print(f"Error in background task: {e}")
-        await asyncio.sleep(3600) # Check every hour
+        await asyncio.sleep(3600)  # Check every hour
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -131,7 +154,6 @@ app.include_router(payroll.router)
 app.include_router(chat.router)
 app.include_router(ai.router)
 app.include_router(simulation.router)
-
 
 
 @app.get("/", tags=["Health"])
