@@ -109,6 +109,8 @@ export default function AIAssistant() {
             <button 
               onClick={() => setIsOpen(false)}
               className="p-1.5 hover:bg-white/10 rounded-lg text-indigo-100 hover:text-white transition-colors"
+              aria-label="Close AI Assistant"
+              title="Close AI Assistant"
             >
               <X className="w-4 h-4" />
             </button>
@@ -171,12 +173,15 @@ export default function AIAssistant() {
               onKeyDown={handleKeyPress}
               placeholder="Ask me something..."
               disabled={loading}
+              aria-label="Message to AI Assistant"
               className="flex-1 input h-10 px-3.5 rounded-xl border-slate-200 text-xs font-semibold focus:border-indigo-500 focus:ring-indigo-500"
             />
             <button
               onClick={() => handleSend(input)}
               disabled={loading || !input.trim()}
               className="w-10 h-10 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-100 disabled:text-slate-400 text-white rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100 transition-colors"
+              aria-label="Send message"
+              title="Send message"
             >
               <Send className="w-4.5 h-4.5" />
             </button>
@@ -187,6 +192,8 @@ export default function AIAssistant() {
       {/* Floating Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
+        aria-label={isOpen ? "Close AI Copilot" : "Open AI Copilot"}
+        title={isOpen ? "Close AI Copilot" : "Open AI Copilot"}
         className={cn(
           "w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 relative overflow-hidden",
           isOpen 
