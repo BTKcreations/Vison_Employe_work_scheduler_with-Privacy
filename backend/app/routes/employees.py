@@ -7,6 +7,7 @@ from app.services import user_service, dashboard_service
 from app.auth.dependencies import require_hr_team, require_any_hr_manager, require_management_team
 from app.models.user import User, UserRole
 from beanie import PydanticObjectId
+from beanie.operators import In
 from typing import List
 from app.utils.uploads import IDENTITY_ALLOWED_CONTENT_TYPES, save_upload_file
 
@@ -175,35 +176,63 @@ async def get_visible_employee_ids(user: User) -> set:
         return None
 
     visible_ids = {user.id}
-    all_users = await User.find_all().to_list()
 
     if user.role == UserRole.MANAGER:
-        am_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_MANAGER and u.reporting_manager_id == user.id}
-        ahr_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_HR_MANAGER and u.reporting_manager_id == user.id}
-        visible_ids.update(am_ids)
-        visible_ids.update(ahr_ids)
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.reporting_manager_id in am_ids:
-                visible_ids.add(u.id)
+        # Performance optimization: Targeted DB queries instead of full scan
+        # Get AMs and AHRMs reporting to this Manager
+        sub_managers = await User.find(
+            User.reporting_manager_id == user.id,
+            In(User.role, [UserRole.ASSISTANT_MANAGER, UserRole.ASSISTANT_HR_MANAGER])
+        ).to_list()
+
+        am_ids = []
+        for u in sub_managers:
+            visible_ids.add(u.id)
+            if u.role == UserRole.ASSISTANT_MANAGER:
+                am_ids.append(u.id)
+
+        if am_ids:
+            # Employees reporting to those AMs
+            emp_ids = await User.find(
+                User.role == UserRole.EMPLOYEE,
+                In(User.reporting_manager_id, am_ids)
+            ).project({"_id": 1}).to_list()
+            visible_ids.update(e["_id"] for e in emp_ids)
 
     elif user.role == UserRole.HR_MANAGER:
-        ahr_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_HR_MANAGER and u.hr_reporting_manager_id == user.id}
-        am_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_MANAGER and u.hr_reporting_manager_id == user.id}
-        visible_ids.update(ahr_ids)
-        visible_ids.update(am_ids)
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.hr_reporting_manager_id in ahr_ids:
-                visible_ids.add(u.id)
+        # Get AHRMs and AMs reporting to this HR Manager
+        sub_managers = await User.find(
+            User.hr_reporting_manager_id == user.id,
+            In(User.role, [UserRole.ASSISTANT_HR_MANAGER, UserRole.ASSISTANT_MANAGER])
+        ).to_list()
+
+        ahrm_ids = []
+        for u in sub_managers:
+            visible_ids.add(u.id)
+            if u.role == UserRole.ASSISTANT_HR_MANAGER:
+                ahrm_ids.append(u.id)
+
+        if ahrm_ids:
+            # Employees reporting to those AHRMs
+            emp_ids = await User.find(
+                User.role == UserRole.EMPLOYEE,
+                In(User.hr_reporting_manager_id, ahrm_ids)
+            ).project({"_id": 1}).to_list()
+            visible_ids.update(e["_id"] for e in emp_ids)
 
     elif user.role == UserRole.ASSISTANT_MANAGER:
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.reporting_manager_id == user.id:
-                visible_ids.add(u.id)
+        emp_ids = await User.find(
+            User.role == UserRole.EMPLOYEE,
+            User.reporting_manager_id == user.id
+        ).project({"_id": 1}).to_list()
+        visible_ids.update(e["_id"] for e in emp_ids)
 
     elif user.role == UserRole.ASSISTANT_HR_MANAGER:
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.hr_reporting_manager_id == user.id:
-                visible_ids.add(u.id)
+        emp_ids = await User.find(
+            User.role == UserRole.EMPLOYEE,
+            User.hr_reporting_manager_id == user.id
+        ).project({"_id": 1}).to_list()
+        visible_ids.update(e["_id"] for e in emp_ids)
 
     return visible_ids
 
@@ -235,30 +264,45 @@ async def upload_identity_document(
 @router.get("", response_model=List[EmployeeResponse])
 async def list_employees(user: User = Depends(require_management_team)):
     """Get employees based on role hierarchy."""
-    employees = await user_service.get_all_employees()
     visible_ids = await get_visible_employee_ids(user)
+
     if visible_ids is not None:
-        employees = [e for e in employees if e.id in visible_ids]
+        # Optimization: Filter at database level instead of in-memory
+        employees = await User.find(
+            User.is_deleted != True,
+            In(User.id, list(visible_ids))
+        ).sort("-created_at").to_list()
+    else:
+        employees = await user_service.get_all_employees()
+
     return [EmployeeResponse.from_user(emp) for emp in employees]
 
 
 @router.get("/all-users", response_model=List[EmployeeResponse])
 async def list_all_users(user: User = Depends(require_management_team)):
     """Get all users of all roles in the system (filtered by hierarchy if not Admin)."""
-    users = await User.find(User.is_deleted != True).to_list()
     visible_ids = await get_visible_employee_ids(user)
+
+    query = { "is_deleted": {"$ne": True} }
     if visible_ids is not None:
-        users = [u for u in users if u.id in visible_ids]
+        # Optimization: Filter at database level
+        query["_id"] = {"$in": list(visible_ids)}
+
+    users = await User.find(query).to_list()
     return [EmployeeResponse.from_user(u) for u in users]
 
 
 @router.get("/deleted", response_model=List[EmployeeResponse])
 async def list_deleted_employees(user: User = Depends(require_management_team)):
     """Get all soft-deleted employees."""
-    employees = await User.find(User.is_deleted == True).sort("-created_at").to_list()
     visible_ids = await get_visible_employee_ids(user)
+
+    query = { "is_deleted": True }
     if visible_ids is not None:
-        employees = [e for e in employees if e.id in visible_ids]
+        # Optimization: Filter at database level
+        query["_id"] = {"$in": list(visible_ids)}
+
+    employees = await User.find(query).sort("-created_at").to_list()
     return [EmployeeResponse.from_user(emp) for emp in employees]
 
 
