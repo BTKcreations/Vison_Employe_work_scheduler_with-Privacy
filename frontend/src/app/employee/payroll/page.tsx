@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
-import { DollarSign, FileText, CheckCircle2, RefreshCw, Printer, AlertCircle, Calendar } from 'lucide-react';
+import { DollarSign, FileText, CheckCircle2, RefreshCw, Printer, AlertCircle, Calendar, History } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import { ListSkeleton, DashboardSkeleton } from '@/components/SkeletonLoaders';
 
@@ -171,7 +171,27 @@ export default function EmployeePayrollPage() {
               {/* Header */}
               <div className="flex justify-between items-start border-b border-slate-100 pb-6 flex-wrap gap-4">
                 <div>
-                  <span className="text-[10px] font-black uppercase text-indigo-600 tracking-[0.2em]">Official Corporate Statement</span>
+                  <div className="flex items-center gap-3 mb-1">
+                    <span className="text-[10px] font-black uppercase text-indigo-600 tracking-[0.2em]">Official Corporate Statement</span>
+                    {history.length > 0 && !viewingHistoryVersion && (
+                      <button
+                        onClick={() => setViewingHistoryVersion(history[0])}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200 rounded text-[9px] font-black hover:bg-amber-100 transition-colors"
+                        title="View previous archival version"
+                      >
+                        <History className="w-2.5 h-2.5" />
+                        VIEW PREVIOUS
+                      </button>
+                    )}
+                    {viewingHistoryVersion && (
+                      <button
+                        onClick={() => setViewingHistoryVersion(null)}
+                        className="flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded text-[9px] font-black hover:bg-emerald-100 transition-colors"
+                      >
+                        RETURN TO CURRENT
+                      </button>
+                    )}
+                  </div>
                   <h2 className="text-2xl font-black text-slate-900 mt-1">PAYSLIP FOR {displaySlip.month.toUpperCase()} (v{displaySlip.version_number || 1})</h2>
                   <p className="text-xs text-slate-400 font-medium mt-0.5">Reference ID: {displaySlip.id}</p>
                 </div>

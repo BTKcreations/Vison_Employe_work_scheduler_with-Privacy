@@ -7,7 +7,7 @@ import { formatDate } from '@/lib/utils';
 import { 
   DollarSign, Settings, PlusCircle, Check, X, ShieldAlert, Sparkles, 
   FileText, Play, RefreshCw, Layers, Building2, User, Briefcase, 
-  AlertTriangle, CheckCircle, Eye, Printer, ArrowRight
+  AlertTriangle, CheckCircle, Eye, Printer, ArrowRight, History
 } from 'lucide-react';
 import { TableSkeleton, DashboardSkeleton } from '@/components/SkeletonLoaders';
 
@@ -877,7 +877,27 @@ export default function PayrollManagementPage() {
           <div className="bg-white rounded-2xl max-w-2xl w-full shadow-2xl overflow-hidden border border-slate-100 max-h-[90vh] flex flex-col">
             <div className="bg-indigo-900 p-6 text-white flex justify-between items-start">
               <div>
-                <h3 className="text-xl font-black">Official Salary Slip</h3>
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="text-xl font-black">Official Salary Slip</h3>
+                  {history.length > 0 && !viewingHistoryVersion && (
+                    <button
+                      onClick={() => setViewingHistoryVersion(history[0])}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-amber-500/20 text-amber-100 border border-amber-500/30 rounded text-[9px] font-black hover:bg-amber-500/30 transition-colors"
+                      title="View previous archival version"
+                    >
+                      <History className="w-2.5 h-2.5" />
+                      VIEW PREVIOUS
+                    </button>
+                  )}
+                  {viewingHistoryVersion && (
+                    <button
+                      onClick={() => setViewingHistoryVersion(null)}
+                      className="flex items-center gap-1 px-2 py-0.5 bg-emerald-500/20 text-emerald-100 border border-emerald-500/30 rounded text-[9px] font-black hover:bg-emerald-500/30 transition-colors"
+                    >
+                      RETURN TO CURRENT
+                    </button>
+                  )}
+                </div>
                 <p className="text-indigo-200 text-xs mt-1">Month Cycle: {displayPayslip.month} (v{displayPayslip.version_number || 1})</p>
               </div>
               <div className="flex gap-2">
