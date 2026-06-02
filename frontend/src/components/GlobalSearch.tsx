@@ -100,7 +100,7 @@ export default function GlobalSearch() {
           setSelectedIndex(0);
           setIsOpen(true);
         }}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/50 hover:bg-slate-100 border border-slate-200 transition-all text-muted-foreground flex-1 max-w-[180px] sm:max-w-xs"
+        aria-label="Open search" title="Open search (Cmd+K)" className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-100/50 hover:bg-slate-100 border border-slate-200 transition-all text-muted-foreground flex-1 max-w-[180px] sm:max-w-xs"
       >
         <Search className="w-4 h-4" />
         <span className="text-xs flex-1 text-left">Quick Search...</span>
@@ -146,7 +146,7 @@ export default function GlobalSearch() {
               {loading ? (
                 <Loader2 className="w-4 h-4 text-indigo-400 animate-spin" />
               ) : (
-                <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-slate-100 rounded-md">
+                <button onClick={() => setIsOpen(false)} aria-label="Close search" title="Close search" className="p-1 hover:bg-slate-100 rounded-md">
                   <X className="w-4 h-4 text-slate-400" />
                 </button>
               )}

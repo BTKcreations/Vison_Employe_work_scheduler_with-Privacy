@@ -3,8 +3,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
-import { Brain, Sparkles, Send, X, MessageSquare, Loader2 } from 'lucide-react';
+import { Brain, Send, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { AxiosError } from 'axios';
 
 interface Message {
   sender: 'user' | 'ai';
@@ -28,18 +29,22 @@ export default function AIAssistant() {
   useEffect(() => {
     if (isOpen) {
       scrollToBottom();
-      // Initialize with welcome message if empty
-      if (messages.length === 0 && user) {
-        setMessages([
-          {
-            sender: 'ai',
-            text: `Hello ${user.name}! I am your AI Workforce Copilot. How can I assist you today? You can query tasks, performance metrics, late logins, or ask operational summaries.`,
-            timestamp: new Date()
-          }
-        ]);
-      }
     }
   }, [isOpen, messages]);
+
+  const toggleOpen = () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+    if (nextState && messages.length === 0 && user) {
+      setMessages([
+        {
+          sender: 'ai',
+          text: `Hello ${user.name}! I am your AI Workforce Copilot. How can I assist you today? You can query tasks, performance metrics, late logins, or ask operational summaries.`,
+          timestamp: new Date()
+        }
+      ]);
+    }
+  };
 
   const handleSend = async (textToSend: string) => {
     if (!textToSend.trim() || loading) return;
@@ -62,11 +67,15 @@ export default function AIAssistant() {
         timestamp: new Date()
       };
       setMessages((prev) => [...prev, aiMsg]);
-    } catch (err: any) {
+    } catch (err) {
       console.error('AI assistant request failed:', err);
+      let errorText = 'Sorry, I am having trouble connecting to the intelligence server right now.';
+      if (err instanceof AxiosError && err.response?.data?.detail) {
+        errorText = err.response.data.detail;
+      }
       const errorMsg: Message = {
         sender: 'ai',
-        text: err.response?.data?.detail || 'Sorry, I am having trouble connecting to the intelligence server right now.',
+        text: errorText,
         timestamp: new Date()
       };
       setMessages((prev) => [...prev, errorMsg]);
@@ -155,6 +164,7 @@ export default function AIAssistant() {
                   <button
                     key={idx}
                     onClick={() => handleSend(tag.query)}
+                    title={`Ask AI: ${tag.label}`}
                     className="text-[10px] font-bold text-indigo-600 bg-indigo-50 hover:bg-indigo-100/80 px-2.5 py-1 rounded-xl transition-colors border border-indigo-100/50"
                   >
                     {tag.label}
@@ -191,7 +201,7 @@ export default function AIAssistant() {
 
       {/* Floating Button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
         aria-label={isOpen ? "Close AI Copilot" : "Open AI Copilot"}
         title={isOpen ? "Close AI Copilot" : "Open AI Copilot"}
         className={cn(
