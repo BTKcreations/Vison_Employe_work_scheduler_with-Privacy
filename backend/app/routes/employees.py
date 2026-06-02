@@ -175,35 +175,59 @@ async def get_visible_employee_ids(user: User) -> set:
         return None
 
     visible_ids = {user.id}
-    all_users = await User.find_all().to_list()
 
+    # Optimization: Use database-level distinct() for faster lookups without full document loading.
     if user.role == UserRole.MANAGER:
-        am_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_MANAGER and u.reporting_manager_id == user.id}
-        ahr_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_HR_MANAGER and u.reporting_manager_id == user.id}
-        visible_ids.update(am_ids)
-        visible_ids.update(ahr_ids)
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.reporting_manager_id in am_ids:
-                visible_ids.add(u.id)
+        # 1. Get AMs and AHRMs reporting to this Manager
+        sub_manager_ids = await User.distinct("_id", {
+            "role": {"$in": [UserRole.ASSISTANT_MANAGER, UserRole.ASSISTANT_HR_MANAGER]},
+            "reporting_manager_id": user.id,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(PydanticObjectId(oid) for oid in sub_manager_ids)
+
+        # 2. Get Employees reporting to those AMs
+        if sub_manager_ids:
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE,
+                "reporting_manager_id": {"$in": sub_manager_ids},
+                "is_deleted": {"$ne": True}
+            })
+            visible_ids.update(PydanticObjectId(oid) for oid in emp_ids)
 
     elif user.role == UserRole.HR_MANAGER:
-        ahr_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_HR_MANAGER and u.hr_reporting_manager_id == user.id}
-        am_ids = {u.id for u in all_users if u.role == UserRole.ASSISTANT_MANAGER and u.hr_reporting_manager_id == user.id}
-        visible_ids.update(ahr_ids)
-        visible_ids.update(am_ids)
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.hr_reporting_manager_id in ahr_ids:
-                visible_ids.add(u.id)
+        # 1. Get AHRMs and AMs reporting to this HR Manager
+        sub_manager_ids = await User.distinct("_id", {
+            "role": {"$in": [UserRole.ASSISTANT_HR_MANAGER, UserRole.ASSISTANT_MANAGER]},
+            "hr_reporting_manager_id": user.id,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(PydanticObjectId(oid) for oid in sub_manager_ids)
+
+        # 2. Get Employees reporting to those AHRMs
+        if sub_manager_ids:
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE,
+                "hr_reporting_manager_id": {"$in": sub_manager_ids},
+                "is_deleted": {"$ne": True}
+            })
+            visible_ids.update(PydanticObjectId(oid) for oid in emp_ids)
 
     elif user.role == UserRole.ASSISTANT_MANAGER:
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.reporting_manager_id == user.id:
-                visible_ids.add(u.id)
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE,
+            "reporting_manager_id": user.id,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(PydanticObjectId(oid) for oid in emp_ids)
 
     elif user.role == UserRole.ASSISTANT_HR_MANAGER:
-        for u in all_users:
-            if u.role == UserRole.EMPLOYEE and u.hr_reporting_manager_id == user.id:
-                visible_ids.add(u.id)
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE,
+            "hr_reporting_manager_id": user.id,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(PydanticObjectId(oid) for oid in emp_ids)
 
     return visible_ids
 
