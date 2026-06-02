@@ -219,6 +219,7 @@ async def list_tasks(
     status_filter: Optional[str] = Query(None, alias="status"),
     priority: Optional[str] = None,
     employee_id: Optional[str] = None,
+    all_tasks: bool = Query(False, description="Admins can set this to True to see all tasks"),
     current_user: User = Depends(get_current_user),
 ):
     """Get tasks. Admins see all; managers/employees see according to hierarchy."""
@@ -243,20 +244,20 @@ async def list_tasks(
         )
     else:
         # No employee_id filter.
-        # Admin sees all tasks.
+        # Admin: see all if all_tasks=True, else only their own.
         # HR_MANAGER / ASSISTANT_HR_MANAGER: only their own assigned tasks in the
         #   employee portal (same as a regular employee). Their management portal
         #   always passes employee_id explicitly, so it takes the branch above.
-        # Manager / Assistant Manager: tasks within their hierarchy.
+        # Manager / Assistant Manager: tasks within their hierarchy if all_tasks=True, else only their own.
         # Employee: only their own tasks.
-        if current_user.role == UserRole.ADMIN:
+        if current_user.role == UserRole.ADMIN and all_tasks:
             tasks = await task_service.get_tasks(
                 user_id=None,
                 status=status_filter,
                 priority=priority,
                 is_admin=True,
             )
-        elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+        elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER] and all_tasks:
             all_tasks = await task_service.get_tasks(
                 user_id=None,
                 status=status_filter,

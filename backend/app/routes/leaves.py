@@ -199,7 +199,8 @@ async def apply_leave(
         user=current_user,
         title="New Leave Application",
         message=f"{current_user.name} has applied for {request.leave_type.value.replace('_', ' ')} leave from {request.start_date.strftime('%Y-%m-%d')} to {request.end_date.strftime('%Y-%m-%d')}.",
-        type="system"
+        type="system",
+        force_notify_admins=True # Ensure Admin sees their own request if they are also the manager
     )
 
     return {"message": "Leave application submitted successfully", "leave_id": str(leave.id)}

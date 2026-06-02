@@ -1,6 +1,7 @@
 from typing import List, Optional, Set
 from app.models.notification import Notification
 from app.models.user import User, UserRole
+from app.services.websocket_service import manager
 from beanie import PydanticObjectId
 from beanie.operators import In
 import logging
@@ -26,6 +27,22 @@ class NotificationService:
             chat_group_id=chat_group_id
         )
         await notification.insert()
+
+        # Push via WebSocket
+        try:
+            await manager.send_personal_message({
+                "type": "notification",
+                "data": {
+                    "id": str(notification.id),
+                    "title": title,
+                    "message": message,
+                    "type": type,
+                    "created_at": notification.created_at.isoformat()
+                }
+            }, str(user_id))
+        except Exception as e:
+            logger.warning(f"Failed to push notification via WS: {e}")
+
         return notification
 
     @staticmethod
@@ -51,13 +68,28 @@ class NotificationService:
         ]
         await Notification.insert_many(notifications)
 
+        # Push via WebSocket for each user
+        for uid in user_ids:
+            try:
+                await manager.send_personal_message({
+                    "type": "notification",
+                    "data": {
+                        "title": title,
+                        "message": message,
+                        "type": type,
+                    }
+                }, str(uid))
+            except Exception as e:
+                logger.warning(f"Failed to push notification via WS to user {uid}: {e}")
+
     @staticmethod
     async def notify_management_for_user(
         user: User,
         title: str,
         message: str,
         type: str = "system",
-        exclude_user: bool = True
+        exclude_user: bool = True,
+        force_notify_admins: bool = False
     ):
         recipient_ids: Set[PydanticObjectId] = set()
 
@@ -74,9 +106,11 @@ class NotificationService:
         ).to_list()
 
         for hr in hr_users:
+            if hr.id == user.id and not force_notify_admins:
+                continue
             recipient_ids.add(hr.id)
 
-        if exclude_user:
+        if exclude_user and not force_notify_admins:
             recipient_ids.discard(user.id)
 
         await NotificationService.notify_users(
