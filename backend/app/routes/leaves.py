@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.models.user import User, UserRole
 from app.models.leave import Leave, LeaveType, LeaveStatus
 from app.models.leave_balance import LeaveBalance
+from app.models.ledger import LeaveLedgerEntry
 from app.models.notification import Notification
 from app.auth.dependencies import get_current_user, require_hr_team, require_any_hr_manager, require_hr_manager, require_management_team
 from pydantic import BaseModel
@@ -18,13 +19,95 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/leaves", tags=["Leave Management"])
 
 
-async def _get_synced_leave_balance(user: User) -> LeaveBalance:
-    """Fetch (or create) and sync a user's leave balance from company rules."""
-    balance = await LeaveBalance.find_one(LeaveBalance.user_id == user.id)
+async def get_ledger_leave_summary(user_id: PydanticObjectId, leave_type: str, company_limit: float) -> dict:
+    # Ensure we have an initial accrual entry representing the base allocation
+    latest_accrual = await LeaveLedgerEntry.find_one(
+        LeaveLedgerEntry.user_id == user_id,
+        LeaveLedgerEntry.leave_type == leave_type,
+        LeaveLedgerEntry.transaction_type == "accrual"
+    )
+    if not latest_accrual:
+        if company_limit > 0:
+            latest_accrual = LeaveLedgerEntry(
+                user_id=user_id,
+                leave_type=leave_type,
+                amount=company_limit,
+                transaction_type="accrual",
+                description="Initial balance allocation"
+            )
+            await latest_accrual.insert()
+    else:
+        # Check if company limit changed and log delta
+        pipeline = [
+            {"$match": {
+                "user_id": user_id,
+                "leave_type": leave_type,
+                "transaction_type": {"$in": ["accrual", "adjustment"]}
+            }},
+            {"$group": {
+                "_id": None,
+                "total_allocated": {"$sum": "$amount"}
+            }}
+        ]
+        alloc_result = await LeaveLedgerEntry.aggregate(pipeline).to_list()
+        current_allocated = alloc_result[0].get("total_allocated", 0.0) if alloc_result else 0.0
+        delta = company_limit - current_allocated
+        if delta != 0:
+            adj = LeaveLedgerEntry(
+                user_id=user_id,
+                leave_type=leave_type,
+                amount=delta,
+                transaction_type="adjustment",
+                description=f"Company leave limit policy adjustment (Delta: {delta})"
+            )
+            await adj.insert()
+            
+    pipeline = [
+        {"$match": {"user_id": user_id, "leave_type": leave_type}},
+        {"$group": {
+            "_id": None,
+            "total_accrued": {"$sum": {"$cond": [{"$gt": ["$amount", 0]}, "$amount", 0]}},
+            "total_used": {"$sum": {"$cond": [{"$lt": ["$amount", 0]}, {"$abs": "$amount"}, 0]}},
+            "current_balance": {"$sum": "$amount"}
+        }}
+    ]
+    result = await LeaveLedgerEntry.aggregate(pipeline).to_list()
+    if not result:
+        return {"allocated": company_limit, "used": 0.0, "remaining": company_limit}
+        
+    summary = result[0]
+    allocated = summary.get("total_accrued", 0.0)
+    used = summary.get("total_used", 0.0)
+    remaining = summary.get("current_balance", 0.0)
+    return {
+        "allocated": allocated,
+        "used": used,
+        "remaining": max(0.0, remaining)
+    }
+
+
+async def sync_leave_balance_from_ledger(user_id: PydanticObjectId, company_limits: dict) -> LeaveBalance:
+    balance = await LeaveBalance.find_one(LeaveBalance.user_id == user_id)
     if not balance:
-        balance = LeaveBalance(user_id=user.id)
+        balance = LeaveBalance(user_id=user_id)
         await balance.insert()
 
+    casual_sum = await get_ledger_leave_summary(user_id, "casual", company_limits.get("casual", 12))
+    sick_sum = await get_ledger_leave_summary(user_id, "sick", company_limits.get("sick", 0))
+    earned_sum = await get_ledger_leave_summary(user_id, "earned", company_limits.get("earned", 0))
+
+    balance.casual_allocated = casual_sum["allocated"]
+    balance.casual_used = casual_sum["used"]
+    balance.sick_allocated = sick_sum["allocated"]
+    balance.sick_used = sick_sum["used"]
+    balance.earned_allocated = earned_sum["allocated"]
+    balance.earned_used = earned_sum["used"]
+    await balance.save()
+    return balance
+
+
+async def _get_synced_leave_balance(user: User) -> LeaveBalance:
+    """Fetch (or create) and sync a user's leave balance from company rules using the leave ledger."""
     from app.models.company import Company
     company = None
     if user.company_id:
@@ -32,13 +115,12 @@ async def _get_synced_leave_balance(user: User) -> LeaveBalance:
     if not company:
         company = await Company.find_one(Company.is_active == True)
 
-    if company:
-        balance.casual_allocated = company.casual_leave_limit
-        balance.sick_allocated = company.sick_leave_limit
-        balance.earned_allocated = company.earned_leave_limit
-        await balance.save()
-
-    return balance
+    limits = {
+        "casual": company.casual_leave_limit if company else 12,
+        "sick": company.sick_leave_limit if company else 0,
+        "earned": company.earned_leave_limit if company else 0
+    }
+    return await sync_leave_balance_from_ledger(user.id, limits)
 
 
 class LeaveApplyRequest(BaseModel):
@@ -400,20 +482,34 @@ async def approve_leave(
     # Calculate leave days
     days = (leave.end_date - leave.start_date).days + 1
 
-    # Finalize and deduct balance
+    # Finalize and write to leave ledger
     if leave.leave_type in [LeaveType.CASUAL, LeaveType.SICK, LeaveType.EARNED]:
-        balance = await LeaveBalance.find_one(LeaveBalance.user_id == leave.user_id)
-        if not balance:
-            balance = LeaveBalance(user_id=leave.user_id)
-            await balance.insert()
-
-        if leave.leave_type == LeaveType.CASUAL:
-            balance.casual_used += days
-        elif leave.leave_type == LeaveType.SICK:
-            balance.sick_used += days
-        elif leave.leave_type == LeaveType.EARNED:
-            balance.earned_used += days
-        await balance.save()
+        ledger_entry = LeaveLedgerEntry(
+            user_id=leave.user_id,
+            leave_type=leave.leave_type.value,
+            amount=-float(days),
+            transaction_type="usage",
+            reference_id=leave.id,
+            description=f"Approved leave from {leave.start_date.strftime('%Y-%m-%d')} to {leave.end_date.strftime('%Y-%m-%d')}",
+            actor_id=hr_manager.id
+        )
+        await ledger_entry.insert()
+        
+        # Sync leave balance document
+        from app.models.company import Company
+        applicant_user = await User.get(leave.user_id)
+        company = None
+        if applicant_user and applicant_user.company_id:
+            company = await Company.get(applicant_user.company_id)
+        if not company:
+            company = await Company.find_one(Company.is_active == True)
+        
+        limits = {
+            "casual": company.casual_leave_limit if company else 12,
+            "sick": company.sick_leave_limit if company else 0,
+            "earned": company.earned_leave_limit if company else 0
+        }
+        await sync_leave_balance_from_ledger(leave.user_id, limits)
 
     leave.status = LeaveStatus.APPROVED
     leave.approved_by = hr_manager.id

@@ -4,6 +4,7 @@ Company management routes - admin CRUD + public list for dropdowns.
 from fastapi import APIRouter, HTTPException, status, Depends, Request
 from app.models.company import Company
 from app.auth.dependencies import get_current_user, require_admin, require_any_hr_manager
+from app.models.policy import PolicyVersion
 from app.models.user import User
 from pydantic import BaseModel, Field
 from typing import Optional, List
@@ -180,6 +181,53 @@ def _build_company_response(c: Company) -> CompanyResponse:
     )
 
 
+async def save_policy_version(company: Company, actor_id: Optional[PydanticObjectId] = None) -> PolicyVersion:
+    # Find latest version
+    latest = await PolicyVersion.find(PolicyVersion.company_id == company.id).sort("-version").first_or_none()
+    next_version = 1
+    now = datetime.utcnow()
+    if latest:
+        next_version = latest.version + 1
+        latest.effective_to = now
+        await latest.save()
+        
+    policy_data = {
+        "company_id": company.id,
+        "version": next_version,
+        "effective_from": now,
+        "created_by_id": actor_id,
+        "work_days": company.work_days,
+        "work_start_time": company.work_start_time,
+        "work_end_time": company.work_end_time,
+        "work_type": company.work_type,
+        "flexible_hours": company.flexible_hours,
+        "cut_out_time": company.cut_out_time,
+        "office_lat": company.office_lat,
+        "office_lng": company.office_lng,
+        "geofence_radius_meters": company.geofence_radius_meters,
+        "geofence_policy": company.geofence_policy,
+        "min_session_minutes": company.min_session_minutes,
+        "auto_checkout_enabled": company.auto_checkout_enabled,
+        "location_drift_threshold_km": company.location_drift_threshold_km,
+        "task_priority_points": company.task_priority_points,
+        "delay_penalties": company.delay_penalties,
+        "early_completion_multiplier": company.early_completion_multiplier,
+        "quality_multipliers": company.quality_multipliers,
+        "incentive_tiers": company.incentive_tiers,
+        "attendance_points": company.attendance_points,
+        "attendance_bonus_threshold": company.attendance_bonus_threshold,
+        "attendance_bonus_percentage": company.attendance_bonus_percentage,
+        "performance_incentive_pool_percentage": company.performance_incentive_pool_percentage,
+        "sick_leave_limit": company.sick_leave_limit,
+        "earned_leave_limit": company.earned_leave_limit,
+        "casual_leave_limit": company.casual_leave_limit,
+        "max_paid_casual_leaves_per_month": company.max_paid_casual_leaves_per_month,
+    }
+    version_doc = PolicyVersion(**policy_data)
+    await version_doc.insert()
+    return version_doc
+
+
 @router.get("", response_model=List[CompanyResponse])
 async def list_companies(current_user: User = Depends(get_current_user)):
     """List all active companies."""
@@ -232,6 +280,7 @@ async def create_company(
 
     company = Company(**company_data)
     await company.insert()
+    await save_policy_version(company, admin.id)
 
     await AuditService.log_event(
         actor=admin,
@@ -276,31 +325,22 @@ async def update_company(
     if update_data:
         await company.set(update_data)
         company = await Company.get(PydanticObjectId(company_id))
+        
+        # Check if policy rules changed
+        metadata_fields = {"name", "description", "is_active"}
+        policy_changed = any(k not in metadata_fields for k in update_data.keys())
+        if policy_changed:
+            await save_policy_version(company, user.id)
 
     # 1. Update Leave Balance records if limits changed
     if leave_limits_changed:
-        from app.models.leave_balance import LeaveBalance
+        from app.routes.leaves import _get_synced_leave_balance
         users = await User.find(User.company_id == company.id).to_list()
-        user_ids = [u.id for u in users]
-        if user_ids:
-            # Update existing balances
-            await LeaveBalance.find({"user_id": {"$in": user_ids}}).set({
-                LeaveBalance.casual_allocated: company.casual_leave_limit,
-                LeaveBalance.sick_allocated: company.sick_leave_limit,
-                LeaveBalance.earned_allocated: company.earned_leave_limit,
-            })
-            # Initialize for users without leave balances
-            existing_balances = await LeaveBalance.find({"user_id": {"$in": user_ids}}).to_list()
-            existing_user_ids = {b.user_id for b in existing_balances}
-            for u in users:
-                if u.id not in existing_user_ids:
-                    new_balance = LeaveBalance(
-                        user_id=u.id,
-                        casual_allocated=company.casual_leave_limit,
-                        sick_allocated=company.sick_leave_limit,
-                        earned_allocated=company.earned_leave_limit,
-                    )
-                    await new_balance.insert()
+        for u in users:
+            try:
+                await _get_synced_leave_balance(u)
+            except Exception as e:
+                logger.warning(f"Failed to sync leave balance for user {u.name} via ledger: {e}")
 
     # 2. Recalculate attendance log statuses if work_start_time changed
     if work_start_time_changed:

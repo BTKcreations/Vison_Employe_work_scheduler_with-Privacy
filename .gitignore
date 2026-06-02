@@ -24,3 +24,9 @@ mongo_extracted/
 *.tgz
 *.db
 *.sqlite
+
+# Uploads & Temp Files
+backend/uploads/
+scratch/
+
+

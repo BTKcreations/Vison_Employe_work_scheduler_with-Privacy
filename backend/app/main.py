@@ -108,6 +108,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan - initialize DB and background tasks."""
     validate_runtime_security_settings()
     await init_db()
+    
+    # Seed default templates
+    from app.services.notification_engine_service import NotificationEngineService
+    await NotificationEngineService.seed_templates()
+    
     bg_task = asyncio.create_task(run_periodic_tasks())
     yield
     bg_task.cancel()

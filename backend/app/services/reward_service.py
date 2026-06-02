@@ -5,8 +5,28 @@ from datetime import datetime, timedelta, timezone
 from app.models.task import Task
 from app.models.user import User
 from app.models.activity_log import ActivityLog
+from app.models.ledger import RewardLedgerEntry
 from beanie import PydanticObjectId
 from typing import Tuple, Optional
+
+
+async def sync_user_reward_points(user_id: PydanticObjectId) -> float:
+    # Fetch all reward transactions for the user and sum them
+    pipeline = [
+        {"$match": {"user_id": user_id}},
+        {"$group": {
+            "_id": None,
+            "total_points": {"$sum": "$amount"}
+        }}
+    ]
+    result = await RewardLedgerEntry.aggregate(pipeline).to_list()
+    total_points = max(0.0, result[0].get("total_points", 0.0)) if result else 0.0
+    
+    # Update the User document as a cache
+    user = await User.get(user_id)
+    if user:
+        await user.set({"reward_points": total_points})
+    return total_points
 
 
 async def apply_performance_score(task: Task, is_rejection: bool = False) -> Tuple[float, str]:
@@ -82,9 +102,17 @@ async def apply_performance_score(task: Task, is_rejection: bool = False) -> Tup
         points = base_points * delay_mult * early_mult * quality_mult
         details = f"Earned {points:.2f} points (Base: {base_points}, Timeliness: {delay_mult:.2f}x, Early: {early_mult:.2f}x, Quality: {quality_mult:.2f}x) for completion of '{task.work_description[:30]}...'"
 
-    # Apply points to user, enforcing ge=0 constraint on the schema
-    new_points = max(0.0, user.reward_points + points)
-    await user.set({"reward_points": new_points})
+    # Apply points to user, enforcing ge=0 constraint on the schema via ledger
+    if points != 0:
+        ledger_entry = RewardLedgerEntry(
+            user_id=user.id,
+            amount=points,
+            transaction_type="earned",
+            reference_id=task.id,
+            description=details
+        )
+        await ledger_entry.insert()
+    await sync_user_reward_points(user.id)
 
     # Save details on the task
     await task.set({

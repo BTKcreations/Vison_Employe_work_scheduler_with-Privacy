@@ -249,3 +249,133 @@ async def generate_attendance_excel(
         df.to_excel(writer, sheet_name="Attendance", index=False)
     output.seek(0)
     return output
+
+
+async def generate_leaves_excel(user_id: Optional[str] = None) -> BytesIO:
+    """Generate Excel file of leave requests."""
+    from app.models.leave import Leave
+    
+    query = {}
+    if user_id:
+        query["user_id"] = PydanticObjectId(user_id)
+        
+    leaves = await Leave.find(query).sort("-created_at").to_list()
+    
+    # Pre-fetch user names
+    user_map = {}
+    if not user_id:
+        user_ids = list(set([l.user_id for l in leaves]))
+        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
+        
+    rows = []
+    for i, l in enumerate(leaves, 1):
+        row = {
+            "S.No": i,
+        }
+        if not user_id:
+            user_info = user_map.get(l.user_id, {"name": l.user_name or "Unknown", "email": "Unknown"})
+            row["Employee Name"] = user_info["name"]
+            row["Email"] = user_info["email"]
+            
+        days = (l.end_date - l.start_date).days + 1
+        row.update({
+            "Leave Type": l.leave_type.value.upper(),
+            "Start Date": l.start_date.strftime("%d-%m-%Y"),
+            "End Date": l.end_date.strftime("%d-%m-%Y"),
+            "Total Days": days,
+            "Status": l.status.value.upper(),
+            "Reason": l.reason,
+            "Comments": l.comments or "",
+            "Verified By": l.verified_by_name or "",
+            "Approved By": l.approved_by_name or "",
+            "Created Date": l.created_at.strftime("%d-%m-%Y %H:%M:%S")
+        })
+        rows.append(row)
+        
+    df = pd.DataFrame(rows)
+    df.columns = [str(c).upper() for c in df.columns]
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Leaves", index=False)
+    output.seek(0)
+    return output
+
+
+async def generate_reward_ledger_excel(user_id: Optional[str] = None) -> BytesIO:
+    """Generate Excel file of reward points ledger entries."""
+    from app.models.ledger import RewardLedgerEntry
+    
+    query = {}
+    if user_id:
+        query["user_id"] = PydanticObjectId(user_id)
+        
+    entries = await RewardLedgerEntry.find(query).sort("-created_at").to_list()
+    
+    # Pre-fetch user names
+    user_ids = list(set([e.user_id for e in entries]))
+    users = await User.find({"_id": {"$in": user_ids}}).to_list()
+    user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
+    
+    rows = []
+    for i, e in enumerate(entries, 1):
+        user_info = user_map.get(e.user_id, {"name": "Unknown", "email": "Unknown"})
+        row = {
+            "S.No": i,
+            "Employee Name": user_info["name"],
+            "Email": user_info["email"],
+            "Amount": e.amount,
+            "Transaction Type": e.transaction_type.upper(),
+            "Description": e.description or "",
+            "Timestamp": e.created_at.strftime("%d-%m-%Y %H:%M:%S")
+        }
+        rows.append(row)
+        
+    df = pd.DataFrame(rows)
+    df.columns = [str(c).upper() for c in df.columns]
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Reward Points Ledger", index=False)
+    output.seek(0)
+    return output
+
+
+async def generate_audit_excel(actor_id: Optional[str] = None, entity_type: Optional[str] = None) -> BytesIO:
+    """Generate Excel file of audit log events."""
+    from app.models.audit_event import AuditEvent
+    
+    query = {}
+    if actor_id:
+        query["actor_id"] = PydanticObjectId(actor_id)
+    if entity_type:
+        query["entity_type"] = entity_type
+        
+    events = await AuditEvent.find(query).sort("-timestamp").to_list()
+    
+    rows = []
+    for i, e in enumerate(events, 1):
+        row = {
+            "S.No": i,
+            "Actor Name": e.actor_name or "System",
+            "Actor Role": e.actor_role or "System",
+            "Action": e.action.upper(),
+            "Entity Type": e.entity_type.upper(),
+            "Entity ID": str(e.entity_id) if e.entity_id else "",
+            "Correlation ID": e.correlation_id or "",
+            "IP Address": e.ip_address or "",
+            "User Agent": e.user_agent or "",
+            "Timestamp": e.timestamp.strftime("%d-%m-%Y %H:%M:%S")
+        }
+        rows.append(row)
+        
+    df = pd.DataFrame(rows)
+    df.columns = [str(c).upper() for c in df.columns]
+    
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, sheet_name="Audit Trails", index=False)
+    output.seek(0)
+    return output
+

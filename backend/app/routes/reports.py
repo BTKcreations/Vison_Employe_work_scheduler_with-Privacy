@@ -168,3 +168,46 @@ async def export_attendance_excel_admin(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=attendance_report.xlsx"},
     )
+
+
+@router.get("/leaves/excel")
+async def export_leaves_excel(
+    employee_id: Optional[str] = None,
+    admin: User = Depends(require_admin)
+):
+    """Export leave requests report as Excel (admin only)."""
+    excel_data = await report_service.generate_leaves_excel(user_id=employee_id)
+    return StreamingResponse(
+        excel_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=leaves_report.xlsx"}
+    )
+
+
+@router.get("/rewards/excel")
+async def export_rewards_excel(
+    employee_id: Optional[str] = None,
+    admin: User = Depends(require_admin)
+):
+    """Export reward points ledger report as Excel (admin only)."""
+    excel_data = await report_service.generate_reward_ledger_excel(user_id=employee_id)
+    return StreamingResponse(
+        excel_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=rewards_ledger_report.xlsx"}
+    )
+
+
+@router.get("/audit/excel")
+async def export_audit_excel(
+    actor_id: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    admin: User = Depends(require_admin)
+):
+    """Export audit log events report as Excel (admin only)."""
+    excel_data = await report_service.generate_audit_excel(actor_id=actor_id, entity_type=entity_type)
+    return StreamingResponse(
+        excel_data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=audit_report.xlsx"}
+    )

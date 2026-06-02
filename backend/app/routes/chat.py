@@ -504,9 +504,19 @@ async def gift_points_in_chat(
             detail="Gifted points value must be greater than zero."
         )
 
-    # Add points to employee balance
-    recipient.reward_points += request.points
-    await recipient.save()
+    # Add points to employee balance via ledger
+    from app.models.ledger import RewardLedgerEntry
+    from app.services.reward_service import sync_user_reward_points
+
+    ledger_entry = RewardLedgerEntry(
+        user_id=recipient.id,
+        amount=request.points,
+        transaction_type="adjusted",
+        description=f"Appreciation tip from {current_user.name}: {request.message}",
+        actor_id=current_user.id
+    )
+    await ledger_entry.insert()
+    new_points = await sync_user_reward_points(recipient.id)
 
     # Generate appreciation tip chat message
     tip_msg = ChatMessage(
@@ -540,7 +550,7 @@ async def gift_points_in_chat(
 
     return {
         "message": f"Successfully tipped {request.points} reward points!",
-        "new_balance": recipient.reward_points
+        "new_balance": new_points
     }
 
 @router.delete("/messages/{message_id}")

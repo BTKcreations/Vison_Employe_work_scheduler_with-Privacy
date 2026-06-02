@@ -1024,6 +1024,16 @@ async def delete_payroll(
     return {"message": "Payroll and its history successfully deleted."}
 
 
+def convert_object_ids(obj):
+    if isinstance(obj, list):
+        return [convert_object_ids(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {k: convert_object_ids(v) for k, v in obj.items()}
+    elif obj.__class__.__name__ in ("ObjectId", "PydanticObjectId"):
+        return str(obj)
+    return obj
+
+
 @router.get("/{payroll_id}/history")
 async def get_payroll_history(
     payroll_id: str,
@@ -1053,10 +1063,11 @@ async def get_payroll_history(
             "version_number": h.version_number,
             "reason_for_change": h.reason_for_change,
             "created_at": to_utc_iso(h.created_at),
-            "snapshot": h.payroll_snapshot
+            "snapshot": convert_object_ids(h.payroll_snapshot)
         }
         for h in history
     ]
+
 
 
 @router.post("/unlock/{payroll_id}")

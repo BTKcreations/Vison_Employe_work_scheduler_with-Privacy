@@ -280,3 +280,58 @@ async def test_payroll_custom_company_work_days():
     # Total weekoff days (Fridays, Saturdays, Sundays) = 31 - 18 = 13 weekoffs.
     assert payroll.total_working_days == 18
     assert payroll.holidays_weekends == 13
+
+
+@pytest.mark.asyncio
+async def test_get_payroll_history_endpoint():
+    from httpx import AsyncClient, ASGITransport
+    from app.main import app
+    
+    company = Company(name="Test Corp")
+    await company.insert()
+    
+    admin = User(
+        email="admin@example.com",
+        name="Admin User",
+        role=UserRole.ADMIN,
+        company_id=company.id,
+        password_hash="mock_hash"
+    )
+    await admin.insert()
+
+    user = User(
+        email="test_hist@example.com",
+        name="Test User History",
+        role=UserRole.EMPLOYEE,
+        company_id=company.id,
+        hiring_date="2023-01-01",
+        password_hash="mock_hash"
+    )
+    await user.insert()
+
+    struct = SalaryStructure(user_id=user.id, basic=10000)
+    await struct.insert()
+
+    payroll_v1 = await calculate_corporate_payroll(user, "2024-05")
+    
+    # Trigger version 2 recalculation to generate a history entry
+    attn = Attendance(
+        user_id=user.id, company_id=company.id, check_in=datetime(2024, 5, 10, 9, 0, tzinfo=timezone.utc), status="present"
+    )
+    await attn.insert()
+    payroll_v2 = await calculate_corporate_payroll(user, "2024-05")
+    
+    from app.auth.dependencies import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: admin
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        response = await ac.get(f"/payroll/{payroll_v2.id}/history")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["version_number"] == 1
+        # Check that user_id inside the snapshot was serialized successfully as a string
+        assert isinstance(data[0]["snapshot"]["user_id"], str)
+        assert data[0]["snapshot"]["user_id"] == str(user.id)
+

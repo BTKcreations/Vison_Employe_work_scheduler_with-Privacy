@@ -23,6 +23,10 @@ from app.models.chat_message import ChatMessage
 from app.models.ai_insight import CachedAIInsight
 from app.models.audit_event import AuditEvent
 from app.models.payroll_impact import PayrollRecalculationImpact
+from app.models.policy import PolicyVersion, ApprovalPolicy
+from app.models.employee import Employee
+from app.models.ledger import LeaveLedgerEntry, RewardLedgerEntry
+from app.models.notification_engine import NotificationTemplate, NotificationPreference, NotificationDeliveryLog
 
 
 async def auto_seed_if_needed():
@@ -70,7 +74,9 @@ async def init_db():
                 User, Task, ActivityLog, Company, Attendance, Holiday, 
                 RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
                 AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
-                ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact
+                ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact,
+                PolicyVersion, ApprovalPolicy, Employee, LeaveLedgerEntry, RewardLedgerEntry,
+                NotificationTemplate, NotificationPreference, NotificationDeliveryLog
             ]
         )
         print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
@@ -99,7 +105,9 @@ async def init_db():
                     User, Task, ActivityLog, Company, Attendance, Holiday, 
                     RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
                     AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
-                    ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact
+                    ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact,
+                    PolicyVersion, ApprovalPolicy, Employee, LeaveLedgerEntry, RewardLedgerEntry,
+                    NotificationTemplate, NotificationPreference, NotificationDeliveryLog
                 ]
             )
             print(f"[OK] Connected to mock in-memory MongoDB: {settings.DATABASE_NAME}")

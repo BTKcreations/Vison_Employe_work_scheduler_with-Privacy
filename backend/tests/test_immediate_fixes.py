@@ -15,55 +15,6 @@ from app.models.company import Company
 from datetime import datetime, date, timedelta
 from beanie import PydanticObjectId
 
-@pytest_asyncio.fixture(autouse=True)
-async def db():
-    import os
-    from beanie import init_beanie
-    from pymongo import AsyncMongoClient
-    from app.models.user import User
-    from app.models.employee import Employee
-    from app.models.audit_event import AuditEvent
-    from app.models.payroll_impact import PayrollRecalculationImpact
-    from app.models.leave import Leave
-    from app.models.payroll import Payroll, SalaryStructure, PayrollHistory
-    from app.models.regularization import AttendanceRegularization
-    from app.models.attendance import Attendance
-    from app.models.company import Company
-    from app.models.holiday import Holiday
-    from app.models.task import Task
-    from app.models.notification import Notification
-    from app.models.activity_log import ActivityLog
-    from app.models.leave_balance import LeaveBalance
-    from app.models.chat_group import ChatGroup
-    from app.models.chat_message import ChatMessage
-    from app.models.ai_insight import CachedAIInsight
-    from app.models.recurring_task import RecurrenceRule
-    from app.models.category import Category
-
-    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-    client = AsyncMongoClient(mongodb_url)
-    await init_beanie(database=client.test_db_fixes, document_models=[
-        User, Task, ActivityLog, Company, Attendance, Holiday,
-        RecurrenceRule, Notification, Category, Leave, LeaveBalance,
-        AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
-        ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact,
-        Employee
-    ])
-
-    # Clear db
-    models = [
-        User, Employee, AuditEvent, PayrollRecalculationImpact,
-        Leave, Payroll, AttendanceRegularization, Attendance,
-        Company, SalaryStructure, PayrollHistory, Holiday, Task, Notification,
-        ActivityLog, LeaveBalance, ChatGroup, ChatMessage, CachedAIInsight,
-        RecurrenceRule, Category
-    ]
-    for model in models:
-        await model.find_all().delete()
-
-    yield
-    await client.drop_database("test_db_fixes")
-
 @pytest_asyncio.fixture
 async def test_company(db):
     company = Company(
