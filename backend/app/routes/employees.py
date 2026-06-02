@@ -177,6 +177,7 @@ async def get_visible_employee_ids(user: User) -> set:
 
     visible_ids = {user.id}
 
+    # Optimization: Use database-level distinct() for faster lookups without full document loading.
     if user.role == UserRole.MANAGER:
         # Performance optimization: Targeted DB queries instead of full scan
         # Get AMs and AHRMs reporting to this Manager
