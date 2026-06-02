@@ -1,46 +1,55 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import api from '@/lib/api';
-import { useAuth } from '@/contexts/AuthContext';
-import { Bell, Check, Trash2, Clock, CheckCircle2, ClipboardList, Info, X, MessageSquare } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Bell, X, Info, CheckCircle2, ClipboardList, MessageSquare } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
+import api from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { Skeleton } from './Skeleton';
+import { Skeleton } from '@/components/Skeleton';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface Notification {
   id: string;
   title: string;
   message: string;
-  type: 'task_assigned' | 'task_completed' | 'system' | 'chat';
+  type: 'task_assigned' | 'task_completed' | 'chat' | 'info';
   is_read: boolean;
   created_at: string;
 }
 
 export default function NotificationBell() {
   const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const fetchNotifications = useCallback(async (isInitial = false) => {
-    if (isInitial) setLoading(true);
+  const fetchNotifications = useCallback(async () => {
     try {
-      const response = await api.get('/notifications');
-      setNotifications(response.data.items);
-      setUnreadCount(response.data.unread_count);
+      setLoading(true);
+      const res = await api.get('/notifications');
+      setNotifications(res.data);
+      setUnreadCount(res.data.filter((n: Notification) => !n.is_read).length);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
     } finally {
-      if (isInitial) setLoading(false);
+      setLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    fetchNotifications();
+  const toggleOpen = () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+    if (nextState) {
+      fetchNotifications();
+    }
+  };
 
+  useEffect(() => {
     if (user?.id) {
       const connectWS = () => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -52,11 +61,7 @@ export default function NotificationBell() {
         ws.onmessage = (event) => {
           const message = JSON.parse(event.data);
           if (message.type === 'notification') {
-            // Re-fetch to keep state consistent and simple,
-            // or we could manually prepend message.data
             fetchNotifications();
-
-            // Show desktop notification if browser permits
             if (Notification.permission === 'granted') {
               new Notification(message.data.title, { body: message.data.message });
             }
@@ -64,7 +69,6 @@ export default function NotificationBell() {
         };
 
         ws.onclose = () => {
-          // Reconnect after 3 seconds
           setTimeout(connectWS, 3000);
         };
 
@@ -73,7 +77,6 @@ export default function NotificationBell() {
 
       connectWS();
 
-      // Request permission for desktop notifications
       if ('Notification' in window && Notification.permission === 'default') {
         Notification.requestPermission();
       }
@@ -101,8 +104,8 @@ export default function NotificationBell() {
       await markAsRead(notification.id);
     }
     if (notification.type === 'chat') {
-      const isShareAdmin = window.location.pathname.startsWith('/admin');
-      window.location.href = isShareAdmin ? '/admin/chat' : '/employee/chat';
+      const isShareAdmin = pathname.startsWith('/admin');
+      router.push(isShareAdmin ? '/admin/chat' : '/employee/chat');
     }
     setIsOpen(false);
   };
@@ -122,7 +125,6 @@ export default function NotificationBell() {
     try {
       await api.delete(`/notifications/${id}`);
       setNotifications(prev => prev.filter(n => n.id !== id));
-      // Re-fetch to get correct unread count or just update local state
       fetchNotifications();
     } catch (error) {
       console.error('Failed to delete notification:', error);
@@ -150,7 +152,9 @@ export default function NotificationBell() {
   return (
     <div className="relative">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={toggleOpen}
+        aria-label="View notifications"
+        title="View notifications"
         className={cn(
           "p-2.5 rounded-xl transition-all relative group hover:bg-slate-100",
           isOpen && "bg-slate-100"
@@ -174,7 +178,6 @@ export default function NotificationBell() {
             onClick={() => setIsOpen(false)} 
           />
           <div className="absolute right-0 mt-3 w-80 sm:w-96 glass-strong rounded-2xl shadow-2xl z-50 border border-white/40 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 origin-top-right">
-            {/* Header */}
             <div className="px-5 py-4 border-b border-slate-100 bg-white/50 flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider">Notifications</h3>
@@ -183,6 +186,7 @@ export default function NotificationBell() {
               {unreadCount > 0 && (
                 <button 
                   onClick={markAllAsRead}
+                  title="Mark all notifications as read"
                   className="text-[10px] font-black text-indigo-600 hover:text-indigo-700 uppercase tracking-widest px-2 py-1 rounded-lg hover:bg-indigo-50 transition-colors"
                 >
                   Mark all as read
@@ -190,7 +194,6 @@ export default function NotificationBell() {
               )}
             </div>
 
-            {/* Content */}
             <div className="max-h-[400px] overflow-y-auto bg-white/30 backdrop-blur-sm">
               {loading ? (
                 <div className="divide-y divide-slate-50">
@@ -213,7 +216,7 @@ export default function NotificationBell() {
                     <Bell className="w-6 h-6 text-slate-300" />
                   </div>
                   <p className="text-sm font-bold text-slate-400 uppercase tracking-wide">No notifications yet</p>
-                  <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">We'll alert you when something happens</p>
+                  <p className="text-[10px] text-slate-400 mt-1 uppercase tracking-widest">We&apos;ll alert you when something happens</p>
                 </div>
               ) : (
                 <div className="divide-y divide-slate-50">
@@ -252,6 +255,8 @@ export default function NotificationBell() {
                         
                         <button 
                           onClick={(e) => deleteNotification(e, notification.id)}
+                          aria-label="Delete notification"
+                          title="Delete notification"
                           className="opacity-0 group-hover/item:opacity-100 p-1.5 hover:bg-rose-50 hover:text-rose-500 rounded-lg text-slate-300 transition-all"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -266,7 +271,6 @@ export default function NotificationBell() {
               )}
             </div>
 
-            {/* Footer */}
             <div className="px-5 py-3 border-t border-slate-100 bg-slate-50/50 text-center">
               <button 
                 onClick={() => setIsOpen(false)}
