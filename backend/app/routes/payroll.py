@@ -4,7 +4,13 @@ from app.models.payroll import Payroll, SalaryStructure, PayrollStatus
 from app.models.activity_log import ActivityLog
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
-from app.auth.dependencies import get_current_user, require_hr_team, require_any_hr_manager, require_admin, require_hr_manager
+from app.auth.dependencies import (
+    get_current_user,
+    require_hr_team,
+    require_any_hr_manager,
+    require_admin,
+    require_hr_manager,
+)
 from pydantic import BaseModel
 from typing import List, Optional
 from beanie import PydanticObjectId
@@ -52,7 +58,7 @@ async def calculate_corporate_payroll(
     month: str,
     drafted_by_id: Optional[PydanticObjectId] = None,
     drafted_by_name: Optional[str] = None,
-    force: bool = False
+    force: bool = False,
 ) -> Payroll:
     from app.models.company import Company
     from app.models.attendance import Attendance, IST
@@ -69,10 +75,14 @@ async def calculate_corporate_payroll(
 
     start_of_month_ist = datetime(year, month_num, 1, tzinfo=IST)
     if month_num == 12:
-        end_of_month_ist = datetime(year + 1, 1, 1, tzinfo=IST) - timedelta(microseconds=1)
+        end_of_month_ist = datetime(year + 1, 1, 1, tzinfo=IST) - timedelta(
+            microseconds=1
+        )
     else:
-        end_of_month_ist = datetime(year, month_num + 1, 1, tzinfo=IST) - timedelta(microseconds=1)
-    
+        end_of_month_ist = datetime(year, month_num + 1, 1, tzinfo=IST) - timedelta(
+            microseconds=1
+        )
+
     start_of_month = start_of_month_ist.astimezone(timezone.utc)
     end_of_month = end_of_month_ist.astimezone(timezone.utc)
     total_days_in_month = (end_of_month_ist.date() - start_of_month_ist.date()).days + 1
@@ -81,10 +91,12 @@ async def calculate_corporate_payroll(
     joining_date = None
     if employee.hiring_date:
         try:
-            joining_date = datetime.strptime(employee.hiring_date, "%Y-%m-%d").replace(tzinfo=IST)
+            joining_date = datetime.strptime(employee.hiring_date, "%Y-%m-%d").replace(
+                tzinfo=IST
+            )
         except Exception:
             pass
-    
+
     # If no hiring date is configured, assume they joined before this month (no active window limit)
     if not joining_date:
         joining_date_utc = start_of_month
@@ -92,15 +104,17 @@ async def calculate_corporate_payroll(
         joining_date_utc = joining_date.astimezone(timezone.utc)
 
     if joining_date_utc > end_of_month:
-        raise ValueError(f"Employee {employee.name} joined after the selected month ({month}).")
+        raise ValueError(
+            f"Employee {employee.name} joined after the selected month ({month})."
+        )
 
     # 3. Active window proration (always covers the full month cycle: 1st of the month to the last date of that month)
     active_start_date_utc = start_of_month
     active_end_date_utc = end_of_month
-    
+
     active_start_date = active_start_date_utc.astimezone(IST)
     active_end_date = active_end_date_utc.astimezone(IST)
-    
+
     active_days = (active_end_date.date() - active_start_date.date()).days + 1
     is_prorated = active_days < total_days_in_month
 
@@ -114,27 +128,39 @@ async def calculate_corporate_payroll(
     if not company:
         company = await Company.find_one(Company.is_active == True)
 
-    holidays_list = await Holiday.find(
-        Holiday.date >= start_of_month,
-        Holiday.date <= end_of_month,
-        Or(Holiday.company_id == employee.company_id, Holiday.company_id == None)
-    ).to_list() if company else []
+    holidays_list = (
+        await Holiday.find(
+            Holiday.date >= start_of_month,
+            Holiday.date <= end_of_month,
+            Or(Holiday.company_id == employee.company_id, Holiday.company_id == None),
+        ).to_list()
+        if company
+        else []
+    )
     holiday_dates = {h.date.astimezone(IST).date() for h in holidays_list}
 
     # 6. Count working days, weekends, holidays in active window
     total_working_days = 0
     holidays_weekends = 0
-    
+
     # Pre-build lowercase workdays set for dynamic weekend check based on company settings
-    work_days_set = {d.strip().lower() for d in company.work_days} if (company and company.work_days) else None
+    work_days_set = (
+        {d.strip().lower() for d in company.work_days}
+        if (company and company.work_days)
+        else None
+    )
 
     cur_day = active_start_date
     while cur_day.date() <= active_end_date.date():
         cur_date = cur_day.date()
         day_name_lower = cur_date.strftime("%A").lower()
-        is_weekend = (day_name_lower not in work_days_set) if work_days_set is not None else (cur_date.weekday() >= 5)
+        is_weekend = (
+            (day_name_lower not in work_days_set)
+            if work_days_set is not None
+            else (cur_date.weekday() >= 5)
+        )
         is_holiday = cur_date in holiday_dates
-        
+
         if is_weekend or is_holiday:
             holidays_weekends += 1
         else:
@@ -145,13 +171,14 @@ async def calculate_corporate_payroll(
     attendance_logs = await Attendance.find(
         Attendance.user_id == employee.id,
         Attendance.check_in >= start_of_month,
-        Attendance.check_in <= end_of_month
+        Attendance.check_in <= end_of_month,
     ).to_list()
-    attendance_map = {log.check_in.astimezone(IST).date(): log for log in attendance_logs}
+    attendance_map = {
+        log.check_in.astimezone(IST).date(): log for log in attendance_logs
+    }
 
     approved_leaves = await Leave.find(
-        Leave.user_id == employee.id,
-        Leave.status == LeaveStatus.APPROVED
+        Leave.user_id == employee.id, Leave.status == LeaveStatus.APPROVED
     ).to_list()
 
     leave_type_map = {}
@@ -163,11 +190,13 @@ async def calculate_corporate_payroll(
 
     approved_regularizations = await AttendanceRegularization.find(
         AttendanceRegularization.user_id == employee.id,
-        AttendanceRegularization.status == RegularizationStatus.APPROVED
+        AttendanceRegularization.status == RegularizationStatus.APPROVED,
     ).to_list()
 
     # Store regularized attendance IDs to track which dates were regularized
-    regularized_attendance_ids = {str(reg.attendance_id) for reg in approved_regularizations}
+    regularized_attendance_ids = {
+        str(reg.attendance_id) for reg in approved_regularizations
+    }
 
     # 8. Loop through working days to find present, absent, paid leaves
     present_days = 0
@@ -184,9 +213,13 @@ async def calculate_corporate_payroll(
     while cur_day.date() <= active_end_date.date():
         cur_date = cur_day.date()
         day_name_lower = cur_date.strftime("%A").lower()
-        is_weekend = (day_name_lower not in work_days_set) if work_days_set is not None else (cur_date.weekday() >= 5)
+        is_weekend = (
+            (day_name_lower not in work_days_set)
+            if work_days_set is not None
+            else (cur_date.weekday() >= 5)
+        )
         is_holiday = cur_date in holiday_dates
-        
+
         if not (is_weekend or is_holiday):
             log = attendance_map.get(cur_date)
             is_regularized = log and str(log.id) in regularized_attendance_ids
@@ -198,7 +231,10 @@ async def calculate_corporate_payroll(
                     status_lower = log.status.lower() if log.status else ""
                     if "late" in status_lower:
                         late_penalties += 100.0
-                    if "overtime" in status_lower or "approved_overtime" in status_lower:
+                    if (
+                        "overtime" in status_lower
+                        or "approved_overtime" in status_lower
+                    ):
                         overtime_pay += 500.0
             elif log:
                 status_lower = log.status.lower() if log.status else ""
@@ -211,7 +247,10 @@ async def calculate_corporate_payroll(
                     if "late" in status_lower:
                         late_penalties += 100.0
                     # Overtime: flat 500 INR
-                    if "overtime" in status_lower or "approved_overtime" in status_lower:
+                    if (
+                        "overtime" in status_lower
+                        or "approved_overtime" in status_lower
+                    ):
                         overtime_pay += 500.0
             else:
                 if cur_date in leave_type_map:
@@ -259,7 +298,6 @@ async def calculate_corporate_payroll(
         esi_deduction = structure.esi_deduction
         tax_deduction = structure.tax_deduction
 
-
     if total_working_days > 0:
         daily_rate = prorated_gross / total_working_days
         lop_deduction = daily_rate * absent_days
@@ -270,7 +308,9 @@ async def calculate_corporate_payroll(
     earned_salary = prorated_gross - lop_deduction
 
     # Preserve manual fields if recalculating existing draft
-    existing = await Payroll.find_one(Payroll.user_id == employee.id, Payroll.month == month)
+    existing = await Payroll.find_one(
+        Payroll.user_id == employee.id, Payroll.month == month
+    )
     bonuses = existing.bonuses if existing else 0.0
     incentives = existing.incentives if existing else 0.0
     extra_deductions = existing.deductions if existing else 0.0
@@ -286,44 +326,61 @@ async def calculate_corporate_payroll(
             while cur_day.date() <= active_end_date.date():
                 cur_date = cur_day.date()
                 day_name_lower = cur_date.strftime("%A").lower()
-                is_weekend = (day_name_lower not in work_days_set) if work_days_set is not None else (cur_date.weekday() >= 5)
+                is_weekend = (
+                    (day_name_lower not in work_days_set)
+                    if work_days_set is not None
+                    else (cur_date.weekday() >= 5)
+                )
                 is_holiday = cur_date in holiday_dates
-                
+
                 if not (is_weekend or is_holiday):
                     log = attendance_map.get(cur_date)
                     if log:
                         status_lower = log.status.lower() if log.status else ""
                         if "absent" in status_lower or "absence" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("unexcused", -1.0)
+                            earned_attn_pts += company.attendance_points.get(
+                                "unexcused", -1.0
+                            )
                         elif "late_under_30" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("late_under_30", 0.75)
+                            earned_attn_pts += company.attendance_points.get(
+                                "late_under_30", 0.75
+                            )
                         elif "late_over_30" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("late_over_30", 0.50)
+                            earned_attn_pts += company.attendance_points.get(
+                                "late_over_30", 0.50
+                            )
                         elif "late" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("late", 0.75)
+                            earned_attn_pts += company.attendance_points.get(
+                                "late", 0.75
+                            )
                         elif "excused" in status_lower:
                             earned_attn_pts += 1.0
                         else:
-                            earned_attn_pts += company.attendance_points.get("present", 1.0)
+                            earned_attn_pts += company.attendance_points.get(
+                                "present", 1.0
+                            )
                     else:
                         if cur_date in leave_type_map:
                             ltype = leave_type_map[cur_date]
-                            ltype_str = ltype.value if hasattr(ltype, "value") else str(ltype)
+                            ltype_str = (
+                                ltype.value if hasattr(ltype, "value") else str(ltype)
+                            )
                             if ltype_str in ["casual", "sick", "earned"]:
                                 earned_attn_pts += 1.0
                         else:
                             earned_attn_pts += 0.0
                 cur_day += timedelta(days=1)
-            
+
             attn_rate = 0.0
             if total_working_days > 0:
                 attn_rate = (earned_attn_pts / total_working_days) * 100.0
-            
+
             if attn_rate >= company.attendance_bonus_threshold:
                 bonuses = gross_base * (company.attendance_bonus_percentage / 100.0)
-            
+
             # Calculate Performance Incentive
             from app.models.task import Task, TaskStatus
+
             role_targets = {
                 UserRole.MANAGER: 200.0,
                 UserRole.ASSISTANT_MANAGER: 190.0,
@@ -332,35 +389,47 @@ async def calculate_corporate_payroll(
             }
             if employee.name == "Shiva":
                 role_targets[UserRole.EMPLOYEE] = 148.2
-                
+
             target_pts = role_targets.get(employee.role, 150.0)
-            perf_score = (employee.reward_points / target_pts) * 100.0 if target_pts > 0 else 0.0
-            
+            perf_score = (
+                (employee.reward_points / target_pts) * 100.0 if target_pts > 0 else 0.0
+            )
+
             # Match performance to tier
             tier_pct = 0.0
             for tier in company.incentive_tiers:
                 if tier["min_performance"] <= perf_score <= tier["max_performance"]:
                     tier_pct = tier["pool_percentage"]
                     break
-            
-            incentives = gross_base * (tier_pct / 100.0) * (company.performance_incentive_pool_percentage / 100.0)
-                
+
+            incentives = (
+                gross_base
+                * (tier_pct / 100.0)
+                * (company.performance_incentive_pool_percentage / 100.0)
+            )
+
             # Backlog penalty (> 5 overdue tasks)
             overdue_count = await Task.find(
                 Task.assigned_to == employee.id,
                 Task.status == TaskStatus.OVERDUE,
-                Task.deadline < start_of_month - timedelta(days=4)
+                Task.deadline < start_of_month - timedelta(days=4),
             ).count()
             if overdue_count > 5:
                 incentives *= 0.95
 
     # Check if payroll is already locked
-    if existing and existing.status in [PayrollStatus.LOCKED, PayrollStatus.PAID] and not force:
+    if (
+        existing
+        and existing.status in [PayrollStatus.LOCKED, PayrollStatus.PAID]
+        and not force
+    ):
         # Do not overwrite locked payrolls. We just mark it as recalculation_required elsewhere.
         return existing
 
     total_earnings = earned_salary + overtime_pay + incentives + bonuses
-    total_deductions = pf_deduction + esi_deduction + tax_deduction + late_penalties + extra_deductions
+    total_deductions = (
+        pf_deduction + esi_deduction + tax_deduction + late_penalties + extra_deductions
+    )
     net_salary = max(0.0, total_earnings - total_deductions)
 
     if existing:
@@ -368,12 +437,21 @@ async def calculate_corporate_payroll(
 
         # Snapshot the existing version before saving the new calculations
         from app.models.payroll import PayrollHistory
+
         history = PayrollHistory(
             payroll_id=existing.id,
             version_number=existing.version_number,
-            payroll_snapshot=existing.dict(exclude={"id", "created_at", "updated_at", "version_number", "recalculation_required"}),
+            payroll_snapshot=existing.dict(
+                exclude={
+                    "id",
+                    "created_at",
+                    "updated_at",
+                    "version_number",
+                    "recalculation_required",
+                }
+            ),
             reason_for_change="Recalculated based on latest approved attendance/leave data.",
-            created_by=drafted_by_id
+            created_by=drafted_by_id,
         )
         await history.insert()
 
@@ -389,7 +467,7 @@ async def calculate_corporate_payroll(
     payroll.pf_deduction = pf_deduction
     payroll.esi_deduction = esi_deduction
     payroll.tax_deduction = tax_deduction
-    
+
     payroll.present_days = present_days
     payroll.absent_days = absent_days
     payroll.paid_leaves = paid_leaves
@@ -397,25 +475,25 @@ async def calculate_corporate_payroll(
     payroll.payable_days = payable_days
     payroll.holidays_weekends = holidays_weekends
     payroll.total_working_days = total_working_days
-    
+
     payroll.base_salary = gross_base
     payroll.earned_salary = earned_salary
     payroll.lop_deduction = lop_deduction
     payroll.overtime_pay = overtime_pay
     payroll.penalties = late_penalties
-    
+
     # Net values
     payroll.incentives = incentives
     payroll.bonuses = bonuses
     payroll.deductions = extra_deductions
     payroll.net_salary = net_salary
-    
+
     payroll.remarks = (
         f"Processed corporate payroll for {month}. Present: {present_days}d, Regularized: {approved_regularization_days}d, "
         f"Absent (LOP): {absent_days}d, Paid Leaves: {paid_leaves}d, Holidays: {holidays_weekends}d. "
         f"LOP deduction: Rs. {lop_deduction:.2f}. PF: Rs. {pf_deduction:.2f}, Tax: Rs. {tax_deduction:.2f}."
     )
-    
+
     if drafted_by_id:
         payroll.drafted_by = drafted_by_id
         payroll.drafted_by_name = drafted_by_name
@@ -426,22 +504,24 @@ async def calculate_corporate_payroll(
 
 @router.post("/structure", response_model=dict)
 async def configure_salary_structure(
-    request: SalaryStructureRequest,
-    hr_mgr: User = Depends(require_hr_team)
+    request: SalaryStructureRequest, hr_mgr: User = Depends(require_hr_team)
 ):
     """Configure or update an employee's salary structure (HR Manager and Admin only)."""
     user_id = PydanticObjectId(request.user_id)
     employee = await User.get(user_id)
     if not employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
 
     if hr_mgr.role != UserRole.ADMIN:
         from app.routes.employees import get_visible_employee_ids
+
         visible_ids = await get_visible_employee_ids(hr_mgr)
         if visible_ids is not None and user_id not in visible_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only configure salary structures for employees under your hierarchy."
+                detail="You can only configure salary structures for employees under your hierarchy.",
             )
 
     structure = await SalaryStructure.find_one(SalaryStructure.user_id == user_id)
@@ -460,25 +540,39 @@ async def configure_salary_structure(
     employee.salary_structure_id = structure.id
     await employee.save()
 
-    return {"message": "Salary structure configured successfully", "id": str(structure.id)}
+    return {
+        "message": "Salary structure configured successfully",
+        "id": str(structure.id),
+    }
 
 
 @router.get("/structure/{user_id}", response_model=dict)
-async def get_salary_structure(user_id: str, current_user: User = Depends(get_current_user)):
+async def get_salary_structure(
+    user_id: str, current_user: User = Depends(get_current_user)
+):
     """View salary structure details."""
     uid = PydanticObjectId(user_id)
 
     if current_user.id != uid:
         if current_user.role == UserRole.ADMIN:
             pass
-        elif current_user.role in [UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER,
-                                    UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
+        elif current_user.role in [
+            UserRole.HR_MANAGER,
+            UserRole.ASSISTANT_HR_MANAGER,
+            UserRole.MANAGER,
+            UserRole.ASSISTANT_MANAGER,
+        ]:
             from app.routes.employees import get_visible_employee_ids
+
             visible_ids = await get_visible_employee_ids(current_user)
             if visible_ids is not None and uid not in visible_ids:
-                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+                )
         else:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+            )
 
     structure = await SalaryStructure.find_one(SalaryStructure.user_id == uid)
     if not structure:
@@ -503,21 +597,24 @@ async def get_salary_structure(user_id: str, current_user: User = Depends(get_cu
 async def create_payroll_draft(
     request: PayrollDraftRequest,
     http_request: Request,
-    hr_user: User = Depends(require_hr_team)
+    hr_user: User = Depends(require_hr_team),
 ):
     """Prepare a new payroll draft (Assistant HR Manager or above)."""
     uid = PydanticObjectId(request.user_id)
     employee = await User.get(uid)
     if not employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
 
     if hr_user.role != UserRole.ADMIN:
         from app.routes.employees import get_visible_employee_ids
+
         visible_ids = await get_visible_employee_ids(hr_user)
         if visible_ids is not None and uid not in visible_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only generate payroll for employees under your hierarchy."
+                detail="You can only generate payroll for employees under your hierarchy.",
             )
 
     try:
@@ -525,7 +622,7 @@ async def create_payroll_draft(
             employee=employee,
             month=request.month,
             drafted_by_id=hr_user.id,
-            drafted_by_name=hr_user.name
+            drafted_by_name=hr_user.name,
         )
         if not request.automated:
             payroll.overtime_pay = request.overtime_pay
@@ -533,13 +630,24 @@ async def create_payroll_draft(
             payroll.bonuses = request.bonuses
             payroll.penalties = request.penalties
             payroll.deductions = request.deductions
-            
+
             # Recompute net
-            gross = payroll.earned_salary + payroll.overtime_pay + payroll.incentives + payroll.bonuses
-            deducts = payroll.pf_deduction + payroll.esi_deduction + payroll.tax_deduction + payroll.penalties + payroll.deductions
+            gross = (
+                payroll.earned_salary
+                + payroll.overtime_pay
+                + payroll.incentives
+                + payroll.bonuses
+            )
+            deducts = (
+                payroll.pf_deduction
+                + payroll.esi_deduction
+                + payroll.tax_deduction
+                + payroll.penalties
+                + payroll.deductions
+            )
             payroll.net_salary = max(0.0, gross - deducts)
             await payroll.save()
-            
+
         await AuditService.log_event(
             actor=hr_user,
             entity_type="payroll",
@@ -547,41 +655,53 @@ async def create_payroll_draft(
             action="drafted",
             after_state=payroll.model_dump(),
             ip_address=http_request.client.host,
-            user_agent=http_request.headers.get("user-agent")
+            user_agent=http_request.headers.get("user-agent"),
         )
 
-        return {"message": "Payroll draft successfully generated", "id": str(payroll.id)}
+        await NotificationService.notify_user(
+            user_id=payroll.user_id,
+            sender_id=hr_user.id,
+            title="Payroll Drafted",
+            message=f"A new payroll draft for {payroll.month} has been prepared and is awaiting review.",
+            type="system",
+        )
+
+        return {
+            "message": "Payroll draft successfully generated",
+            "id": str(payroll.id),
+        }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.post("/run", response_model=dict)
 async def run_payroll_engine(
-    request: RunPayrollRequest,
-    hr_user: User = Depends(require_hr_team)
+    request: RunPayrollRequest, hr_user: User = Depends(require_hr_team)
 ):
     """Run payroll processing for matching scope (Company, Department, Employee)."""
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(hr_user)
-    
+
     query = {
         "company_id": PydanticObjectId(request.company_id),
-        "is_deleted": {"$ne": True}
+        "is_deleted": {"$ne": True},
     }
     if request.department_id:
         try:
             from beanie import PydanticObjectId
+
             query["$or"] = [
                 {"department_id": PydanticObjectId(request.department_id)},
-                {"department": request.department_id}
+                {"department": request.department_id},
             ]
         except Exception:
             query["department"] = request.department_id
     if request.employee_id:
         query["_id"] = PydanticObjectId(request.employee_id)
-        
+
     employees = await User.find(query).to_list()
-    
+
     total_processed = 0
     total_payout = 0.0
     pending_employees = 0
@@ -590,87 +710,111 @@ async def run_payroll_engine(
 
     # Pre-compute month boundaries once (not inside the loop)
     from app.models.attendance import Attendance
+
     year, month_num = map(int, request.month.split("-"))
     attn_start = datetime(year, month_num, 1)
-    attn_end = datetime(year + 1, 1, 1) if month_num == 12 else datetime(year, month_num + 1, 1)
-    
+    attn_end = (
+        datetime(year + 1, 1, 1)
+        if month_num == 12
+        else datetime(year, month_num + 1, 1)
+    )
+
     # Pre-fetch attendance counts to avoid N+1 queries
     employee_ids = [e.id for e in employees]
-    attn_stats = await Attendance.aggregate([
-        {
-            "$match": {
-                "user_id": {"$in": employee_ids},
-                "check_in": {"$gte": attn_start, "$lt": attn_end}
-            }
-        },
-        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}}
-    ]).to_list()
+    attn_stats = await Attendance.aggregate(
+        [
+            {
+                "$match": {
+                    "user_id": {"$in": employee_ids},
+                    "check_in": {"$gte": attn_start, "$lt": attn_end},
+                }
+            },
+            {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
+        ]
+    ).to_list()
     attn_counts_map = {str(stat["_id"]): stat["count"] for stat in attn_stats}
 
     for emp in employees:
         if visible_ids is not None and emp.id not in visible_ids:
             continue
-            
+
         try:
             payroll = await calculate_corporate_payroll(
                 employee=emp,
                 month=request.month,
                 drafted_by_id=hr_user.id,
-                drafted_by_name=hr_user.name
+                drafted_by_name=hr_user.name,
             )
             if payroll:
                 total_processed += 1
+
+                # Notify individual employee
+                await NotificationService.notify_user(
+                    user_id=emp.id,
+                    sender_id=hr_user.id,
+                    title="Payroll Drafted",
+                    message=f"A new payroll draft for {request.month} has been prepared and is awaiting review.",
+                    type="system",
+                )
                 total_payout += payroll.net_salary
-                
+
                 # Check for zero attendance using pre-fetched map
                 attn_count = attn_counts_map.get(str(emp.id), 0)
                 if attn_count == 0:
-                    missing_attendance.append(f"{emp.name} ({emp.email}) - No attendance captured for {request.month}")
+                    missing_attendance.append(
+                        f"{emp.name} ({emp.email}) - No attendance captured for {request.month}"
+                    )
         except Exception as e:
             errors.append(f"Employee {emp.name}: {str(e)}")
             pending_employees += 1
 
-            
     # Audit log
     log = ActivityLog(
         user_id=hr_user.id,
         user_name=hr_user.name,
         action="Payroll Processing Run",
-        details=f"Ran corporate payroll processing for month {request.month}. Processed: {total_processed}, Net Payout: Rs. {total_payout:.2f}"
+        details=f"Ran corporate payroll processing for month {request.month}. Processed: {total_processed}, Net Payout: Rs. {total_payout:.2f}",
     )
     await log.insert()
-    
+
+    # Notify HR team/Admins about batch run completion
+    await NotificationService.notify_management_for_user(
+        user=hr_user,
+        title="Payroll Batch Processing Complete",
+        message=f"Payroll processing for {request.month} is complete. {total_processed} records processed. Total payout: Rs. {total_payout:.2f}",
+        type="system",
+        exclude_user=False,
+    )
+
     return {
         "total_employees_processed": total_processed,
         "total_payout": total_payout,
         "pending_employees": pending_employees,
         "errors": errors,
-        "missing_attendance": missing_attendance
+        "missing_attendance": missing_attendance,
     }
 
 
 @router.post("/mark-paid/{payroll_id}", response_model=dict)
 async def mark_payroll_paid(
-    payroll_id: str,
-    http_request: Request,
-    hr_mgr: User = Depends(require_hr_team)
+    payroll_id: str, http_request: Request, hr_mgr: User = Depends(require_hr_team)
 ):
     """Mark a locked payroll as Paid (moves status to Paid)."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
         raise HTTPException(status_code=404, detail="Payroll record not found")
-        
+
     before_state = payroll.model_dump()
     if payroll.status != PayrollStatus.LOCKED:
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot mark payroll as Paid in '{payroll.status.value}' state. Must be locked first."
+            detail=f"Cannot mark payroll as Paid in '{payroll.status.value}' state. Must be locked first.",
         )
-        
+
     payroll.status = PayrollStatus.PAID
     payroll.updated_at = datetime.utcnow()
     await payroll.save()
-    
+
     await AuditService.log_event(
         actor=hr_mgr,
         entity_type="payroll",
@@ -679,7 +823,7 @@ async def mark_payroll_paid(
         before_state=before_state,
         after_state=payroll.model_dump(),
         ip_address=http_request.client.host,
-        user_agent=http_request.headers.get("user-agent")
+        user_agent=http_request.headers.get("user-agent"),
     )
 
     await NotificationService.notify_user(
@@ -687,7 +831,7 @@ async def mark_payroll_paid(
         sender_id=hr_mgr.id,
         title="Payroll Paid",
         message=f"Your payroll for {payroll.month} has been marked as paid. You can now view your payslip.",
-        type="system"
+        type="system",
     )
 
     # Audit log
@@ -695,45 +839,44 @@ async def mark_payroll_paid(
         user_id=hr_mgr.id,
         user_name=hr_mgr.name,
         action="Payroll Paid Marking",
-        details=f"Marked payroll month {payroll.month} for employee {payroll.user_name} (net {payroll.net_salary}) as Paid"
+        details=f"Marked payroll month {payroll.month} for employee {payroll.user_name} (net {payroll.net_salary}) as Paid",
     )
     await log.insert()
-    
+
     return {"message": "Payroll successfully marked as Paid!"}
 
 
 @router.get("/summary", response_model=dict)
 async def get_payroll_summary(
-    month: str,
-    company_id: str,
-    user: User = Depends(require_hr_team)
+    month: str, company_id: str, user: User = Depends(require_hr_team)
 ):
     """Get payroll stats summary for management dashboard."""
     from app.routes.employees import get_visible_employee_ids
+
     visible_ids = await get_visible_employee_ids(user)
-    
+
     query_conditions = [Payroll.month == month]
-    
+
     if visible_ids is not None:
         query_conditions.append(In(Payroll.user_id, list(visible_ids)))
-        
+
     payrolls = await Payroll.find(*query_conditions).to_list()
-    
+
     total_payout = sum(p.net_salary for p in payrolls)
     total_processed = len(payrolls)
-    
+
     status_counts = {
         "draft": 0,
         "under_review": 0,
         "approved": 0,
         "locked": 0,
-        "paid": 0
+        "paid": 0,
     }
     for p in payrolls:
         val = p.status.value
         if val in status_counts:
             status_counts[val] += 1
-            
+
     # Monthly Payout Trend (last 6 months)
     trend = []
     try:
@@ -750,21 +893,20 @@ async def get_payroll_summary(
             m_num += 12
             y_num -= 1
         m_str = f"{y_num}-{m_num:02d}"
-        
+
         sub_conds = [Payroll.month == m_str]
         if visible_ids is not None:
             sub_conds.append(In(Payroll.user_id, list(visible_ids)))
         sub_payrolls = await Payroll.find(*sub_conds).to_list()
-        trend.append({
-            "month": m_str,
-            "payout": sum(p.net_salary for p in sub_payrolls)
-        })
-        
+        trend.append(
+            {"month": m_str, "payout": sum(p.net_salary for p in sub_payrolls)}
+        )
+
     return {
         "total_payout": total_payout,
         "total_processed": total_processed,
         "status_counts": status_counts,
-        "trend": trend
+        "trend": trend,
     }
 
 
@@ -775,9 +917,11 @@ async def get_pending_payrolls(user: User = Depends(require_hr_team)):
 
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
-        payrolls = await Payroll.find(
-            In(Payroll.user_id, list(visible_ids))
-        ).sort("-month").to_list()
+        payrolls = (
+            await Payroll.find(In(Payroll.user_id, list(visible_ids)))
+            .sort("-month")
+            .to_list()
+        )
     else:
         payrolls = await Payroll.find_all().sort("-month").to_list()
 
@@ -812,7 +956,7 @@ async def get_pending_payrolls(user: User = Depends(require_hr_team)):
             "bonuses": p.bonuses,
             "deductions": p.deductions,
             "version_number": p.version_number,
-            "recalculation_required": p.recalculation_required
+            "recalculation_required": p.recalculation_required,
         }
         for p in payrolls
     ]
@@ -823,20 +967,23 @@ async def review_payroll(
     payroll_id: str,
     action: PayrollActionRequest,
     http_request: Request,
-    hr_mgr: User = Depends(require_hr_manager)
+    hr_mgr: User = Depends(require_hr_manager),
 ):
     """Review and verify a payroll draft (HR Manager or Admin only)."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found"
+        )
 
     if hr_mgr.role != UserRole.ADMIN:
         from app.routes.employees import get_visible_employee_ids
+
         visible_ids = await get_visible_employee_ids(hr_mgr)
         if visible_ids is not None and payroll.user_id not in visible_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only review payroll for employees under your hierarchy."
+                detail="You can only review payroll for employees under your hierarchy.",
             )
 
     before_state = payroll.model_dump()
@@ -860,7 +1007,7 @@ async def review_payroll(
         before_state=before_state,
         after_state=payroll.model_dump(),
         ip_address=http_request.client.host,
-        user_agent=http_request.headers.get("user-agent")
+        user_agent=http_request.headers.get("user-agent"),
     )
 
     await NotificationService.notify_user(
@@ -868,7 +1015,7 @@ async def review_payroll(
         sender_id=hr_mgr.id,
         title="Payroll Under Review",
         message=f"Your payroll for {payroll.month} is currently under review.",
-        type="system"
+        type="system",
     )
 
     return {"message": "Payroll draft verified and moved to Under Review status."}
@@ -879,12 +1026,14 @@ async def approve_payroll(
     payroll_id: str,
     action: PayrollActionRequest,
     http_request: Request,
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
 ):
     """Approve and lock payroll (Admin/MD only). Generates official audit logs."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found"
+        )
 
     before_state = payroll.model_dump()
     if payroll.status not in [PayrollStatus.DRAFT, PayrollStatus.UNDER_REVIEW]:
@@ -907,7 +1056,7 @@ async def approve_payroll(
         before_state=before_state,
         after_state=payroll.model_dump(),
         ip_address=http_request.client.host,
-        user_agent=http_request.headers.get("user-agent")
+        user_agent=http_request.headers.get("user-agent"),
     )
 
     await NotificationService.notify_user(
@@ -915,7 +1064,7 @@ async def approve_payroll(
         sender_id=admin.id,
         title="Payroll Approved",
         message=f"Your payroll for {payroll.month} has been approved and locked.",
-        type="system"
+        type="system",
     )
 
     # Log critical audit entry
@@ -932,27 +1081,30 @@ async def approve_payroll(
 
 @router.post("/recalculate/{payroll_id}")
 async def manual_recalculate_payroll(
-    payroll_id: str,
-    http_request: Request,
-    admin: User = Depends(require_hr_team)
+    payroll_id: str, http_request: Request, admin: User = Depends(require_hr_team)
 ):
     """Manually trigger recalculation of a payroll (draft, or flagged as recalculation_required)."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found"
+        )
 
     employee = await User.get(payroll.user_id)
     if not employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
 
     # Only HR team/admins can recalculate
     if admin.role != UserRole.ADMIN:
         from app.routes.employees import get_visible_employee_ids
+
         visible_ids = await get_visible_employee_ids(admin)
         if visible_ids is not None and payroll.user_id not in visible_ids:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="You can only manage payroll for employees under your hierarchy."
+                detail="You can only manage payroll for employees under your hierarchy.",
             )
 
     try:
@@ -962,7 +1114,7 @@ async def manual_recalculate_payroll(
             month=payroll.month,
             drafted_by_id=admin.id,
             drafted_by_name=admin.name,
-            force=True
+            force=True,
         )
 
         await AuditService.log_event(
@@ -973,42 +1125,46 @@ async def manual_recalculate_payroll(
             before_state=before_state,
             after_state=new_payroll.model_dump(),
             ip_address=http_request.client.host,
-            user_agent=http_request.headers.get("user-agent")
+            user_agent=http_request.headers.get("user-agent"),
         )
 
         # Clear any pending impacts for this employee/month
         from app.models.payroll_impact import PayrollRecalculationImpact, ImpactStatus
         from app.services.payroll_impact_service import PayrollImpactService
+
         pending_impacts = await PayrollRecalculationImpact.find(
             PayrollRecalculationImpact.user_id == employee.id,
             PayrollRecalculationImpact.month == payroll.month,
-            PayrollRecalculationImpact.status == ImpactStatus.PENDING
+            PayrollRecalculationImpact.status == ImpactStatus.PENDING,
         ).to_list()
         for impact in pending_impacts:
             await PayrollImpactService.mark_processed(impact.id, admin.id)
 
-        return {"message": "Payroll recalculated successfully", "id": str(new_payroll.id)}
+        return {
+            "message": "Payroll recalculated successfully",
+            "id": str(new_payroll.id),
+        }
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
 @router.delete("/{payroll_id}")
-async def delete_payroll(
-    payroll_id: str,
-    admin: User = Depends(require_hr_team)
-):
+async def delete_payroll(payroll_id: str, admin: User = Depends(require_hr_team)):
     """Delete a payroll and its history (HR Manager or Admin only)."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found"
+        )
 
     if admin.role not in [UserRole.ADMIN, UserRole.HR_MANAGER]:
-         raise HTTPException(
-             status_code=status.HTTP_403_FORBIDDEN,
-             detail="Only HR Managers or Admins can delete payrolls."
-         )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only HR Managers or Admins can delete payrolls.",
+        )
 
     from app.models.payroll import PayrollHistory
+
     await PayrollHistory.find(PayrollHistory.payroll_id == payroll.id).delete()
     await payroll.delete()
 
@@ -1026,34 +1182,51 @@ async def delete_payroll(
 
 @router.get("/{payroll_id}/history")
 async def get_payroll_history(
-    payroll_id: str,
-    current_user: User = Depends(get_current_user)
+    payroll_id: str, current_user: User = Depends(get_current_user)
 ):
     """Fetch version history of a specific payroll."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found"
+        )
 
     # Check permissions (either it's my payroll, or I am HR/Admin with visibility)
     if current_user.id != payroll.user_id:
-        if current_user.role not in [UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER]:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+        if current_user.role not in [
+            UserRole.ADMIN,
+            UserRole.HR_MANAGER,
+            UserRole.ASSISTANT_HR_MANAGER,
+            UserRole.MANAGER,
+            UserRole.ASSISTANT_MANAGER,
+        ]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+            )
 
         if current_user.role != UserRole.ADMIN:
             from app.routes.employees import get_visible_employee_ids
+
             visible_ids = await get_visible_employee_ids(current_user)
             if visible_ids is not None and payroll.user_id not in visible_ids:
-                 raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied")
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, detail="Access denied"
+                )
 
     from app.models.payroll import PayrollHistory
-    history = await PayrollHistory.find(PayrollHistory.payroll_id == payroll.id).sort("-version_number").to_list()
+
+    history = (
+        await PayrollHistory.find(PayrollHistory.payroll_id == payroll.id)
+        .sort("-version_number")
+        .to_list()
+    )
 
     return [
         {
             "version_number": h.version_number,
             "reason_for_change": h.reason_for_change,
             "created_at": to_utc_iso(h.created_at),
-            "snapshot": h.payroll_snapshot
+            "snapshot": h.payroll_snapshot,
         }
         for h in history
     ]
@@ -1061,14 +1234,14 @@ async def get_payroll_history(
 
 @router.post("/unlock/{payroll_id}")
 async def unlock_payroll(
-    payroll_id: str,
-    action: PayrollActionRequest,
-    admin: User = Depends(require_admin)
+    payroll_id: str, action: PayrollActionRequest, admin: User = Depends(require_admin)
 ):
     """Unlock a locked payroll for further edits (Admin only)."""
     payroll = await Payroll.get(PydanticObjectId(payroll_id))
     if not payroll:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Payroll record not found"
+        )
     if payroll.status != PayrollStatus.LOCKED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1094,10 +1267,14 @@ async def unlock_payroll(
 @router.get("/my", response_model=List[dict])
 async def get_my_payslips(current_user: User = Depends(get_current_user)):
     """Employee reads their standard generated payslips."""
-    payslips = await Payroll.find(
-        Payroll.user_id == current_user.id,
-        In(Payroll.status, [PayrollStatus.LOCKED, PayrollStatus.PAID])
-    ).sort("-month").to_list()
+    payslips = (
+        await Payroll.find(
+            Payroll.user_id == current_user.id,
+            In(Payroll.status, [PayrollStatus.LOCKED, PayrollStatus.PAID]),
+        )
+        .sort("-month")
+        .to_list()
+    )
 
     return [
         {
@@ -1109,11 +1286,14 @@ async def get_my_payslips(current_user: User = Depends(get_current_user)):
             "incentives": p.incentives,
             "bonuses": p.bonuses,
             "penalties": p.penalties,
-            "deductions": p.deductions + p.pf_deduction + p.esi_deduction + p.tax_deduction,
+            "deductions": p.deductions
+            + p.pf_deduction
+            + p.esi_deduction
+            + p.tax_deduction,
             "net_salary": p.net_salary,
             "approved_by": p.approved_by_name,
             "finalized_at": to_utc_iso(p.updated_at),
-            "status": p.status.value
+            "status": p.status.value,
         }
         for p in payslips
     ]
@@ -1122,46 +1302,56 @@ async def get_my_payslips(current_user: User = Depends(get_current_user)):
 @router.get("/my-payslips", response_model=List[dict])
 async def get_my_payslips_v2(current_user: User = Depends(get_current_user)):
     """Employee reads their generated payslips with detailed breakdown (high-fi)."""
-    payslips = await Payroll.find(
-        Payroll.user_id == current_user.id,
-        In(Payroll.status, [PayrollStatus.LOCKED, PayrollStatus.PAID])
-    ).sort("-month").to_list()
+    payslips = (
+        await Payroll.find(
+            Payroll.user_id == current_user.id,
+            In(Payroll.status, [PayrollStatus.LOCKED, PayrollStatus.PAID]),
+        )
+        .sort("-month")
+        .to_list()
+    )
 
     res = []
     for p in payslips:
         gross_earnings = p.earned_salary + p.overtime_pay + p.incentives + p.bonuses
-        total_deductions = p.penalties + p.deductions + p.pf_deduction + p.esi_deduction + p.tax_deduction
-        res.append({
-            "id": str(p.id),
-            "month": p.month,
-            "base_salary": p.base_salary,
-            "gross_earnings": gross_earnings,
-            "total_deductions": total_deductions,
-            "net_salary": p.net_salary,
-            "overtime_pay": p.overtime_pay,
-            "incentives": p.incentives,
-            "bonuses": p.bonuses,
-            
-            # Detailed breakdown
-            "basic": p.basic,
-            "hra": p.hra,
-            "special_allowance": p.special_allowance,
-            "pf_deduction": p.pf_deduction,
-            "esi_deduction": p.esi_deduction,
-            "tax_deduction": p.tax_deduction,
-            "present_days": p.present_days,
-            "absent_days": p.absent_days,
-            "paid_leaves": p.paid_leaves,
-            "approved_regularization_days": p.approved_regularization_days,
-            "payable_days": p.payable_days,
-            "holidays_weekends": p.holidays_weekends,
-            "total_working_days": p.total_working_days,
-            "lop_deduction": p.lop_deduction,
-            "penalties": p.penalties,
-            "deductions": p.deductions,
-            "version_number": p.version_number,
-            
-            "status": p.status.value,
-            "created_at": to_utc_iso(p.created_at),
-        })
+        total_deductions = (
+            p.penalties
+            + p.deductions
+            + p.pf_deduction
+            + p.esi_deduction
+            + p.tax_deduction
+        )
+        res.append(
+            {
+                "id": str(p.id),
+                "month": p.month,
+                "base_salary": p.base_salary,
+                "gross_earnings": gross_earnings,
+                "total_deductions": total_deductions,
+                "net_salary": p.net_salary,
+                "overtime_pay": p.overtime_pay,
+                "incentives": p.incentives,
+                "bonuses": p.bonuses,
+                # Detailed breakdown
+                "basic": p.basic,
+                "hra": p.hra,
+                "special_allowance": p.special_allowance,
+                "pf_deduction": p.pf_deduction,
+                "esi_deduction": p.esi_deduction,
+                "tax_deduction": p.tax_deduction,
+                "present_days": p.present_days,
+                "absent_days": p.absent_days,
+                "paid_leaves": p.paid_leaves,
+                "approved_regularization_days": p.approved_regularization_days,
+                "payable_days": p.payable_days,
+                "holidays_weekends": p.holidays_weekends,
+                "total_working_days": p.total_working_days,
+                "lop_deduction": p.lop_deduction,
+                "penalties": p.penalties,
+                "deductions": p.deductions,
+                "version_number": p.version_number,
+                "status": p.status.value,
+                "created_at": to_utc_iso(p.created_at),
+            }
+        )
     return res

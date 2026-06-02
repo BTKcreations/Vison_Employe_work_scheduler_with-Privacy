@@ -9,8 +9,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "TaskReward - Employee Task & Reward Management",
-  description: "Modern platform for managing employees, tasks, productivity tracking, and rewards",
+  title: "TaskReward Workforce Operations Suite",
+  description: "Comprehensive workforce operations platform for managing employees, tasks, attendance, leave, and payroll.",
 };
 
 export default function RootLayout({

@@ -1,10 +1,19 @@
 """
 Employee management routes - admin only CRUD operations.
 """
+
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Request
-from app.schemas.user import CreateEmployeeRequest, UpdateEmployeeRequest, EmployeeResponse
+from app.schemas.user import (
+    CreateEmployeeRequest,
+    UpdateEmployeeRequest,
+    EmployeeResponse,
+)
 from app.services import user_service, dashboard_service
-from app.auth.dependencies import require_hr_team, require_any_hr_manager, require_management_team
+from app.auth.dependencies import (
+    require_hr_team,
+    require_any_hr_manager,
+    require_management_team,
+)
 from app.models.user import User, UserRole
 from beanie import PydanticObjectId
 from beanie.operators import In
@@ -23,28 +32,33 @@ NON_ADMIN_ROLES = [
 router = APIRouter(prefix="/admin/employees", tags=["Employee Management"])
 
 
-async def check_circular_dependency(user_id: PydanticObjectId, potential_manager_id: PydanticObjectId) -> bool:
+async def check_circular_dependency(
+    user_id: PydanticObjectId, potential_manager_id: PydanticObjectId
+) -> bool:
     if not potential_manager_id:
         return False
     if user_id == potential_manager_id:
         return True
-    
+
     visited = set()
+
     async def dfs(curr_id: PydanticObjectId) -> bool:
         if curr_id == user_id:
             return True
         if curr_id in visited:
             return False
         visited.add(curr_id)
-        
+
         curr_user = await User.get(curr_id)
         if not curr_user:
             return False
-        
+
         # Check both reporting paths upward
         if curr_user.reporting_manager_id and await dfs(curr_user.reporting_manager_id):
             return True
-        if curr_user.hr_reporting_manager_id and await dfs(curr_user.hr_reporting_manager_id):
+        if curr_user.hr_reporting_manager_id and await dfs(
+            curr_user.hr_reporting_manager_id
+        ):
             return True
         return False
 
@@ -77,7 +91,7 @@ async def validate_hierarchy_rules(
         except (InvalidId, Exception):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid ID format for {field_name}: '{val}'"
+                detail=f"Invalid ID format for {field_name}: '{val}'",
             )
 
     rep_id = get_obj_id(reporting_manager_id, "reportingManagerId")
@@ -89,12 +103,12 @@ async def validate_hierarchy_rules(
         if rep_id and await check_circular_dependency(u_id, rep_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Circular reporting relationship detected (Operational Manager)."
+                detail="Circular reporting relationship detected (Operational Manager).",
             )
         if hr_rep_id and await check_circular_dependency(u_id, hr_rep_id):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Circular reporting relationship detected (HR Manager)."
+                detail="Circular reporting relationship detected (HR Manager).",
             )
 
     if role == "admin":
@@ -107,134 +121,147 @@ async def validate_hierarchy_rules(
         if not rep_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="An Assistant Manager must be assigned to an Operational Manager."
+                detail="An Assistant Manager must be assigned to an Operational Manager.",
             )
         mgr = await User.get(rep_id)
         if not mgr or mgr.is_deleted or mgr.role != UserRole.MANAGER:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The assigned operational manager must hold the Manager role."
+                detail="The assigned operational manager must hold the Manager role.",
             )
         if hr_rep_id:
             hr_mgr = await User.get(hr_rep_id)
             if not hr_mgr or hr_mgr.is_deleted or hr_mgr.role != UserRole.HR_MANAGER:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="The assigned HR manager must hold the HR Manager role."
+                    detail="The assigned HR manager must hold the HR Manager role.",
                 )
 
     elif role == "assistant_hr_manager":
         if not hr_rep_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="An Assistant HR Manager must be assigned to an HR Manager."
+                detail="An Assistant HR Manager must be assigned to an HR Manager.",
             )
         hr_mgr = await User.get(hr_rep_id)
         if not hr_mgr or hr_mgr.is_deleted or hr_mgr.role != UserRole.HR_MANAGER:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The assigned HR manager must hold the HR Manager role."
+                detail="The assigned HR manager must hold the HR Manager role.",
             )
         if rep_id:
             mgr = await User.get(rep_id)
             if not mgr or mgr.is_deleted or mgr.role != UserRole.MANAGER:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="The assigned operational manager must hold the Manager role."
+                    detail="The assigned operational manager must hold the Manager role.",
                 )
 
     elif role == "employee":
         if not rep_id or not hr_rep_id:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="An Employee must be assigned to both an Assistant Manager and an Assistant HR Manager."
+                detail="An Employee must be assigned to both an Assistant Manager and an Assistant HR Manager.",
             )
         ast_mgr = await User.get(rep_id)
-        if not ast_mgr or ast_mgr.is_deleted or ast_mgr.role != UserRole.ASSISTANT_MANAGER:
+        if (
+            not ast_mgr
+            or ast_mgr.is_deleted
+            or ast_mgr.role != UserRole.ASSISTANT_MANAGER
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The assigned operational manager must hold the Assistant Manager role."
+                detail="The assigned operational manager must hold the Assistant Manager role.",
             )
         ast_hr = await User.get(hr_rep_id)
-        if not ast_hr or ast_hr.is_deleted or ast_hr.role != UserRole.ASSISTANT_HR_MANAGER:
+        if (
+            not ast_hr
+            or ast_hr.is_deleted
+            or ast_hr.role != UserRole.ASSISTANT_HR_MANAGER
+        ):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="The assigned HR manager must hold the Assistant HR Manager role."
+                detail="The assigned HR manager must hold the Assistant HR Manager role.",
             )
 
 
 async def get_visible_employee_ids(user: User) -> set:
     """
     Returns a set of PydanticObjectIds of all employees visible to the given manager/HR.
-    - Admin: returns None (unlimited visibility).
-    - Manager: AMs reporting to them, Employees reporting to those AMs, and AHRMs reporting to them.
-    - HR Manager: AHRMs reporting to them, Employees reporting to those AHRMs, and AMs reporting to them.
-    - Assistant Manager: Employees reporting to them.
-    - Assistant HR Manager: Employees reporting to them.
-    - Employee: Only themselves.
+    Uses database-level distinct() for high performance with large datasets.
     """
     if user.role == UserRole.ADMIN:
         return None
 
     visible_ids = {user.id}
 
-    # Optimization: Use database-level distinct() for faster lookups without full document loading.
     if user.role == UserRole.MANAGER:
-        # Performance optimization: Targeted DB queries instead of full scan
-        # Get AMs and AHRMs reporting to this Manager
-        sub_managers = await User.find(
-            User.reporting_manager_id == user.id,
-            In(User.role, [UserRole.ASSISTANT_MANAGER, UserRole.ASSISTANT_HR_MANAGER])
-        ).to_list()
+        # 1. Get AMs reporting to this Manager
+        am_ids = await User.distinct("_id", {
+            "reporting_manager_id": user.id,
+            "role": UserRole.ASSISTANT_MANAGER,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(am_ids)
 
-        am_ids = []
-        for u in sub_managers:
-            visible_ids.add(u.id)
-            if u.role == UserRole.ASSISTANT_MANAGER:
-                am_ids.append(u.id)
+        # 2. Get AHRMs reporting to this Manager
+        ahrm_ids = await User.distinct("_id", {
+            "reporting_manager_id": user.id,
+            "role": UserRole.ASSISTANT_HR_MANAGER,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(ahrm_ids)
 
+        # 3. Get Employees reporting to those AMs
         if am_ids:
-            # Employees reporting to those AMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.reporting_manager_id, am_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e["_id"] for e in emp_ids)
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE,
+                "reporting_manager_id": {"$in": am_ids},
+                "is_deleted": {"$ne": True}
+            })
+            visible_ids.update(emp_ids)
 
     elif user.role == UserRole.HR_MANAGER:
-        # Get AHRMs and AMs reporting to this HR Manager
-        sub_managers = await User.find(
-            User.hr_reporting_manager_id == user.id,
-            In(User.role, [UserRole.ASSISTANT_HR_MANAGER, UserRole.ASSISTANT_MANAGER])
-        ).to_list()
+        # 1. Get AHRMs reporting to this HR Manager
+        ahrm_ids = await User.distinct("_id", {
+            "hr_reporting_manager_id": user.id,
+            "role": UserRole.ASSISTANT_HR_MANAGER,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(ahrm_ids)
 
-        ahrm_ids = []
-        for u in sub_managers:
-            visible_ids.add(u.id)
-            if u.role == UserRole.ASSISTANT_HR_MANAGER:
-                ahrm_ids.append(u.id)
+        # 2. Get AMs reporting to this HR Manager
+        am_ids = await User.distinct("_id", {
+            "hr_reporting_manager_id": user.id,
+            "role": UserRole.ASSISTANT_MANAGER,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(am_ids)
 
+        # 3. Get Employees reporting to those AHRMs
         if ahrm_ids:
-            # Employees reporting to those AHRMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.hr_reporting_manager_id, ahrm_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e["_id"] for e in emp_ids)
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE,
+                "hr_reporting_manager_id": {"$in": ahrm_ids},
+                "is_deleted": {"$ne": True}
+            })
+            visible_ids.update(emp_ids)
 
     elif user.role == UserRole.ASSISTANT_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e["_id"] for e in emp_ids)
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE,
+            "reporting_manager_id": user.id,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(emp_ids)
 
     elif user.role == UserRole.ASSISTANT_HR_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.hr_reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e["_id"] for e in emp_ids)
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE,
+            "hr_reporting_manager_id": user.id,
+            "is_deleted": {"$ne": True}
+        })
+        visible_ids.update(emp_ids)
 
     return visible_ids
 
@@ -242,6 +269,7 @@ async def get_visible_employee_ids(user: User) -> set:
 # ────────────────────────────────────────────────────────
 #  Identity Document Upload
 # ────────────────────────────────────────────────────────
+
 
 @router.post("/upload-identity-doc")
 async def upload_identity_document(
@@ -255,13 +283,17 @@ async def upload_identity_document(
         allowed_content_types=IDENTITY_ALLOWED_CONTENT_TYPES,
     )
 
-    return {"url": f"/uploads/identity_docs/{filename}", "filename": filename, "size": size}
-
+    return {
+        "url": f"/uploads/identity_docs/{filename}",
+        "filename": filename,
+        "size": size,
+    }
 
 
 # ────────────────────────────────────────────────────────
 #  List / Read
 # ────────────────────────────────────────────────────────
+
 
 @router.get("", response_model=List[EmployeeResponse])
 async def list_employees(user: User = Depends(require_management_team)):
@@ -270,10 +302,11 @@ async def list_employees(user: User = Depends(require_management_team)):
 
     if visible_ids is not None:
         # Optimization: Filter at database level instead of in-memory
-        employees = await User.find(
-            User.is_deleted != True,
-            In(User.id, list(visible_ids))
-        ).sort("-created_at").to_list()
+        employees = (
+            await User.find(User.is_deleted != True, In(User.id, list(visible_ids)))
+            .sort("-created_at")
+            .to_list()
+        )
     else:
         employees = await user_service.get_all_employees()
 
@@ -285,7 +318,7 @@ async def list_all_users(user: User = Depends(require_management_team)):
     """Get all users of all roles in the system (filtered by hierarchy if not Admin)."""
     visible_ids = await get_visible_employee_ids(user)
 
-    query = { "is_deleted": {"$ne": True} }
+    query = {"is_deleted": {"$ne": True}}
     if visible_ids is not None:
         # Optimization: Filter at database level
         query["_id"] = {"$in": list(visible_ids)}
@@ -299,7 +332,7 @@ async def list_deleted_employees(user: User = Depends(require_management_team)):
     """Get all soft-deleted employees."""
     visible_ids = await get_visible_employee_ids(user)
 
-    query = { "is_deleted": True }
+    query = {"is_deleted": True}
     if visible_ids is not None:
         # Optimization: Filter at database level
         query["_id"] = {"$in": list(visible_ids)}
@@ -313,15 +346,22 @@ async def get_employee(employee_id: str, user: User = Depends(require_management
     """Get a specific employee."""
     employee = await user_service.get_employee_by_id(employee_id)
     if not employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None and employee.id not in visible_ids:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this employee")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this employee",
+        )
     return EmployeeResponse.from_user(employee)
 
 
 @router.get("/{employee_id}/stats")
-async def get_employee_stats(employee_id: str, user: User = Depends(require_management_team)):
+async def get_employee_stats(
+    employee_id: str, user: User = Depends(require_management_team)
+):
     """Get stats for a specific employee."""
     return await dashboard_service.get_employee_dashboard(employee_id)
 
@@ -329,6 +369,7 @@ async def get_employee_stats(employee_id: str, user: User = Depends(require_mana
 # ────────────────────────────────────────────────────────
 #  Create
 # ────────────────────────────────────────────────────────
+
 
 @router.post("", response_model=EmployeeResponse, status_code=status.HTTP_201_CREATED)
 async def create_employee(
@@ -391,7 +432,7 @@ async def create_employee(
             action="created",
             after_state=employee.model_dump(exclude={"password_hash"}),
             ip_address=http_request.client.host,
-            user_agent=http_request.headers.get("user-agent")
+            user_agent=http_request.headers.get("user-agent"),
         )
 
         return EmployeeResponse.from_user(employee)
@@ -402,6 +443,7 @@ async def create_employee(
 # ────────────────────────────────────────────────────────
 #  Update
 # ────────────────────────────────────────────────────────
+
 
 @router.put("/{employee_id}", response_model=EmployeeResponse)
 async def update_employee(
@@ -414,7 +456,9 @@ async def update_employee(
 
     target_employee = await user_service.get_employee_by_id(employee_id)
     if not target_employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
 
     before_state = target_employee.model_dump(exclude={"password_hash"})
     visible_ids = await get_visible_employee_ids(user)
@@ -447,10 +491,24 @@ async def update_employee(
     if hasattr(final_role, "value"):
         final_role = final_role.value
 
-    final_reporting = reporting_manager_id if reporting_manager_id is not None else (
-        str(target_employee.reporting_manager_id) if target_employee.reporting_manager_id else None)
-    final_hr_reporting = hr_reporting_manager_id if hr_reporting_manager_id is not None else (
-        str(target_employee.hr_reporting_manager_id) if target_employee.hr_reporting_manager_id else None)
+    final_reporting = (
+        reporting_manager_id
+        if reporting_manager_id is not None
+        else (
+            str(target_employee.reporting_manager_id)
+            if target_employee.reporting_manager_id
+            else None
+        )
+    )
+    final_hr_reporting = (
+        hr_reporting_manager_id
+        if hr_reporting_manager_id is not None
+        else (
+            str(target_employee.hr_reporting_manager_id)
+            if target_employee.hr_reporting_manager_id
+            else None
+        )
+    )
 
     await validate_hierarchy_rules(
         role=final_role,
@@ -482,7 +540,9 @@ async def update_employee(
             hiring_company=request.hiring_company,
         )
         if not employee:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+            )
 
         await AuditService.log_event(
             actor=user,
@@ -492,7 +552,7 @@ async def update_employee(
             before_state=before_state,
             after_state=employee.model_dump(exclude={"password_hash"}),
             ip_address=http_request.client.host,
-            user_agent=http_request.headers.get("user-agent")
+            user_agent=http_request.headers.get("user-agent"),
         )
 
         return EmployeeResponse.from_user(employee)
@@ -504,20 +564,27 @@ async def update_employee(
 #  Delete / Restore
 # ────────────────────────────────────────────────────────
 
+
 @router.delete("/{employee_id}")
 async def delete_employee(
     employee_id: str,
     http_request: Request,
-    user: User = Depends(require_management_team)
+    user: User = Depends(require_management_team),
 ):
     """Soft delete an employee."""
     from beanie import PydanticObjectId
+
     target_employee = await User.get(PydanticObjectId(employee_id))
     if not target_employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None and target_employee.id not in visible_ids:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage employees under your hierarchy.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only manage employees under your hierarchy.",
+        )
 
     before_state = target_employee.model_dump(exclude={"password_hash"})
     employee = await user_service.soft_delete_employee(employee_id)
@@ -530,7 +597,7 @@ async def delete_employee(
         before_state=before_state,
         after_state=employee.model_dump(exclude={"password_hash"}),
         ip_address=http_request.client.host,
-        user_agent=http_request.headers.get("user-agent")
+        user_agent=http_request.headers.get("user-agent"),
     )
 
     return {"message": f"Employee {employee.name} soft-deleted"}
@@ -540,16 +607,22 @@ async def delete_employee(
 async def restore_employee(
     employee_id: str,
     http_request: Request,
-    user: User = Depends(require_management_team)
+    user: User = Depends(require_management_team),
 ):
     """Restore a soft-deleted employee."""
     from beanie import PydanticObjectId
+
     target_employee = await User.get(PydanticObjectId(employee_id))
     if not target_employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None and target_employee.id not in visible_ids:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage employees under your hierarchy.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only manage employees under your hierarchy.",
+        )
 
     before_state = target_employee.model_dump(exclude={"password_hash"})
     employee = await user_service.restore_employee(employee_id)
@@ -562,7 +635,7 @@ async def restore_employee(
         before_state=before_state,
         after_state=employee.model_dump(exclude={"password_hash"}),
         ip_address=http_request.client.host,
-        user_agent=http_request.headers.get("user-agent")
+        user_agent=http_request.headers.get("user-agent"),
     )
 
     return EmployeeResponse.from_user(employee)
@@ -572,21 +645,29 @@ async def restore_employee(
 async def permanent_delete_employee(
     employee_id: str,
     http_request: Request,
-    user: User = Depends(require_management_team)
+    user: User = Depends(require_management_team),
 ):
     """Permanently delete an employee and all associated records."""
     from beanie import PydanticObjectId
+
     target_employee = await User.get(PydanticObjectId(employee_id))
     if not target_employee:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None and target_employee.id not in visible_ids:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You can only manage employees under your hierarchy.")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only manage employees under your hierarchy.",
+        )
 
     before_state = target_employee.model_dump(exclude={"password_hash"})
     success = await user_service.hard_delete_employee(employee_id)
     if not success:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found"
+        )
 
     await AuditService.log_event(
         actor=user,
@@ -595,7 +676,7 @@ async def permanent_delete_employee(
         action="permanently_deleted",
         before_state=before_state,
         ip_address=http_request.client.host,
-        user_agent=http_request.headers.get("user-agent")
+        user_agent=http_request.headers.get("user-agent"),
     )
 
     return {"message": "Employee and all associated records permanently deleted"}
