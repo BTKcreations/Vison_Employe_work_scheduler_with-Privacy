@@ -8,7 +8,7 @@ from app.auth.dependencies import get_current_user
 from app.models.user import User, UserRole
 from app.models.company import Company
 from beanie import PydanticObjectId
-from beanie.operators import In
+from beanie.operators import In, Or
 from typing import List, Optional
 from app.models.category import Category
 from app.services.audit_service import AuditService
