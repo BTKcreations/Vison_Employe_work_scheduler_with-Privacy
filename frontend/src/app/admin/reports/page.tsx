@@ -4,8 +4,9 @@ import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { Employee } from '@/types';
 import {
-  FileBarChart, Download, Filter, FileSpreadsheet, FileText, Loader2, Calendar, Brain, Sparkles
+  FileBarChart, Download, Filter, FileSpreadsheet, FileText, Loader2, Calendar, Brain, Sparkles, Trophy, Shield
 } from 'lucide-react';
+
 
 export default function ReportsPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -36,7 +37,7 @@ export default function ReportsPage() {
     return params;
   };
 
-  const downloadReport = async (type: 'tasks/csv' | 'tasks/excel' | 'employees/excel' | 'admin/attendance/excel') => {
+  const downloadReport = async (type: string) => {
     setDownloading(type);
     try {
       const baseParams = (type.startsWith('tasks') || type.startsWith('admin/attendance')) ? buildParams() : {};
@@ -258,6 +259,69 @@ export default function ReportsPage() {
             className="btn btn-primary w-full h-11 rounded-xl bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-100"
           >
             {downloading === 'admin/attendance/excel' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <><Download className="w-4 h-4" /> Download Excel</>
+            )}
+          </button>
+        </div>
+
+        {/* Leaves History Report */}
+        <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+          <div className="w-12 h-12 rounded-xl bg-amber-50 flex items-center justify-center mb-4 border border-amber-100">
+            <Calendar className="w-6 h-6 text-amber-600" />
+          </div>
+          <h3 className="font-bold text-slate-800 mb-1">Leaves History Report</h3>
+          <p className="text-xs text-slate-400 font-medium mb-4">Export leaves history, approvals, and balances</p>
+          <button
+            onClick={() => downloadReport('leaves/excel')}
+            disabled={downloading === 'leaves/excel'}
+            className="btn btn-primary w-full h-11 rounded-xl bg-amber-600 hover:bg-amber-700 shadow-lg shadow-amber-100"
+          >
+            {downloading === 'leaves/excel' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <><Download className="w-4 h-4" /> Download Excel</>
+            )}
+          </button>
+        </div>
+
+        {/* Rewards Point Ledger */}
+        <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-indigo-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+          <div className="w-12 h-12 rounded-xl bg-indigo-50 flex items-center justify-center mb-4 border border-indigo-100">
+            <Trophy className="w-6 h-6 text-indigo-600" />
+          </div>
+          <h3 className="font-bold text-slate-800 mb-1">Rewards Point Ledger</h3>
+          <p className="text-xs text-slate-400 font-medium mb-4">Export rewards history and point distributions</p>
+          <button
+            onClick={() => downloadReport('rewards/excel')}
+            disabled={downloading === 'rewards/excel'}
+            className="btn btn-primary w-full h-11 rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100"
+          >
+            {downloading === 'rewards/excel' ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <><Download className="w-4 h-4" /> Download Excel</>
+            )}
+          </button>
+        </div>
+
+        {/* System Audit Logs */}
+        <div className="glass rounded-2xl p-6 border border-slate-100 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-24 h-24 bg-slate-500/5 rounded-full blur-2xl -mr-12 -mt-12" />
+          <div className="w-12 h-12 rounded-xl bg-slate-100 flex items-center justify-center mb-4 border border-slate-200">
+            <Shield className="w-6 h-6 text-slate-650" />
+          </div>
+          <h3 className="font-bold text-slate-800 mb-1">System Audit Logs</h3>
+          <p className="text-xs text-slate-400 font-medium mb-4">Export activity audit trails and security logs</p>
+          <button
+            onClick={() => downloadReport('audit/excel')}
+            disabled={downloading === 'audit/excel'}
+            className="btn btn-primary w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-850 shadow-lg shadow-slate-200"
+          >
+            {downloading === 'audit/excel' ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <><Download className="w-4 h-4" /> Download Excel</>
