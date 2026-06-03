@@ -16,3 +16,11 @@
 ## 2026-06-01 - Collection Direct Access for Projections
 **Learning:** Beanie 2.1.0 sometimes struggles with dictionary-based projections when using .project() on its find() queries, leading to Pydantic configuration errors.
 **Action:** Use `Model.get_pymongo_collection().find(query, projection)` to bypass Beanie's projection model layer when only a few fields are needed as dictionaries. This is faster and more reliable for internal analytical logic.
+
+## 2026-06-01 - Batch Overdue Updates in Task Service
+**Learning:** Sequential database updates in a loop (`for t in tasks: await t.set(...)`) create a severe N+1 network bottleneck, especially when processing many overdue tasks during a list operation.
+**Action:** Use a single database-level `update_many` call (e.g., `Task.find(overdue_match).update({"$set": ...})`) before fetching the task list. This reduces network round-trips from O(N) to O(1) and significantly improves response latency.
+
+## 2026-06-01 - Database-Level Task RBAC
+**Learning:** Fetching all tasks and filtering by hierarchy in Python (`[t for t in all_tasks if t.assigned_to in visible_ids]`) causes severe performance degradation (latency > 1.7s for 1000 tasks) and high memory usage.
+**Action:** Implement batch user ID filtering directly in the database query using `$or` and `$in` operators. Passing hierarchy sets to the database reduced the benchmark time to ~0.96s (a ~43% improvement).

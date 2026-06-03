@@ -78,15 +78,28 @@ async def create_task(
 
 async def get_tasks(
     user_id: Optional[str] = None,
+    user_ids: Optional[List[PydanticObjectId]] = None,
+    created_by: Optional[PydanticObjectId] = None,
     status: Optional[str] = None,
     priority: Optional[str] = None,
     is_admin: bool = False,
 ) -> List[Task]:
-    """Get tasks with optional filters."""
+    """Get tasks with optional filters, supporting batch user lookups and hierarchy."""
     query = {}
 
-    if (not is_admin and user_id) or (is_admin and user_id):
+    if user_id:
         query["assigned_to"] = PydanticObjectId(user_id)
+    elif user_ids is not None:
+        if created_by:
+            # Hierarchy logic: visible to me or created by me
+            query["$or"] = [
+                {"assigned_to": {"$in": user_ids}},
+                {"created_by": created_by}
+            ]
+        else:
+            query["assigned_to"] = {"$in": user_ids}
+    elif created_by:
+        query["created_by"] = created_by
 
     if status:
         query["status"] = status
@@ -94,16 +107,19 @@ async def get_tasks(
     if priority:
         query["priority"] = priority
 
-    tasks = await Task.find(query).sort("-created_at").to_list()
-
-    # Auto-mark overdue tasks
+    # Optimization: Replace in-memory loop with a single update_many call for overdue tasks.
+    # This avoids N network round-trips for N overdue tasks.
     from datetime import timezone
     now = datetime.now(timezone.utc)
-    for task in tasks:
-        if task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] and task.deadline < now:
-            await task.set({"status": TaskStatus.OVERDUE, "updated_at": now})
-            task.status = TaskStatus.OVERDUE
 
+    overdue_match = {
+        **query,
+        "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]},
+        "deadline": {"$lt": now}
+    }
+    await Task.find(overdue_match).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
+
+    tasks = await Task.find(query).sort("-created_at").to_list()
     return tasks
 
 
