@@ -78,33 +78,47 @@ async def create_task(
 
 async def get_tasks(
     user_id: Optional[str] = None,
+    user_ids: Optional[List[PydanticObjectId]] = None,
+    created_by: Optional[PydanticObjectId] = None,
     status: Optional[str] = None,
     priority: Optional[str] = None,
     is_admin: bool = False,
 ) -> List[Task]:
     """Get tasks with optional filters."""
-    query = {}
+    from beanie.operators import In, Or
 
-    if (not is_admin and user_id) or (is_admin and user_id):
-        query["assigned_to"] = PydanticObjectId(user_id)
+    # Use a dictionary for filters to allow easy merging and avoid 'Or' object mutation issues
+    filters = {}
+
+    if user_ids is not None:
+        if created_by:
+            # Wrap in dictionary format that Beanie expects for raw queries
+            filters = Or(In(Task.assigned_to, user_ids), Task.created_by == created_by).query
+        else:
+            filters["assigned_to"] = {"$in": user_ids}
+    elif (not is_admin and user_id) or (is_admin and user_id):
+        filters["assigned_to"] = PydanticObjectId(user_id)
 
     if status:
-        query["status"] = status
+        filters["status"] = status
 
     if priority:
-        query["priority"] = priority
+        filters["priority"] = priority
 
-    tasks = await Task.find(query).sort("-created_at").to_list()
-
-    # Auto-mark overdue tasks
+    # Performance Optimization: Batch update overdue tasks before fetching.
+    # This prevents the N+1 update problem during data retrieval.
     from datetime import timezone
     now = datetime.now(timezone.utc)
-    for task in tasks:
-        if task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] and task.deadline < now:
-            await task.set({"status": TaskStatus.OVERDUE, "updated_at": now})
-            task.status = TaskStatus.OVERDUE
 
-    return tasks
+    # Building a sub-query for overdue items that match the user's filtered set
+    overdue_query = {
+        **filters,
+        "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]},
+        "deadline": {"$lt": now}
+    }
+    await Task.find(overdue_query).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
+
+    return await Task.find(filters).sort("-created_at").to_list()
 
 
 async def get_task_by_id(task_id: str) -> Optional[Task]:

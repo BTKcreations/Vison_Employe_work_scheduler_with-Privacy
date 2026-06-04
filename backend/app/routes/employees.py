@@ -195,11 +195,13 @@ async def get_visible_employee_ids(user: User) -> set:
 
         if am_ids:
             # Employees reporting to those AMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.reporting_manager_id, am_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e["_id"] for e in emp_ids)
+            # Optimization: Use database-level distinct() for faster lookups.
+            # In Beanie 2.1.0, distinct is a class method: Model.distinct(field, query)
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE,
+                "reporting_manager_id": {"$in": am_ids}
+            })
+            visible_ids.update(emp_ids)
 
     elif user.role == UserRole.HR_MANAGER:
         # Get AHRMs and AMs reporting to this HR Manager
@@ -216,25 +218,28 @@ async def get_visible_employee_ids(user: User) -> set:
 
         if ahrm_ids:
             # Employees reporting to those AHRMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.hr_reporting_manager_id, ahrm_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e["_id"] for e in emp_ids)
+            # Optimization: Use database-level distinct() for faster lookups.
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE,
+                "hr_reporting_manager_id": {"$in": ahrm_ids}
+            })
+            visible_ids.update(emp_ids)
 
     elif user.role == UserRole.ASSISTANT_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e["_id"] for e in emp_ids)
+        # Optimization: Use database-level distinct() for faster lookups.
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE,
+            "reporting_manager_id": user.id
+        })
+        visible_ids.update(emp_ids)
 
     elif user.role == UserRole.ASSISTANT_HR_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.hr_reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e["_id"] for e in emp_ids)
+        # Optimization: Use database-level distinct() for faster lookups.
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE,
+            "hr_reporting_manager_id": user.id
+        })
+        visible_ids.update(emp_ids)
 
     return visible_ids
 
