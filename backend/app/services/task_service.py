@@ -94,17 +94,17 @@ async def get_tasks(
     if priority:
         query["priority"] = priority
 
-    tasks = await Task.find(query).sort("-created_at").to_list()
-
-    # Auto-mark overdue tasks
+    # Auto-mark overdue tasks before fetching to avoid N+1 update problem
     from datetime import timezone
     now = datetime.now(timezone.utc)
-    for task in tasks:
-        if task.status in [TaskStatus.PENDING, TaskStatus.IN_PROGRESS] and task.deadline < now:
-            await task.set({"status": TaskStatus.OVERDUE, "updated_at": now})
-            task.status = TaskStatus.OVERDUE
+    overdue_filter = {
+        **query,
+        "status": {"$in": [TaskStatus.PENDING, TaskStatus.IN_PROGRESS]},
+        "deadline": {"$lt": now}
+    }
+    await Task.find(overdue_filter).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
 
-    return tasks
+    return await Task.find(query).sort("-created_at").to_list()
 
 
 async def get_task_by_id(task_id: str) -> Optional[Task]:

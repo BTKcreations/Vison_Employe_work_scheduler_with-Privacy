@@ -16,3 +16,7 @@
 ## 2026-06-01 - Collection Direct Access for Projections
 **Learning:** Beanie 2.1.0 sometimes struggles with dictionary-based projections when using .project() on its find() queries, leading to Pydantic configuration errors.
 **Action:** Use `Model.get_pymongo_collection().find(query, projection)` to bypass Beanie's projection model layer when only a few fields are needed as dictionaries. This is faster and more reliable for internal analytical logic.
+
+## 2026-06-01 - Bulk Overdue Task Updates
+**Learning:** Performing O(N) sequential updates (e.g., `await task.set(...)`) inside a read operation like `get_tasks` creates a massive latency bottleneck as the dataset grows. A single read could trigger hundreds of write operations.
+**Action:** Use `Task.find(filter).update({"$set": {...}})` to perform bulk updates in a single database operation before fetching the final results. This reduces database write overhead from O(N) to O(1).
