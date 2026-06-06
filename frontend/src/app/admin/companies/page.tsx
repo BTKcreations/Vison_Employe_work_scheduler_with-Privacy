@@ -1,32 +1,50 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import api from '@/lib/api';
 import { Company } from '@/types';
-import { cn, formatDate } from '@/lib/utils';
 import {
-  Building2, Plus, Search, X, Power, PowerOff, FileText, Calendar, Clock, Loader2, Save, Shield, MapPin, Timer
+  Briefcase, Plus, X, Pencil, Power, PowerOff, Loader2, CheckCircle2, Sparkles
 } from 'lucide-react';
+import Link from 'next/link';
 import { CardSkeleton } from '@/components/SkeletonLoaders';
 
 export default function CompaniesPage() {
+  const { user, refreshCompanies, activeCompanyId, setActiveCompanyId } = useAuth();
   const [companies, setCompanies] = useState<Company[]>([]);
+  const [units, setUnits] = useState<Array<{ id: string; name: string; type: string; is_default: boolean; company_id: string }>>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
-  const [editingCompany, setEditingCompany] = useState<Company | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+  const [editing, setEditing] = useState<Company | null>(null);
+  const [form, setForm] = useState({ name: '', description: '' });
   const [saving, setSaving] = useState(false);
-  const [newCompany, setNewCompany] = useState({ name: '', description: '' });
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [includeInactive, setIncludeInactive] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const fetchUnits = useCallback(async () => {
+    try {
+      const res = await api.get<{ items: any[] }>('/business-units');
+      setUnits(res.data.items || []);
+    } catch {
+      setUnits([]);
+    }
+  }, []);
 
   const fetchCompanies = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await api.get('/companies/all');
-      setCompanies(res.data);
-    } catch (err) {
-      console.error('Failed to fetch companies:', err);
+      const res = await api.get<Company[]>('/companies/all');
+      setCompanies(res.data || []);
+    } catch {
+      try {
+        const fallback = await api.get<Company[]>('/companies');
+        setCompanies(fallback.data || []);
+      } catch {
+        setCompanies([]);
+      }
     } finally {
       setLoading(false);
     }
@@ -34,480 +52,323 @@ export default function CompaniesPage() {
 
   useEffect(() => {
     fetchCompanies();
-  }, [fetchCompanies]);
+    fetchUnits();
+  }, [fetchCompanies, fetchUnits]);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setCreating(true);
+  const isAdmin = user?.role === 'admin';
+  const isPlatformOwner = user?.role === 'platform_owner';
+  const canEdit = isAdmin || isPlatformOwner;
+
+  const visibleCompanies = includeInactive
+    ? companies
+    : companies.filter((c) => c.is_active);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: '', description: '' });
     setError('');
-    try {
-      await api.post('/companies', newCompany);
-      setShowCreateModal(false);
-      setNewCompany({ name: '', description: '' });
-      fetchCompanies();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to create company');
-    } finally {
-      setCreating(false);
-    }
+    setSuccess('');
+    setShowModal(true);
   };
 
-  const handleUpdate = async (e: React.FormEvent) => {
+  const openEdit = (c: Company) => {
+    setEditing(c);
+    setForm({ name: c.name, description: c.description || '' });
+    setError('');
+    setSuccess('');
+    setShowModal(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCompany) return;
+    if (!form.name.trim()) {
+      setError('Name is required.');
+      return;
+    }
     setSaving(true);
+    setError('');
     try {
-      await api.put(`/companies/${editingCompany.id}`, {
-        name: editingCompany.name,
-        description: editingCompany.description,
-        work_days: editingCompany.work_days,
-        work_start_time: editingCompany.work_start_time,
-        work_end_time: editingCompany.work_end_time,
-        office_lat: editingCompany.office_lat,
-        office_lng: editingCompany.office_lng,
-        geofence_radius_meters: editingCompany.geofence_radius_meters,
-        geofence_policy: editingCompany.geofence_policy,
-        min_session_minutes: editingCompany.min_session_minutes,
-        auto_checkout_enabled: editingCompany.auto_checkout_enabled,
-        location_drift_threshold_km: editingCompany.location_drift_threshold_km,
-      });
-      setShowEditModal(false);
-      fetchCompanies();
+      const payload: any = { name: form.name.trim() };
+      if (form.description.trim()) payload.description = form.description.trim();
+      if (editing) {
+        await api.patch(`/companies/${editing.id}`, payload);
+        setSuccess(`Updated "${payload.name}".`);
+      } else {
+        const res = await api.post<Company>('/companies', payload);
+        setSuccess(`Created "${res.data.name}". A default HQ Business Unit was added.`);
+      }
+      setShowModal(false);
+      await fetchCompanies();
+      await refreshCompanies();
+      fetchUnits();
+      setTimeout(() => setSuccess(''), 4000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to update company');
+      setError(err?.response?.data?.detail || 'Failed to save.');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleToggleActive = async (company: Company) => {
+  const toggleActive = async (c: Company) => {
+    setBusyId(c.id);
     try {
-      if (company.is_active) {
-        await api.delete(`/companies/${company.id}`);
+      if (c.is_active) {
+        await api.post(`/companies/${c.id}/deactivate`);
+        setSuccess(`Deactivated "${c.name}".`);
       } else {
-        await api.put(`/companies/${company.id}`, { is_active: true });
+        await api.post(`/companies/${c.id}/activate`);
+        setSuccess(`Activated "${c.name}".`);
       }
-      fetchCompanies();
-    } catch (err) {
-      console.error('Failed to update company:', err);
+      await fetchCompanies();
+      await refreshCompanies();
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Failed to update status.');
+    } finally {
+      setBusyId(null);
     }
   };
 
-  const toggleDay = (day: string) => {
-    if (!editingCompany) return;
-    const current = editingCompany.work_days || [];
-    const updated = current.includes(day)
-      ? current.filter(d => d !== day)
-      : [...current, day];
-    setEditingCompany({ ...editingCompany, work_days: updated });
+  const switchToCompany = (id: string) => {
+    setActiveCompanyId(id);
   };
-
-  const filtered = companies.filter(
-    (c) =>
-      c.name.toLowerCase().includes(search.toLowerCase()) ||
-      (c.description || '').toLowerCase().includes(search.toLowerCase())
-  );
-
-  const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[...Array(6)].map((_, i) => (
-          <CardSkeleton key={i} />
-        ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 3 }).map((_, i) => <CardSkeleton key={i} />)}
       </div>
     );
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+    <div className="p-6 max-w-6xl mx-auto space-y-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Companies</h1>
-          <p className="text-muted-foreground text-sm mt-1">Manage tenant settings and working schedules</p>
+          <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
+            <Briefcase className="w-6 h-6 text-indigo-600" />
+            Companies
+          </h1>
+          <p className="text-sm text-slate-600 mt-1">
+            Sub-organizations inside your tenant. Each company has its own Business Units and employee
+            assignments. The first company you create becomes your default.
+          </p>
         </div>
-        <button
-          onClick={() => setShowCreateModal(true)}
-          className="btn btn-primary"
-        >
-          <Plus className="w-4 h-4" />
-          Add Company
-        </button>
+        {canEdit && (
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> New Company
+          </button>
+        )}
       </div>
 
-      {/* Search */}
-      <div className="glass rounded-xl p-4 mb-6">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input pl-10"
-            placeholder="Search companies..."
-          />
+      {error && (
+        <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm flex items-center gap-2">
+          <X className="w-4 h-4" /> {error}
         </div>
-      </div>
+      )}
+      {success && (
+        <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4" /> {success}
+        </div>
+      )}
 
-      {/* Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filtered.map((company) => (
-          <div key={company.id} className="glass rounded-xl p-6 border border-border flex flex-col h-full shadow-sm">
-            <div className="flex items-start justify-between mb-4">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-indigo-600 to-violet-500 flex items-center justify-center shrink-0 shadow-sm">
-                <Building2 className="w-6 h-6 text-white" />
-              </div>
-              <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${company.is_active ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                {company.is_active ? 'Active' : 'Inactive'}
-              </span>
-            </div>
-            <h3 className="font-bold text-xl mb-1">{company.name}</h3>
-            <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{company.description || 'No description provided.'}</p>
-            
-            <div className="space-y-3 mt-auto">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-slate-50 p-2 rounded-lg">
-                <Calendar className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{company.work_days?.length || 0} active workdays</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-muted-foreground bg-slate-50 p-2 rounded-lg">
-                <Clock className="w-3.5 h-3.5 text-indigo-500" />
-                <span>{company.work_start_time} - {company.work_end_time}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 mt-6 pt-4 border-t border-border">
-              <button
-                onClick={() => {
-                  setEditingCompany(company);
-                  setShowEditModal(true);
-                }}
-                className="btn btn-secondary text-xs flex-1"
-              >
-                Settings
-              </button>
-              <button
-                onClick={() => handleToggleActive(company)}
-                className={`btn text-xs px-3 ${company.is_active ? 'btn-danger' : 'btn-secondary'}`}
-              >
-                {company.is_active ? <PowerOff className="w-4 h-4" /> : <Power className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Edit Modal */}
-      {showEditModal && editingCompany && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content max-w-4xl" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
-                  <Building2 className="w-7 h-7 text-white" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">Company Profile</h2>
-                  <p className="text-[10px] text-slate-400 font-black uppercase tracking-[0.2em] mt-0.5 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-indigo-400" />
-                    Organization Settings
-                  </p>
-                </div>
-              </div>
-              <button onClick={() => setShowEditModal(false)} className="w-12 h-12 rounded-2xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600 border border-transparent hover:border-slate-200">
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-
-            <form onSubmit={handleUpdate} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                <div className="space-y-5">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Basic Information</h3>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Company Name</label>
-                    <input
-                      type="text"
-                      value={editingCompany.name}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, name: e.target.value })}
-                      className="input h-12"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Description</label>
-                    <textarea
-                      value={editingCompany.description || ''}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, description: e.target.value })}
-                      className="input min-h-24 py-3"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Work Type</label>
-                      <select
-                        value={editingCompany.work_type || 'fixed'}
-                        onChange={(e) => setEditingCompany({ ...editingCompany, work_type: e.target.value })}
-                        className="select h-12"
-                      >
-                        <option value="fixed">Fixed Hours</option>
-                        <option value="flexible">Flexible</option>
-                        <option value="remote">Remote</option>
-                      </select>
-                    </div>
-                    {editingCompany.work_type === 'flexible' && (
-                      <div>
-                        <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Flexible Hrs</label>
-                        <input
-                          type="number"
-                          value={editingCompany.flexible_hours || 8}
-                          onChange={(e) => setEditingCompany({ ...editingCompany, flexible_hours: parseInt(e.target.value) })}
-                          className="input h-12"
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-5">
-                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-500">Operational Hours</h3>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Working Days</label>
-                    <div className="flex flex-wrap gap-2">
-                      {daysOfWeek.map(day => (
-                        <button
-                          key={day}
-                          type="button"
-                          onClick={() => toggleDay(day)}
-                          className={cn(
-                            "px-3 py-2 rounded-xl text-xs font-bold border transition-all",
-                            editingCompany.work_days?.includes(day)
-                              ? "bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100"
-                              : "bg-white border-slate-200 text-slate-400 hover:border-indigo-300"
-                          )}
-                        >
-                          {day.slice(0, 3)}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Start Time</label>
-                      <div className="relative">
-                        <input
-                          type="time"
-                          value={editingCompany.work_start_time}
-                          onChange={(e) => setEditingCompany({ ...editingCompany, work_start_time: e.target.value })}
-                          className="input h-12 font-bold pr-10"
-                        />
-                        <Clock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">End Time</label>
-                      <div className="relative">
-                        <input
-                          type="time"
-                          value={editingCompany.work_end_time}
-                          onChange={(e) => setEditingCompany({ ...editingCompany, work_end_time: e.target.value })}
-                          className="input h-12 font-bold pr-10"
-                        />
-                        <Clock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Cut-out Time (Grace)</label>
-                    <div className="relative">
-                      <input
-                        type="time"
-                        value={editingCompany.cut_out_time || '10:00'}
-                        onChange={(e) => setEditingCompany({ ...editingCompany, cut_out_time: e.target.value })}
-                        className="input h-12 font-bold text-rose-500 pr-10"
-                      />
-                      <Clock className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-rose-400 pointer-events-none" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Geofence & Smart Attendance Settings */}
-              <div className="col-span-full space-y-5 pt-6 border-t border-slate-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center border border-emerald-100">
-                    <Shield className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">Smart Attendance & Geofencing</h3>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Anti-manipulation controls</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* Geofence Policy */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Geofence Policy</label>
-                    <select
-                      value={editingCompany.geofence_policy || 'flexible'}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, geofence_policy: e.target.value })}
-                      className="select h-12"
-                    >
-                      <option value="disabled">Disabled — No location check</option>
-                      <option value="flexible">Flexible — Flag if outside zone</option>
-                      <option value="strict">Strict — Block check-in outside zone</option>
-                    </select>
-                  </div>
-
-                  {/* Geofence Radius */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Geofence Radius (meters)</label>
-                    <input
-                      type="number"
-                      min="50"
-                      max="10000"
-                      value={editingCompany.geofence_radius_meters || 500}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, geofence_radius_meters: parseInt(e.target.value) })}
-                      className="input h-12"
-                    />
-                  </div>
-
-                  {/* Office Latitude */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      <MapPin className="w-3 h-3" /> Office Latitude
-                    </label>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      value={editingCompany.office_lat ?? ''}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, office_lat: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="input h-12 font-mono"
-                      placeholder="e.g. 28.6139"
-                    />
-                  </div>
-
-                  {/* Office Longitude */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      <MapPin className="w-3 h-3" /> Office Longitude
-                    </label>
-                    <input
-                      type="number"
-                      step="0.000001"
-                      value={editingCompany.office_lng ?? ''}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, office_lng: e.target.value ? parseFloat(e.target.value) : null })}
-                      className="input h-12 font-mono"
-                      placeholder="e.g. 77.2090"
-                    />
-                  </div>
-
-                  {/* Min Session Duration */}
-                  <div>
-                    <label className="flex items-center gap-1.5 text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">
-                      <Timer className="w-3 h-3" /> Min Session (minutes)
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="480"
-                      value={editingCompany.min_session_minutes ?? 30}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, min_session_minutes: parseInt(e.target.value) })}
-                      className="input h-12"
-                    />
-                  </div>
-
-                  {/* Drift Threshold */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 mb-2 uppercase tracking-wider">Drift Threshold (km)</label>
-                    <input
-                      type="number"
-                      min="0.5"
-                      step="0.5"
-                      value={editingCompany.location_drift_threshold_km ?? 5}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, location_drift_threshold_km: parseFloat(e.target.value) })}
-                      className="input h-12"
-                    />
-                  </div>
-                </div>
-
-                {/* Auto-checkout toggle */}
-                <div className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                  <div>
-                    <p className="text-sm font-bold text-slate-700">Auto-Checkout Stale Sessions</p>
-                    <p className="text-xs text-slate-400 mt-0.5">Automatically close sessions open past work hours + 1 hour</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={editingCompany.auto_checkout_enabled ?? true}
-                      onChange={(e) => setEditingCompany({ ...editingCompany, auto_checkout_enabled: e.target.checked })}
-                    />
-                    <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex gap-4 pt-6">
-                <button type="button" onClick={() => setShowEditModal(false)} className="btn btn-secondary flex-1 h-14 rounded-2xl font-bold border-slate-200 text-slate-500">
-                  Cancel
-                </button>
-                <button type="submit" disabled={saving} className="btn btn-primary flex-1 h-14 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
-                  {saving ? <Loader2 className="w-6 h-6 animate-spin mx-auto" /> : <><Save className="w-5 h-5" /> Save Changes</>}
-                </button>
-              </div>
-            </form>
+      {isAdmin && !user?.primary_company_id && companies.length === 0 && (
+        <div className="p-6 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3">
+          <Sparkles className="w-5 h-5 text-amber-600 mt-0.5" />
+          <div>
+            <h3 className="text-sm font-bold text-amber-900">Create your first company</h3>
+            <p className="text-xs text-amber-800 mt-1">
+              You have not pinned a default company yet. Once you create one, it will be auto-pinned
+              to your account and used as the default scope across the admin panel.
+            </p>
           </div>
         </div>
       )}
 
-      {/* Create Modal */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div className="modal-content max-w-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-8">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-100">
-                  <Building2 className="w-6 h-6 text-white" />
+      <div className="flex items-center gap-3">
+        {canEdit && (
+          <label className="flex items-center gap-2 text-xs text-slate-600">
+            <input
+              type="checkbox"
+              checked={includeInactive}
+              onChange={(e) => setIncludeInactive(e.target.checked)}
+              className="rounded border-slate-300"
+            />
+            Show inactive
+          </label>
+        )}
+        <span className="text-xs text-slate-500">{visibleCompanies.length} company(ies)</span>
+      </div>
+
+      {visibleCompanies.length === 0 ? (
+        <div className="p-12 text-center bg-white border border-dashed border-slate-300 rounded-2xl">
+          <Briefcase className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+          <h3 className="text-sm font-semibold text-slate-700">No companies yet</h3>
+          <p className="text-xs text-slate-500 mt-1">
+            {canEdit
+              ? 'Click "New Company" to create your first sub-organization.'
+              : 'Your tenant admin has not created any companies yet.'}
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visibleCompanies.map((c) => {
+            const companyUnits = units.filter((u) => u.company_id === c.id);
+            const isActive = c.id === activeCompanyId;
+            return (
+              <div
+                key={c.id}
+                className={`bg-white border rounded-2xl p-4 shadow-sm hover:shadow-md transition-all ${
+                  isActive ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-200'
+                }`}
+              >
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-sm font-bold text-slate-900 truncate flex items-center gap-2">
+                      {c.name}
+                      {c.is_default && (
+                        <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-800">
+                          Default
+                        </span>
+                      )}
+                    </h3>
+                    {c.description && (
+                      <p className="text-xs text-slate-600 line-clamp-2 mt-1">{c.description}</p>
+                    )}
+                  </div>
+                  {c.is_active ? (
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">
+                      Active
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                      Inactive
+                    </span>
+                  )}
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-900 tracking-tight">Add Company</h2>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-0.5">New organization</p>
+
+                <div className="mt-2 text-xs text-slate-500">
+                  {companyUnits.length} business unit(s)
+                </div>
+
+                <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                  <div className="flex items-center gap-1">
+                    {isActive ? (
+                      <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded">
+                        Current scope
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => switchToCompany(c.id)}
+                        className="text-[10px] font-semibold text-indigo-600 hover:bg-indigo-50 px-2 py-1 rounded"
+                      >
+                        Switch to
+                      </button>
+                    )}
+                    <Link
+                      href={`/admin/settings/business-units?company_id=${c.id}`}
+                      className="text-[10px] font-semibold text-slate-600 hover:bg-slate-100 px-2 py-1 rounded"
+                    >
+                      View units
+                    </Link>
+                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => openEdit(c)}
+                        className="p-1.5 rounded hover:bg-slate-100 text-slate-600"
+                        title="Edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => toggleActive(c)}
+                        disabled={busyId === c.id}
+                        className="p-1.5 rounded hover:bg-slate-100 text-slate-600 disabled:opacity-40"
+                        title={c.is_active ? 'Deactivate' : 'Activate'}
+                      >
+                        {busyId === c.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : c.is_active ? (
+                          <PowerOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Power className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-              <button onClick={() => setShowCreateModal(false)} className="w-10 h-10 rounded-xl hover:bg-slate-100 flex items-center justify-center text-slate-400 transition-all hover:text-slate-600">
-                <X className="w-6 h-6" />
+            );
+          })}
+        </div>
+      )}
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-900">
+                {editing ? `Edit ${editing.name}` : 'New Company'}
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="p-1.5 rounded hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
               </button>
             </div>
-            
-            <form onSubmit={handleCreate} className="space-y-6">
+            <form onSubmit={handleSave} className="p-6 space-y-4">
+              {error && (
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-sm">{error}</div>
+              )}
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Company Name</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Name *</label>
                 <input
                   type="text"
-                  placeholder="e.g. Acme Corp"
-                  className="input h-12 rounded-2xl"
-                  value={newCompany.name}
-                  onChange={(e) => setNewCompany({ ...newCompany, name: e.target.value })}
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500"
+                  placeholder="e.g. Acme India, Acme USA"
                   required
                 />
+                <p className="text-[10px] text-slate-500 mt-1">
+                  Must be unique within your tenant.
+                </p>
               </div>
               <div>
-                <label className="block text-[10px] font-black uppercase text-slate-400 tracking-widest mb-2 ml-1">Description</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Description</label>
                 <textarea
-                  placeholder="Tell us about this company..."
-                  className="input min-h-32 rounded-2xl py-4"
-                  value={newCompany.description}
-                  onChange={(e) => setNewCompany({ ...newCompany, description: e.target.value })}
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm"
+                  rows={2}
+                  placeholder="Optional summary of this sub-org."
                 />
               </div>
-              <div className="flex gap-4 pt-4">
-                <button type="button" onClick={() => setShowCreateModal(false)} className="btn btn-secondary flex-1 h-12 rounded-2xl font-bold border-slate-200 text-slate-500">
+              {!editing && (
+                <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                  A default HQ Business Unit will be created automatically under this company.
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-lg"
+                >
                   Cancel
                 </button>
-                <button type="submit" disabled={creating} className="btn btn-primary flex-1 h-12 rounded-2xl font-bold shadow-xl shadow-indigo-100 bg-indigo-600 hover:bg-indigo-700">
-                  {creating ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : "Create Company"}
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {editing ? 'Save Changes' : 'Create'}
                 </button>
               </div>
             </form>

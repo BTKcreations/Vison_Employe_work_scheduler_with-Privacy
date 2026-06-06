@@ -1,12 +1,14 @@
-"""
+﻿"""
 Category management routes - CRUD for task categories.
 """
 from fastapi import APIRouter, HTTPException, status, Depends
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from app.auth.dependencies import get_current_user, require_admin
+from app.auth.tenant_scope import require_tenant_id, get_active_business_unit_id
 from app.models.user import User
 from app.models.category import Category
+from app.models.business_unit import BusinessUnit
 from datetime import datetime
 from app.utils.ist_time import to_utc_iso
 
@@ -45,9 +47,16 @@ class CategoryResponse(BaseModel):
 @router.get("", response_model=List[CategoryResponse])
 async def list_categories(
     current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """List all categories. Available to all authenticated users."""
-    categories = await Category.find().sort("-created_at").to_list()
+    """List all categories for the caller's tenant (optionally filtered by active BU)."""
+    cid = require_tenant_id(current_user)
+    q: dict = {"tenant_id": cid}
+    if active_bu_id is not None:
+        q["business_unit_id"] = active_bu_id
+    else:
+        q["$or"] = [{"business_unit_id": None}, {"business_unit_id": {"$exists": False}}]
+    categories = await Category.find(q).sort("-created_at").to_list()
     return [CategoryResponse.from_category(c) for c in categories]
 
 
@@ -55,10 +64,11 @@ async def list_categories(
 async def create_category(
     request: CreateCategoryRequest,
     admin: User = Depends(require_admin),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """Create a new category (admin only)."""
-    # Check for duplicate name
-    existing = await Category.find_one(Category.name == request.name)
+    """Create a new category in the caller's tenant (admin only)."""
+    cid = require_tenant_id(admin)
+    existing = await Category.find_one(Category.tenant_id == cid, Category.name == request.name)
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,6 +76,8 @@ async def create_category(
         )
 
     category = Category(
+        tenant_id=cid,
+        business_unit_id=active_bu_id,
         name=request.name,
         color=request.color,
     )
@@ -78,22 +90,30 @@ async def update_category(
     category_id: str,
     request: UpdateCategoryRequest,
     admin: User = Depends(require_admin),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """Update a category (admin only)."""
+    """Update a category in the caller's tenant (admin only)."""
     from beanie import PydanticObjectId
+    cid = require_tenant_id(admin)
 
     category = await Category.get(PydanticObjectId(category_id))
-    if not category:
+    if not category or category.tenant_id != cid:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Category not found",
         )
+    if active_bu_id is not None and category.business_unit_id != active_bu_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Category not found in this business unit",
+        )
 
     update_data = {}
     if request.name is not None:
-        # Check for duplicate name (excluding current)
         existing = await Category.find_one(
-            Category.name == request.name, Category.id != category.id
+            Category.tenant_id == cid,
+            Category.name == request.name,
+            Category.id != category.id,
         )
         if existing:
             raise HTTPException(
@@ -119,11 +139,12 @@ async def delete_category(
     category_id: str,
     admin: User = Depends(require_admin),
 ):
-    """Delete a category (admin only)."""
+    """Delete a category in the caller's tenant (admin only)."""
     from beanie import PydanticObjectId
+    cid = require_tenant_id(admin)
 
     category = await Category.get(PydanticObjectId(category_id))
-    if not category:
+    if not category or category.tenant_id != cid:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Category not found",

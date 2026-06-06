@@ -24,6 +24,8 @@ class LeaveStatus(str, Enum):
 class Leave(Document):
     user_id: PydanticObjectId
     user_name: Optional[str] = None
+    tenant_id: Optional[PydanticObjectId] = None
+    business_unit_id: Optional[PydanticObjectId] = None
     leave_type: LeaveType
     start_date: datetime
     end_date: datetime
@@ -38,4 +40,4 @@ class Leave(Document):
 
     class Settings:
         name = "leaves"
-        indexes = ["user_id", "status"]
+        indexes = ["user_id", "tenant_id", "business_unit_id", "status", ("tenant_id", "status")]

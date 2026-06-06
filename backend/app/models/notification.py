@@ -5,6 +5,7 @@ from typing import Optional
 
 class Notification(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     sender_id: Optional[PydanticObjectId] = None
     title: str = Field(..., max_length=255)
     message: str
@@ -15,7 +16,7 @@ class Notification(Document):
 
     class Settings:
         name = "notifications"
-        indexes = ["user_id", "is_read", "created_at"]
+        indexes = ["user_id", "tenant_id", "is_read", "created_at"]
 
     class Config:
         json_schema_extra = {

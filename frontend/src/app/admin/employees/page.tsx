@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { TableSkeleton } from '@/components/SkeletonLoaders';
 
 export default function EmployeesPage() {
-  const { user, isHRTeam, isAdmin, isManager, isAssistantManager } = useAuth();
+  const { user, isHRTeam, isAdmin, isManager, isAssistantManager, businessUnits } = useAuth();
   const isManagementOnly = (isManager || isAssistantManager) && !isHRTeam;
 
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -34,7 +34,8 @@ export default function EmployeesPage() {
     mobile: '', alternate_mobile: '',
     reporting_manager_id: '', hr_reporting_manager_id: '',
     // visual MNC details
-    job_title: '', department: '', branch: '', national_id: '', emergency_contact: ''
+    job_title: '', department: '', branch: '', national_id: '', emergency_contact: '',
+    business_unit_id: ''
   });
 
   // Edit Modal Credentials & Password states
@@ -42,7 +43,8 @@ export default function EmployeesPage() {
     name: '', email: '', mobile: '', alternate_mobile: '',
     is_active: true, reward_points: 0,
     role: 'employee',
-    reporting_manager_id: '', hr_reporting_manager_id: ''
+    reporting_manager_id: '', hr_reporting_manager_id: '',
+    business_unit_id: ''
   });
   const [showRawPassword, setShowRawPassword] = useState(false);
   const [changePasswordChecked, setChangePasswordChecked] = useState(false);
@@ -166,7 +168,8 @@ export default function EmployeesPage() {
         name: '', email: '', password: '', role: 'employee',
         mobile: '', alternate_mobile: '',
         reporting_manager_id: '', hr_reporting_manager_id: '',
-        job_title: '', department: '', branch: '', national_id: '', emergency_contact: ''
+        job_title: '', department: '', branch: '', national_id: '', emergency_contact: '',
+        business_unit_id: ''
       });
       setActiveStep(1);
       
@@ -192,6 +195,7 @@ export default function EmployeesPage() {
       role: emp.role || 'employee',
       reporting_manager_id: emp.reporting_manager_id || '',
       hr_reporting_manager_id: emp.hr_reporting_manager_id || '',
+      business_unit_id: emp.business_unit_id || '',
     });
     setChangePasswordChecked(false);
     setNewPasswordVal('');
@@ -801,6 +805,25 @@ HR Operations & Management`;
                       </div>
                     )}
 
+                    {isHRTeam && businessUnits.length > 0 && (
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-2 ml-1">Business Unit Assignment</label>
+                        <div className="relative">
+                          <div className="input-icon-container"><Layers className="w-4 h-4" /></div>
+                          <select
+                            value={newEmployee.business_unit_id}
+                            onChange={(e) => setNewEmployee({ ...newEmployee, business_unit_id: e.target.value })}
+                            className="select input-with-icon h-12 rounded-2xl border-slate-200"
+                          >
+                            <option value="">-- Default (Tenant HQ) --</option>
+                            {businessUnits.map((bu) => (
+                              <option key={bu.id} value={bu.id}>{bu.name} ({bu.type})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Strict Hierarchy Selection Dropdowns */}
                     <div className="bg-slate-50/50 rounded-2xl p-5 border border-slate-100 space-y-4">
                       <div className="text-[10px] font-black uppercase text-indigo-500 tracking-wider mb-2">
@@ -1125,6 +1148,25 @@ HR Operations & Management`;
                         </select>
                       </div>
                     </div>
+
+                    {businessUnits.length > 0 && (
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 tracking-widest mb-2 ml-1">Business Unit Assignment</label>
+                        <div className="relative">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Layers className="w-4 h-4" /></div>
+                          <select
+                            value={editForm.business_unit_id}
+                            onChange={(e) => setEditForm({ ...editForm, business_unit_id: e.target.value })}
+                            className="select pl-10 h-12 rounded-2xl border-slate-200 w-full"
+                          >
+                            <option value="">-- Default (Tenant HQ) --</option>
+                            {businessUnits.map((bu) => (
+                              <option key={bu.id} value={bu.id}>{bu.name} ({bu.type})</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Strict Hierarchy Selection Dropdowns for Edit */}
                     <div className="bg-slate-50/50 rounded-2xl p-5 border border-slate-100 space-y-4">

@@ -24,6 +24,7 @@ class NotificationTemplate(Document):
 
 class NotificationPreference(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     email_enabled: bool = Field(default=True)
     sms_enabled: bool = Field(default=True)
     in_app_enabled: bool = Field(default=True)
@@ -34,13 +35,15 @@ class NotificationPreference(Document):
     class Settings:
         name = "notification_preferences"
         indexes = [
-            "user_id"
+            "user_id",
+            "tenant_id"
         ]
 
 
 class NotificationDeliveryLog(Document):
     notification_id: Optional[PydanticObjectId] = None
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     channel: str = Field(..., max_length=50)  # "in_app", "email", "sms"
     status: str = Field(default="pending", max_length=50)  # "delivered", "failed", "pending"
     sent_at: Optional[datetime] = None
@@ -52,6 +55,7 @@ class NotificationDeliveryLog(Document):
         name = "notification_delivery_logs"
         indexes = [
             "user_id",
+            "tenant_id",
             "channel",
             "status",
             ("user_id", "status")

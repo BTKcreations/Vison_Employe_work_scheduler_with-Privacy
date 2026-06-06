@@ -1,11 +1,13 @@
-"""
+﻿"""
 Employee management routes - admin only CRUD operations.
 """
 from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Request
 from app.schemas.user import CreateEmployeeRequest, UpdateEmployeeRequest, EmployeeResponse
 from app.services import user_service, dashboard_service
 from app.auth.dependencies import require_hr_team, require_any_hr_manager, require_management_team
+from app.auth.tenant_scope import require_tenant_id, get_active_business_unit_id
 from app.models.user import User, UserRole
+from app.models.business_unit import BusinessUnit
 from beanie import PydanticObjectId
 from beanie.operators import In
 from typing import List
@@ -168,6 +170,8 @@ async def get_visible_employee_ids(user: User) -> set:
     Returns a set of PydanticObjectIds of all employees visible to the given manager/HR.
     - Admin: returns None (unlimited visibility).
     - Manager: AMs reporting to them, Employees reporting to those AMs, and AHRMs reporting to them.
+      If `scope_company_ids` is set, the visible set is further restricted to users whose
+      `primary_company_id` is in that set.
     - HR Manager: AHRMs reporting to them, Employees reporting to those AHRMs, and AMs reporting to them.
     - Assistant Manager: Employees reporting to them.
     - Assistant HR Manager: Employees reporting to them.
@@ -177,6 +181,10 @@ async def get_visible_employee_ids(user: User) -> set:
         return None
 
     visible_ids = {user.id}
+
+    # Per-Company manager delegation: when a manager has `scope_company_ids` set,
+    # they can only see users whose primary_company_id is in that set.
+    scope_company_ids = set(user.scope_company_ids or [])
 
     # Optimization: Use database-level distinct() for faster lookups without full document loading.
     if user.role == UserRole.MANAGER:
@@ -236,6 +244,13 @@ async def get_visible_employee_ids(user: User) -> set:
         ).project({"_id": 1}).to_list()
         visible_ids.update(e["_id"] for e in emp_ids)
 
+    if scope_company_ids:
+        scoped_users = await User.find(
+            In(User.id, list(visible_ids)),
+            In(User.primary_company_id, list(scope_company_ids))
+        ).project({"_id": 1}).to_list()
+        visible_ids = {u["_id"] for u in scoped_users}
+
     return visible_ids
 
 
@@ -264,30 +279,44 @@ async def upload_identity_document(
 # ────────────────────────────────────────────────────────
 
 @router.get("", response_model=List[EmployeeResponse])
-async def list_employees(user: User = Depends(require_management_team)):
-    """Get employees based on role hierarchy."""
+async def list_employees(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """Get employees based on role hierarchy, scoped to the caller's tenant and active BU."""
+    cid = require_tenant_id(user)
     visible_ids = await get_visible_employee_ids(user)
 
+    extra = {}
+    if active_bu_id is not None:
+        extra["business_unit_id"] = active_bu_id
+
     if visible_ids is not None:
-        # Optimization: Filter at database level instead of in-memory
         employees = await User.find(
             User.is_deleted != True,
-            In(User.id, list(visible_ids))
+            User.tenant_id == cid,
+            In(User.id, list(visible_ids)),
+            **extra,
         ).sort("-created_at").to_list()
     else:
-        employees = await user_service.get_all_employees()
+        employees = await user_service.get_all_employees(tenant_id=cid, business_unit_id=active_bu_id)
 
     return [EmployeeResponse.from_user(emp) for emp in employees]
 
 
 @router.get("/all-users", response_model=List[EmployeeResponse])
-async def list_all_users(user: User = Depends(require_management_team)):
-    """Get all users of all roles in the system (filtered by hierarchy if not Admin)."""
+async def list_all_users(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """Get all users of all roles in the system, scoped to the caller's tenant and active BU."""
+    cid = require_tenant_id(user)
     visible_ids = await get_visible_employee_ids(user)
 
-    query = { "is_deleted": {"$ne": True} }
+    query: dict = { "is_deleted": {"$ne": True}, "tenant_id": cid }
+    if active_bu_id is not None:
+        query["business_unit_id"] = active_bu_id
     if visible_ids is not None:
-        # Optimization: Filter at database level
         query["_id"] = {"$in": list(visible_ids)}
 
     users = await User.find(query).to_list()
@@ -295,13 +324,18 @@ async def list_all_users(user: User = Depends(require_management_team)):
 
 
 @router.get("/deleted", response_model=List[EmployeeResponse])
-async def list_deleted_employees(user: User = Depends(require_management_team)):
-    """Get all soft-deleted employees."""
+async def list_deleted_employees(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """Get all soft-deleted employees, scoped to the caller's tenant and active BU."""
+    cid = require_tenant_id(user)
     visible_ids = await get_visible_employee_ids(user)
 
-    query = { "is_deleted": True }
+    query: dict = { "is_deleted": True, "tenant_id": cid }
+    if active_bu_id is not None:
+        query["business_unit_id"] = active_bu_id
     if visible_ids is not None:
-        # Optimization: Filter at database level
         query["_id"] = {"$in": list(visible_ids)}
 
     employees = await User.find(query).sort("-created_at").to_list()
@@ -309,11 +343,18 @@ async def list_deleted_employees(user: User = Depends(require_management_team)):
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
-async def get_employee(employee_id: str, user: User = Depends(require_management_team)):
-    """Get a specific employee."""
-    employee = await user_service.get_employee_by_id(employee_id)
+async def get_employee(
+    employee_id: str,
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """Get a specific employee, scoped to the caller's tenant and active BU."""
+    cid = require_tenant_id(user)
+    employee = await user_service.get_employee_by_id(employee_id, tenant_id=cid)
     if not employee:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    if active_bu_id is not None and employee.business_unit_id != active_bu_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found in this business unit")
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None and employee.id not in visible_ids:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this employee")
@@ -321,8 +362,18 @@ async def get_employee(employee_id: str, user: User = Depends(require_management
 
 
 @router.get("/{employee_id}/stats")
-async def get_employee_stats(employee_id: str, user: User = Depends(require_management_team)):
-    """Get stats for a specific employee."""
+async def get_employee_stats(
+    employee_id: str,
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """Get stats for a specific employee (scoped to caller's tenant + active BU)."""
+    cid = require_tenant_id(user)
+    employee = await user_service.get_employee_by_id(employee_id, tenant_id=cid)
+    if not employee:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found")
+    if active_bu_id is not None and employee.business_unit_id != active_bu_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Employee not found in this business unit")
     return await dashboard_service.get_employee_dashboard(employee_id)
 
 
@@ -335,6 +386,7 @@ async def create_employee(
     request: CreateEmployeeRequest,
     http_request: Request,
     user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Create a new employee (Management team)."""
     from beanie import PydanticObjectId
@@ -364,6 +416,37 @@ async def create_employee(
         hr_reporting_manager_id=hr_reporting_manager_id,
     )
 
+    business_unit_id = getattr(request, "business_unit_id", None)
+    if business_unit_id is not None:
+        try:
+            bu_oid = PydanticObjectId(business_unit_id)
+        except Exception:
+            raise HTTPException(status_code=400, detail="Invalid business_unit_id.")
+        unit = await BusinessUnit.find_one(
+            BusinessUnit.id == bu_oid,
+            BusinessUnit.tenant_id == user.tenant_id,
+        )
+        if not unit:
+            raise HTTPException(
+                status_code=400,
+                detail="business_unit_id does not belong to your tenant.",
+            )
+        business_unit_id = bu_oid
+    elif active_bu_id is not None:
+        business_unit_id = active_bu_id
+    else:
+        default_bu = await BusinessUnit.find_one(
+            BusinessUnit.tenant_id == user.tenant_id,
+            BusinessUnit.is_default == True,
+        )
+        if not default_bu:
+            default_bu = await BusinessUnit.find_one(
+                BusinessUnit.tenant_id == user.tenant_id,
+                BusinessUnit.is_active == True,
+            )
+        if default_bu:
+            business_unit_id = default_bu.id
+
     try:
         employee = await user_service.create_employee(
             name=request.name,
@@ -382,6 +465,8 @@ async def create_employee(
             branch=request.branch,
             hiring_date=request.hiring_date,
             hiring_company=request.hiring_company,
+            tenant_id=user.tenant_id,
+            business_unit_id=business_unit_id,
         )
 
         await AuditService.log_event(

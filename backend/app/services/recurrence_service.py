@@ -77,7 +77,7 @@ async def spawn_tasks_from_rule(rule: RecurrenceRule):
             if not assignee_ids:
                 assignee_ids = [template_task.assigned_to]
             if not company_ids:
-                company_ids = [template_task.company_id] if template_task.company_id else []
+                company_ids = [template_task.tenant_id] if template_task.tenant_id else []
         else:
             # Blueprint task deleted and no configuration exists on the rule
             rule.is_active = False
@@ -105,7 +105,7 @@ async def spawn_tasks_from_rule(rule: RecurrenceRule):
                 priority=priority.value if hasattr(priority, "value") else str(priority),
                 deadline=deadline,
                 task_type="assigned" if uid != rule.created_by else "personal",
-                company_id=str(cid) if cid else None,
+                tenant_id=str(cid) if cid else None,
                 recurring_task_id=rule.id,
                 category_ids=[str(cat_id) for cat_id in category_ids],
             )

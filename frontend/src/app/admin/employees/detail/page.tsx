@@ -1066,7 +1066,7 @@ function EmployeeProfileContent() {
 
               {mounted && stats?.priority_distribution ? (
                 <div className="h-[220px] w-full mt-2">
-                  <ResponsiveContainer width="100%" height="100%" debounce={100}>
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0} debounce={100}>
                     <BarChart
                       data={[
                         { name: 'Critical', value: stats.priority_distribution.critical, color: '#8b5cf6' },

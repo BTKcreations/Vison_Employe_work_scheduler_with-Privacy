@@ -15,6 +15,14 @@ except ImportError:
     from backports.zoneinfo import ZoneInfo
 
 
+def _scope(q: dict, tenant_id) -> dict:
+    """Append tenant_id filter; refuse if missing (tenant isolation)."""
+    if tenant_id is None:
+        return q
+    q["tenant_id"] = tenant_id
+    return q
+
+
 async def _get_task_data(
     status: Optional[str] = None,
     employee_id: Optional[str] = None,
@@ -22,6 +30,7 @@ async def _get_task_data(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     tz_name: Optional[str] = None,
+    tenant_id = None,
 ) -> pd.DataFrame:
     """Fetch and filter task data into a DataFrame with specific SaaS requirements."""
     query = {}
@@ -39,6 +48,8 @@ async def _get_task_data(
             query["created_at"]["$lte"] = datetime.fromisoformat(end_date)
         else:
             query["created_at"] = {"$lte": datetime.fromisoformat(end_date)}
+
+    query = _scope(query, tenant_id)
 
     tasks = await Task.find(query).sort("-created_at").to_list()
 
@@ -98,9 +109,10 @@ async def generate_tasks_csv(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     tz_name: Optional[str] = None,
+    tenant_id = None,
 ) -> str:
     """Generate CSV string of task data."""
-    df = await _get_task_data(status, employee_id, priority, start_date, end_date, tz_name)
+    df = await _get_task_data(status, employee_id, priority, start_date, end_date, tz_name, tenant_id=tenant_id)
     return df.to_csv(index=False)
 
 
@@ -111,9 +123,10 @@ async def generate_tasks_excel(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     tz_name: Optional[str] = None,
+    tenant_id = None,
 ) -> BytesIO:
     """Generate Excel file of task data."""
-    df = await _get_task_data(status, employee_id, priority, start_date, end_date, tz_name)
+    df = await _get_task_data(status, employee_id, priority, start_date, end_date, tz_name, tenant_id=tenant_id)
     output = BytesIO()
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Tasks", index=False)
@@ -121,14 +134,30 @@ async def generate_tasks_excel(
     return output
 
 
-async def generate_employees_excel() -> BytesIO:
+async def generate_employees_excel(tenant_id=None) -> BytesIO:
     """Generate Excel file of employee data with reward info."""
-    employees = await User.find(User.role == UserRole.EMPLOYEE).sort("-reward_points").to_list()
+    user_q = {"role": UserRole.EMPLOYEE.value}
+    user_q = _scope(user_q, tenant_id)
+    employees = await User.find(user_q).sort("-reward_points").to_list()
     employee_ids = [emp.id for emp in employees]
 
+    if not employee_ids:
+        df = pd.DataFrame(columns=[
+            "EMPLOYEE ID", "NAME", "EMAIL", "STATUS",
+            "REWARD POINTS", "TOTAL TASKS", "COMPLETED TASKS",
+            "COMPLETION RATE", "JOINED"
+        ])
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+            df.to_excel(writer, sheet_name="Employees", index=False)
+        output.seek(0)
+        return output
+
     # Optimized batch task count using aggregation
+    task_match = {"assigned_to": {"$in": employee_ids}}
+    task_match = _scope(task_match, tenant_id)
     pipeline = [
-        {"$match": {"assigned_to": {"$in": employee_ids}}},
+        {"$match": task_match},
         {"$group": {
             "_id": "$assigned_to",
             "total_tasks": {"$sum": 1},
@@ -173,6 +202,7 @@ async def generate_attendance_excel(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     tz_name: Optional[str] = None,
+    tenant_id = None,
 ) -> BytesIO:
     """Generate Excel file of attendance data."""
     query = {}
@@ -187,13 +217,17 @@ async def generate_attendance_excel(
         else:
             query["check_in"] = {"$lte": datetime.fromisoformat(end_date)}
 
+    query = _scope(query, tenant_id)
+
     records = await Attendance.find(query).sort("-check_in").to_list()
 
     # Pre-fetch user names if needed
     user_map = {}
-    if not user_id:
+    if not user_id and records:
         user_ids = list(set([r.user_id for r in records]))
-        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_q = {"_id": {"$in": user_ids}}
+        user_q = _scope(user_q, tenant_id)
+        users = await User.find(user_q).to_list()
         user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
 
     # Determine timezone for formatting
@@ -251,7 +285,7 @@ async def generate_attendance_excel(
     return output
 
 
-async def generate_leaves_excel(user_id: Optional[str] = None) -> BytesIO:
+async def generate_leaves_excel(user_id: Optional[str] = None, tenant_id=None) -> BytesIO:
     """Generate Excel file of leave requests."""
     from app.models.leave import Leave
     
@@ -259,13 +293,16 @@ async def generate_leaves_excel(user_id: Optional[str] = None) -> BytesIO:
     if user_id:
         query["user_id"] = PydanticObjectId(user_id)
         
+    query = _scope(query, tenant_id)
     leaves = await Leave.find(query).sort("-created_at").to_list()
     
     # Pre-fetch user names
     user_map = {}
-    if not user_id:
+    if not user_id and leaves:
         user_ids = list(set([l.user_id for l in leaves]))
-        users = await User.find({"_id": {"$in": user_ids}}).to_list()
+        user_q = {"_id": {"$in": user_ids}}
+        user_q = _scope(user_q, tenant_id)
+        users = await User.find(user_q).to_list()
         user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
         
     rows = []
@@ -303,7 +340,7 @@ async def generate_leaves_excel(user_id: Optional[str] = None) -> BytesIO:
     return output
 
 
-async def generate_reward_ledger_excel(user_id: Optional[str] = None) -> BytesIO:
+async def generate_reward_ledger_excel(user_id: Optional[str] = None, tenant_id=None) -> BytesIO:
     """Generate Excel file of reward points ledger entries."""
     from app.models.ledger import RewardLedgerEntry
     
@@ -311,12 +348,17 @@ async def generate_reward_ledger_excel(user_id: Optional[str] = None) -> BytesIO
     if user_id:
         query["user_id"] = PydanticObjectId(user_id)
         
+    query = _scope(query, tenant_id)
     entries = await RewardLedgerEntry.find(query).sort("-created_at").to_list()
     
     # Pre-fetch user names
-    user_ids = list(set([e.user_id for e in entries]))
-    users = await User.find({"_id": {"$in": user_ids}}).to_list()
-    user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
+    user_map = {}
+    if entries:
+        user_ids = list(set([e.user_id for e in entries]))
+        user_q = {"_id": {"$in": user_ids}}
+        user_q = _scope(user_q, tenant_id)
+        users = await User.find(user_q).to_list()
+        user_map = {u.id: {"name": u.name, "email": u.email} for u in users}
     
     rows = []
     for i, e in enumerate(entries, 1):
@@ -342,7 +384,7 @@ async def generate_reward_ledger_excel(user_id: Optional[str] = None) -> BytesIO
     return output
 
 
-async def generate_audit_excel(actor_id: Optional[str] = None, entity_type: Optional[str] = None) -> BytesIO:
+async def generate_audit_excel(actor_id: Optional[str] = None, entity_type: Optional[str] = None, tenant_id=None) -> BytesIO:
     """Generate Excel file of audit log events."""
     from app.models.audit_event import AuditEvent
     
@@ -352,6 +394,7 @@ async def generate_audit_excel(actor_id: Optional[str] = None, entity_type: Opti
     if entity_type:
         query["entity_type"] = entity_type
         
+    query = _scope(query, tenant_id)
     events = await AuditEvent.find(query).sort("-timestamp").to_list()
     
     rows = []

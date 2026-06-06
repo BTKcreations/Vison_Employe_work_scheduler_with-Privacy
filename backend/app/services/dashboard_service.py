@@ -5,7 +5,7 @@ Dashboard service - analytics and summary data for dashboards.
 from app.models.user import User, UserRole
 from app.models.task import Task, TaskStatus
 from app.models.activity_log import ActivityLog
-from app.models.company import Company
+from app.models.tenant import Tenant
 from app.services.task_service import get_task_counts
 from app.services.reward_service import get_leaderboard
 from app.models.attendance import Attendance, ist_now, IST
@@ -56,6 +56,7 @@ async def get_admin_dashboard(
     custom_start: Optional[str] = None,
     custom_end: Optional[str] = None,
     visible_ids: Optional[set] = None,
+    business_unit_id: Optional[PydanticObjectId] = None,
 ):
     """Get admin dashboard analytics data with optimized batch queries and hierarchy filtering."""
     if visible_ids is None:
@@ -63,26 +64,37 @@ async def get_admin_dashboard(
 
         visible_ids = await get_visible_employee_ids(current_user)
 
+    bu_filter = {"business_unit_id": business_unit_id} if business_unit_id is not None else {}
+
     if visible_ids is not None:
         total_employees = await User.find(
             In(User.role, NON_ADMIN_ROLES),
             User.is_deleted != True,
+            User.tenant_id == current_user.tenant_id,
             In(User.id, list(visible_ids)),
+            **bu_filter,
         ).count()
         active_employees = await User.find(
             In(User.role, NON_ADMIN_ROLES),
             User.is_active == True,
             User.is_deleted != True,
+            User.tenant_id == current_user.tenant_id,
             In(User.id, list(visible_ids)),
+            **bu_filter,
         ).count()
     else:
         total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES), User.is_deleted != True
+            In(User.role, NON_ADMIN_ROLES),
+            User.is_deleted != True,
+            User.tenant_id == current_user.tenant_id,
+            **bu_filter,
         ).count()
         active_employees = await User.find(
             In(User.role, NON_ADMIN_ROLES),
             User.is_active == True,
             User.is_deleted != True,
+            User.tenant_id == current_user.tenant_id,
+            **bu_filter,
         ).count()
 
     # Get today's attendance stats with a single query
@@ -90,6 +102,9 @@ async def get_admin_dashboard(
     att_query = GTE(Attendance.check_in, today_start)
     if visible_ids is not None:
         att_query = {"$and": [att_query, In(Attendance.user_id, list(visible_ids))]}
+    att_query = {"$and": [att_query, {"tenant_id": current_user.tenant_id}]} if "$and" in att_query else {"$and": [att_query, {"tenant_id": current_user.tenant_id}]}
+    if business_unit_id is not None:
+        att_query = {"$and": [att_query, {"business_unit_id": business_unit_id}]}
 
     present_user_ids = await Attendance.distinct("user_id", att_query)
     present_user_ids = [PydanticObjectId(uid) for uid in present_user_ids]
@@ -101,8 +116,11 @@ async def get_admin_dashboard(
     role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
 
     user_match = NE(User.is_deleted, True)
+    user_match = {"$and": [user_match, {"tenant_id": current_user.tenant_id}]} if isinstance(user_match, dict) else {"$and": [{"is_deleted": {"$ne": True}}, {"tenant_id": current_user.tenant_id}]}
     if visible_ids is not None:
         user_match = {"$and": [user_match, In(User.id, list(visible_ids))]}
+    if business_unit_id is not None:
+        user_match = {"$and": [user_match, {"business_unit_id": business_unit_id}]}
 
     pipeline = [
         {"$match": user_match},
@@ -129,14 +147,17 @@ async def get_admin_dashboard(
         role_counts["total_all_inclusive"]["absent"] += stat["total"] - stat["present"]
 
     if visible_ids is not None:
-        task_counts = await get_task_counts(user_ids=list(visible_ids))
+        task_counts = await get_task_counts(user_ids=list(visible_ids), business_unit_id=business_unit_id)
         leaderboard = await get_leaderboard(limit=5, user_ids=list(visible_ids))
     else:
-        task_counts = await get_task_counts()
+        task_counts = await get_task_counts(business_unit_id=business_unit_id)
         leaderboard = await get_leaderboard(limit=5)
 
     # Task priority distribution - optimized with single aggregation
     priority_pipeline = []
+    priority_pipeline.append({"$match": {"tenant_id": current_user.tenant_id}})
+    if business_unit_id is not None:
+        priority_pipeline.append({"$match": {"business_unit_id": business_unit_id}})
     if visible_ids is not None:
         priority_pipeline.append(
             {"$match": {"assigned_to": {"$in": list(visible_ids)}}}
@@ -152,14 +173,20 @@ async def get_admin_dashboard(
     # Recent activity - optimized with batch user fetching
     if visible_ids is not None:
         recent_activities = (
-            await ActivityLog.find(In(ActivityLog.user_id, list(visible_ids)))
+            await ActivityLog.find(
+                In(ActivityLog.user_id, list(visible_ids)),
+                ActivityLog.tenant_id == current_user.tenant_id,
+            )
             .sort("-timestamp")
             .limit(10)
             .to_list()
         )
     else:
         recent_activities = (
-            await ActivityLog.find().sort("-timestamp").limit(10).to_list()
+            await ActivityLog.find(ActivityLog.tenant_id == current_user.tenant_id)
+            .sort("-timestamp")
+            .limit(10)
+            .to_list()
         )
 
     user_ids = list(set([a.user_id for a in recent_activities]))
@@ -289,13 +316,13 @@ async def get_employee_dashboard(
         attendance_history.append(_build_history_entry(day, record))
     attendance_history.reverse()
 
-    # Fetch company to check work days configuration dynamically
-    company = await Company.get(user.company_id) if user.company_id else None
-    if not company:
-        company = await Company.find_one(Company.is_active == True)
+    # Fetch tenant to check work days configuration dynamically
+    tenant = await Tenant.get(user.tenant_id) if user.tenant_id else None
+    if not tenant:
+        tenant = await Tenant.find_one(Tenant.is_active == True)
     work_days_set = (
-        {d.strip().lower() for d in company.work_days}
-        if (company and company.work_days)
+        {d.strip().lower() for d in tenant.work_days}
+        if (tenant and tenant.work_days)
         else None
     )
 
@@ -375,17 +402,26 @@ async def get_employee_dashboard(
     }
 
 
-async def get_all_attendance_summary(visible_employee_ids=None):
+async def get_all_attendance_summary(
+    visible_employee_ids=None,
+    business_unit_id: Optional[PydanticObjectId] = None,
+):
     """Get last 5 days attendance summary for all employees (or a hierarchy-scoped subset)."""
     if visible_employee_ids is not None:
         employees = await User.find(In(User.id, list(visible_employee_ids))).to_list()
     else:
         employees = await User.find(In(User.role, NON_ADMIN_ROLES)).to_list()
+
+    if business_unit_id is not None:
+        employees = [e for e in employees if e.business_unit_id == business_unit_id]
+
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
     five_days_ago = today_start - timedelta(days=4)
 
     # Build user_id set for scoped attendance query (avoids full-table scan)
     employee_ids = [emp.id for emp in employees]
+    if not employee_ids:
+        return []
     logs = await Attendance.find(
         Attendance.check_in >= five_days_ago, In(Attendance.user_id, employee_ids)
     ).to_list()

@@ -1,9 +1,10 @@
 from beanie import Document, PydanticObjectId
 from pydantic import Field
 from datetime import datetime
-from typing import List
+from typing import List, Optional
 
 class ChatGroup(Document):
+    tenant_id: Optional[PydanticObjectId] = None
     name: str
     members: List[PydanticObjectId] = Field(default_factory=list)
     created_by: PydanticObjectId
@@ -12,4 +13,4 @@ class ChatGroup(Document):
 
     class Settings:
         name = "chat_groups"
-        indexes = ["members", "created_by"]
+        indexes = ["tenant_id", "members", "created_by"]

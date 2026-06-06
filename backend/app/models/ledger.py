@@ -10,6 +10,7 @@ from beanie import PydanticObjectId
 
 class LeaveLedgerEntry(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     leave_type: str = Field(..., max_length=50)  # "casual", "sick", "earned"
     amount: float = Field(...)  # positive for accrual/credit, negative for usage/debit
     transaction_type: str = Field(..., max_length=50)  # "accrual", "usage", "adjustment", "expiration"
@@ -22,6 +23,7 @@ class LeaveLedgerEntry(Document):
         name = "leave_ledger"
         indexes = [
             "user_id",
+            "tenant_id",
             ("user_id", "leave_type"),
             ("user_id", "created_at")
         ]
@@ -29,6 +31,7 @@ class LeaveLedgerEntry(Document):
 
 class RewardLedgerEntry(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     amount: float = Field(...)  # positive for earned, negative for deducted/used
     transaction_type: str = Field(..., max_length=50)  # "earned", "deducted", "adjusted", "expired"
     reference_id: Optional[PydanticObjectId] = None  # reference to Task document or other event
@@ -40,6 +43,7 @@ class RewardLedgerEntry(Document):
         name = "reward_ledger"
         indexes = [
             "user_id",
+            "tenant_id",
             ("user_id", "transaction_type"),
             ("user_id", "created_at")
         ]

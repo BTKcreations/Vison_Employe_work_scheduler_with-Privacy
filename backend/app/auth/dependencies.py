@@ -74,6 +74,33 @@ async def require_admin(
     return current_user
 
 
+async def require_platform_owner(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Ensure the current user is a Platform Owner (super admin).
+
+    A platform owner must have role=PLATFORM_OWNER AND must not be
+    attached to any tenant (tenant_id is None). This guard prevents
+    privilege escalation if a tenant user is somehow granted the role.
+    """
+    if current_user.role != UserRole.PLATFORM_OWNER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform owner access required",
+        )
+    if current_user.tenant_id is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform owners must not be linked to a tenant",
+        )
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Platform owner account is deactivated",
+        )
+    return current_user
+
+
 # Enterprise RBAC Role Helpers
 require_hr_team = RoleChecker([UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER])
 require_task_team = RoleChecker([UserRole.ADMIN, UserRole.MANAGER, UserRole.ASSISTANT_MANAGER])

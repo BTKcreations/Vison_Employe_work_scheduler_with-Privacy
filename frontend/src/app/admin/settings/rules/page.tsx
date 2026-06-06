@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { Company } from '@/types';
+import { Tenant, TenantPolicy } from '@/types';
 import { Save, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { DashboardSkeleton } from '@/components/SkeletonLoaders';
@@ -12,8 +12,8 @@ const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", 
 
 export default function RulesSettingsPage() {
   const { user } = useAuth();
-  const [company, setCompany] = useState<Company | null>(null);
-  const [companiesList, setCompaniesList] = useState<Company[]>([]);
+  const [company, setCompany] = useState<Tenant | null>(null);
+  const [companiesList, setCompaniesList] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,31 +69,21 @@ export default function RulesSettingsPage() {
   useEffect(() => {
     const fetchCompany = async () => {
       try {
-        let res = await api.get('/companies');
+        let res = await api.get('/tenants');
         let data = res.data;
         if (data.length === 0) {
-          // Auto-create a default company if empty
-          try {
-            const createRes = await api.post('/companies', {
-              name: 'Default Company',
-              description: 'Automatically created default company settings.',
-            });
-            data = [createRes.data];
-          } catch (createErr) {
-            console.error('Failed to auto-create default company:', createErr);
-            setError('No company configuration exists. Failed to auto-create default company.');
-            setLoading(false);
-            return;
-          }
+          setError('No tenant configuration exists. Onboard a tenant from the platform owner panel.');
+          setLoading(false);
+          return;
         }
-        
+
         setCompaniesList(data);
-        
-        // Find the company for the current user
-        const myCompany = data.find((c: Company) => c.id === user?.company_id) || data[0];
+
+        // Find the tenant for the current user
+        const myCompany = data.find((c: Tenant) => c.id === user?.tenant_id) || data[0];
         if (myCompany) {
           setCompany(myCompany);
-          setWorkDays(myCompany.work_days);
+          setWorkDays(myCompany.work_days || []);
           setWorkType(myCompany.work_type || 'fixed');
           setStartTime(myCompany.work_start_time || '09:30 AM');
           setEndTime(myCompany.work_end_time || '06:30 PM');
@@ -130,7 +120,7 @@ export default function RulesSettingsPage() {
       setError(null);
       setSuccess(false);
 
-      const res = await api.put(`/companies/${company.id}`, {
+      const res = await api.put(`/tenants/${company.id}`, {
         work_days: workDays,
         work_type: workType,
         work_start_time: startTime,
@@ -193,7 +183,7 @@ export default function RulesSettingsPage() {
                   const selected = companiesList.find(c => c.id === e.target.value);
                   if (selected) {
                     setCompany(selected);
-                    setWorkDays(selected.work_days);
+                    setWorkDays(selected.work_days || []);
                     setWorkType(selected.work_type || 'fixed');
                     setStartTime(selected.work_start_time || '09:30 AM');
                     setEndTime(selected.work_end_time || '06:30 PM');

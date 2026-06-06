@@ -19,11 +19,11 @@ NON_ADMIN_ROLES = [
 
 
 async def create_employee(
-    name: str, 
-    email: str, 
-    password: str, 
-    mobile: str = None, 
-    alternate_mobile: str = None, 
+    name: str,
+    email: str,
+    password: str,
+    mobile: str = None,
+    alternate_mobile: str = None,
     role: str = "employee",
     reporting_manager_id: str = None,
     hr_reporting_manager_id: str = None,
@@ -35,6 +35,8 @@ async def create_employee(
     branch: str = None,
     hiring_date: str = None,
     hiring_company: str = None,
+    tenant_id: Optional[PydanticObjectId] = None,
+    business_unit_id: Optional[PydanticObjectId] = None,
 ) -> User:
     """Create a new employee user."""
     existing = await User.find_one(User.email == email)
@@ -58,11 +60,14 @@ async def create_employee(
         branch=branch,
         hiring_date=hiring_date,
         hiring_company=hiring_company,
+        tenant_id=tenant_id,
+        business_unit_id=business_unit_id,
     )
     await user.insert()
 
     await ActivityLog(
         user_id=user.id,
+        tenant_id=tenant_id,
         action="employee_created",
         details=f"Employee {name} created",
     ).insert()
@@ -70,14 +75,37 @@ async def create_employee(
     return user
 
 
-async def get_all_employees() -> List[User]:
-    """Get all registered system users (employees, managers, HR, admins, etc.) who are not deleted."""
+async def get_all_employees(
+    tenant_id: Optional[PydanticObjectId] = None,
+    business_unit_id: Optional[PydanticObjectId] = None,
+) -> List[User]:
+    """Get all registered system users who are not deleted.
+
+    If `tenant_id` is provided, returns only users belonging to that tenant.
+    If `business_unit_id` is also provided, narrows further to that unit.
+    """
+    if business_unit_id is not None:
+        return await User.find(
+            User.is_deleted != True,
+            User.tenant_id == tenant_id,
+            User.business_unit_id == business_unit_id,
+        ).sort("-created_at").to_list()
+    if tenant_id is not None:
+        return await User.find(
+            User.is_deleted != True,
+            User.tenant_id == tenant_id,
+        ).sort("-created_at").to_list()
     return await User.find(User.is_deleted != True).sort("-created_at").to_list()
 
 
-async def get_employee_by_id(employee_id: str) -> Optional[User]:
-    """Get a specific employee by ID."""
-    return await User.get(PydanticObjectId(employee_id))
+async def get_employee_by_id(employee_id: str, tenant_id: Optional[PydanticObjectId] = None) -> Optional[User]:
+    """Get a specific employee by ID. If `tenant_id` is provided, the user must belong to that tenant."""
+    user = await User.get(PydanticObjectId(employee_id))
+    if not user:
+        return None
+    if tenant_id is not None and user.tenant_id != tenant_id:
+        return None
+    return user
 
 
 async def update_employee(employee_id: str, **kwargs) -> Optional[User]:

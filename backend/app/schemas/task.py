@@ -27,7 +27,7 @@ class CreateTaskRequest(BaseModel):
     assigned_to_list: Optional[List[str]] = None  # Multiple employees
     priority: str = Field(default="medium", pattern="^(regular|medium|high|critical)$")
     deadline: Optional[datetime] = None
-    company_id: Optional[str] = None  # Single company
+    tenant_id: Optional[str] = None  # Single company
     company_id_list: Optional[List[str]] = None  # Multiple companies
     for_all: bool = False
     is_recurrent: bool = False
@@ -59,7 +59,7 @@ class UpdateTaskRequest(BaseModel):
     deadline: Optional[datetime] = None
     remarks: Optional[str] = Field(None, max_length=1000)  # New remark text to append
     category_ids: Optional[List[str]] = None
-    company_id: Optional[str] = None
+    tenant_id: Optional[str] = None
     assigned_to: Optional[str] = None
     quality_multiplier: Optional[float] = None
 
@@ -79,8 +79,8 @@ class TaskResponse(BaseModel):
     reward_given: bool
     reward_points: float = 0.0
     quality_multiplier: float = 1.0
-    company_id: Optional[str] = None
-    company_name: Optional[str] = None
+    tenant_id: Optional[str] = None
+    company_name: Optional[str] = None  # legacy alias (now represents Tenant name for display)
     category_ids: List[str] = []
     category_names: List[str] = []
     remarks: List[RemarkEntry] = []
@@ -89,7 +89,7 @@ class TaskResponse(BaseModel):
     is_recurring: bool = False
     
     @classmethod
-    def from_task(cls, task, assigned_name: str = None, creator_name: str = None, company_name: str = None, category_names: list = None) -> "TaskResponse":
+    def from_task(cls, task, assigned_name: str = None, creator_name: str = None, tenant_name: str = None, category_names: list = None) -> "TaskResponse":
         from app.utils.ist_time import to_utc_iso
         return cls(
             id=str(task.id),
@@ -106,8 +106,8 @@ class TaskResponse(BaseModel):
             reward_given=task.reward_given,
             reward_points=task.reward_points,
             quality_multiplier=task.quality_multiplier,
-            company_id=str(task.company_id) if task.company_id else None,
-            company_name=company_name or task.company_name or "Personal / Internal",
+            tenant_id=str(task.tenant_id) if task.tenant_id else None,
+            company_name=tenant_name or task.company_name or "Personal / Internal",
             category_ids=[str(cid) for cid in (task.category_ids or [])],
             category_names=category_names if category_names is not None else (task.category_names or []),
             remarks=[RemarkEntry(**r) for r in (task.remarks or [])],

@@ -44,6 +44,10 @@ async def login(request: LoginRequest):
             "email": user.email,
             "role": user.role.value,
             "reward_points": user.reward_points,
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
+            "primary_company_id": str(user.primary_company_id) if user.primary_company_id else None,
+            "scope_company_ids": [str(c) for c in (user.scope_company_ids or [])],
+            "business_unit_id": str(user.business_unit_id) if user.business_unit_id else None,
         },
     )
 
@@ -99,7 +103,6 @@ async def get_me(current_user: User = Depends(get_current_user)):
     """Get current authenticated user info."""
     from app.utils.ist_time import to_utc_iso
     return {
-
         "id": str(current_user.id),
         "name": current_user.name,
         "email": current_user.email,
@@ -107,6 +110,10 @@ async def get_me(current_user: User = Depends(get_current_user)):
         "reward_points": current_user.reward_points,
         "is_active": current_user.is_active,
         "created_at": to_utc_iso(current_user.created_at),
+        "tenant_id": str(current_user.tenant_id) if current_user.tenant_id else None,
+        "primary_company_id": str(current_user.primary_company_id) if current_user.primary_company_id else None,
+        "scope_company_ids": [str(c) for c in (current_user.scope_company_ids or [])],
+        "business_unit_id": str(current_user.business_unit_id) if current_user.business_unit_id else None,
     }
 
 

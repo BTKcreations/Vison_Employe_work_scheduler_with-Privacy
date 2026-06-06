@@ -1,9 +1,10 @@
-"""
+﻿"""
 Report routes - CSV and Excel export endpoints.
 """
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from app.auth.dependencies import require_admin, get_current_user
+from app.auth.tenant_scope import require_tenant_id
 from app.services import report_service
 from app.models.user import User
 from typing import Optional
@@ -21,6 +22,7 @@ async def export_tasks_csv(
     end_date: Optional[str] = None,
     timezone: Optional[str] = None,
     admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export task report as CSV (admin only)."""
     csv_data = await report_service.generate_tasks_csv(
@@ -30,6 +32,7 @@ async def export_tasks_csv(
         start_date=start_date,
         end_date=end_date,
         tz_name=timezone,
+        tenant_id=tenant_id,
     )
     return StreamingResponse(
         iter([csv_data]),
@@ -47,6 +50,7 @@ async def export_tasks_excel(
     end_date: Optional[str] = None,
     timezone: Optional[str] = None,
     admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export task report as Excel (admin only)."""
     excel_data = await report_service.generate_tasks_excel(
@@ -56,6 +60,7 @@ async def export_tasks_excel(
         start_date=start_date,
         end_date=end_date,
         tz_name=timezone,
+        tenant_id=tenant_id,
     )
     return StreamingResponse(
         excel_data,
@@ -67,9 +72,10 @@ async def export_tasks_excel(
 @router.get("/employees/excel")
 async def export_employees_excel(
     admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export employee report as Excel (admin only)."""
-    excel_data = await report_service.generate_employees_excel()
+    excel_data = await report_service.generate_employees_excel(tenant_id=tenant_id)
     return StreamingResponse(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -94,6 +100,7 @@ async def export_my_tasks_csv(
         start_date=start_date,
         end_date=end_date,
         tz_name=timezone,
+        tenant_id=current_user.tenant_id,
     )
     return StreamingResponse(
         iter([csv_data]),
@@ -119,6 +126,7 @@ async def export_my_tasks_excel(
         start_date=start_date,
         end_date=end_date,
         tz_name=timezone,
+        tenant_id=current_user.tenant_id,
     )
     return StreamingResponse(
         excel_data,
@@ -140,6 +148,7 @@ async def export_my_attendance_excel(
         start_date=start_date,
         end_date=end_date,
         tz_name=timezone,
+        tenant_id=current_user.tenant_id,
     )
     return StreamingResponse(
         excel_data,
@@ -155,6 +164,7 @@ async def export_attendance_excel_admin(
     end_date: Optional[str] = None,
     timezone: Optional[str] = None,
     admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export attendance report for all or specific employee as Excel (admin only)."""
     excel_data = await report_service.generate_attendance_excel(
@@ -162,6 +172,7 @@ async def export_attendance_excel_admin(
         start_date=start_date,
         end_date=end_date,
         tz_name=timezone,
+        tenant_id=tenant_id,
     )
     return StreamingResponse(
         excel_data,
@@ -173,10 +184,11 @@ async def export_attendance_excel_admin(
 @router.get("/leaves/excel")
 async def export_leaves_excel(
     employee_id: Optional[str] = None,
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export leave requests report as Excel (admin only)."""
-    excel_data = await report_service.generate_leaves_excel(user_id=employee_id)
+    excel_data = await report_service.generate_leaves_excel(user_id=employee_id, tenant_id=tenant_id)
     return StreamingResponse(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -187,10 +199,11 @@ async def export_leaves_excel(
 @router.get("/rewards/excel")
 async def export_rewards_excel(
     employee_id: Optional[str] = None,
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export reward points ledger report as Excel (admin only)."""
-    excel_data = await report_service.generate_reward_ledger_excel(user_id=employee_id)
+    excel_data = await report_service.generate_reward_ledger_excel(user_id=employee_id, tenant_id=tenant_id)
     return StreamingResponse(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -202,10 +215,11 @@ async def export_rewards_excel(
 async def export_audit_excel(
     actor_id: Optional[str] = None,
     entity_type: Optional[str] = None,
-    admin: User = Depends(require_admin)
+    admin: User = Depends(require_admin),
+    tenant_id = Depends(require_tenant_id),
 ):
     """Export audit log events report as Excel (admin only)."""
-    excel_data = await report_service.generate_audit_excel(actor_id=actor_id, entity_type=entity_type)
+    excel_data = await report_service.generate_audit_excel(actor_id=actor_id, entity_type=entity_type, tenant_id=tenant_id)
     return StreamingResponse(
         excel_data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -16,23 +16,23 @@ router = APIRouter(tags=["Holiday Management"])
 class HolidayRequest(BaseModel):
     name: str
     date: datetime
-    company_id: Optional[str] = None
+    tenant_id: Optional[str] = None
 
 class HolidayResponse(BaseModel):
     id: str
     name: str
     date: datetime
-    company_id: Optional[str] = None
+    tenant_id: Optional[str] = None
     created_at: datetime
 
 @router.get("", response_model=List[HolidayResponse])
 async def list_holidays(current_user: User = Depends(get_current_user)):
     """List holidays for the user's company."""
-    # Show global holidays (company_id=None) and company-specific holidays
-    global_holidays = await Holiday.find(Holiday.company_id == None).to_list()
+    # Show global holidays (tenant_id=None) and company-specific holidays
+    global_holidays = await Holiday.find(Holiday.tenant_id == None).to_list()
     company_holidays = []
-    if current_user.company_id:
-        company_holidays = await Holiday.find(Holiday.company_id == current_user.company_id).to_list()
+    if current_user.tenant_id:
+        company_holidays = await Holiday.find(Holiday.tenant_id == current_user.tenant_id).to_list()
     
     holidays = sorted(global_holidays + company_holidays, key=lambda x: x.date)
     
@@ -41,7 +41,7 @@ async def list_holidays(current_user: User = Depends(get_current_user)):
             id=str(h.id),
             name=h.name,
             date=h.date,
-            company_id=str(h.company_id) if h.company_id else None,
+            tenant_id=str(h.tenant_id) if h.tenant_id else None,
             created_at=h.created_at
         ) for h in holidays
     ]
@@ -56,12 +56,12 @@ async def create_holiday(
     if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Unauthorized")
     
-    company_id = PydanticObjectId(req.company_id) if req.company_id else current_user.company_id
+    tenant_id = PydanticObjectId(req.tenant_id) if req.tenant_id else current_user.tenant_id
     
     holiday = Holiday(
         name=req.name,
         date=req.date,
-        company_id=company_id
+        tenant_id=tenant_id
     )
     await holiday.insert()
     
@@ -79,7 +79,7 @@ async def create_holiday(
         id=str(holiday.id),
         name=holiday.name,
         date=holiday.date,
-        company_id=str(holiday.company_id) if holiday.company_id else None,
+        tenant_id=str(holiday.tenant_id) if holiday.tenant_id else None,
         created_at=holiday.created_at
     )
 

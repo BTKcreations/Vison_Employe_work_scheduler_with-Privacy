@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+﻿from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.models.user import User, UserRole
 from app.models.payroll import Payroll, SalaryStructure, PayrollStatus
 from app.models.activity_log import ActivityLog
 from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.auth.dependencies import get_current_user, require_hr_team, require_any_hr_manager, require_admin, require_hr_manager
+from app.auth.tenant_scope import get_active_business_unit_id, require_tenant_id
 from pydantic import BaseModel
 from typing import List, Optional
 from beanie import PydanticObjectId
@@ -41,7 +42,7 @@ class PayrollActionRequest(BaseModel):
 
 
 class RunPayrollRequest(BaseModel):
-    company_id: str
+    tenant_id: str
     month: str  # Format: "YYYY-MM"
     department_id: Optional[str] = None
     employee_id: Optional[str] = None
@@ -54,7 +55,7 @@ async def calculate_corporate_payroll(
     drafted_by_name: Optional[str] = None,
     force: bool = False
 ) -> Payroll:
-    from app.models.company import Company
+    from app.models.tenant import Tenant
     from app.models.attendance import Attendance, IST
     from app.models.holiday import Holiday
     from app.models.leave import Leave, LeaveStatus
@@ -109,24 +110,24 @@ async def calculate_corporate_payroll(
     if not structure:
         raise ValueError(f"Salary structure not configured.")
 
-    # 5. Fetch Company & Holidays
-    company = await Company.get(employee.company_id) if employee.company_id else None
-    if not company:
-        company = await Company.find_one(Company.is_active == True)
+    # 5. Fetch Tenant & Holidays
+    tenant = await Tenant.get(employee.tenant_id) if employee.tenant_id else None
+    if not tenant:
+        tenant = await Tenant.find_one(Tenant.is_active == True)
 
     holidays_list = await Holiday.find(
         Holiday.date >= start_of_month,
         Holiday.date <= end_of_month,
-        Or(Holiday.company_id == employee.company_id, Holiday.company_id == None)
-    ).to_list() if company else []
+        Or(Holiday.tenant_id == employee.tenant_id, Holiday.tenant_id == None)
+    ).to_list() if tenant else []
     holiday_dates = {h.date.astimezone(IST).date() for h in holidays_list}
 
     # 6. Count working days, weekends, holidays in active window
     total_working_days = 0
     holidays_weekends = 0
     
-    # Pre-build lowercase workdays set for dynamic weekend check based on company settings
-    work_days_set = {d.strip().lower() for d in company.work_days} if (company and company.work_days) else None
+    # Pre-build lowercase workdays set for dynamic weekend check based on tenant settings
+    work_days_set = {d.strip().lower() for d in tenant.work_days} if (tenant and tenant.work_days) else None
 
     cur_day = active_start_date
     while cur_day.date() <= active_end_date.date():
@@ -177,7 +178,7 @@ async def calculate_corporate_payroll(
     late_penalties = 0.0
     overtime_pay = 0.0
 
-    max_paid_casual_per_month = getattr(company, "max_paid_casual_leaves_per_month", 1)
+    max_paid_casual_per_month = getattr(tenant, "max_paid_casual_leaves_per_month", 1)
     casual_leaves_counter = 0
 
     cur_day = active_start_date
@@ -279,7 +280,7 @@ async def calculate_corporate_payroll(
     if not existing:
         bonuses = 0.0
         incentives = 0.0
-        if company:
+        if tenant:
             # Calculate regular attendance rate
             earned_attn_pts = 0.0
             cur_day = active_start_date
@@ -294,17 +295,17 @@ async def calculate_corporate_payroll(
                     if log:
                         status_lower = log.status.lower() if log.status else ""
                         if "absent" in status_lower or "absence" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("unexcused", -1.0)
+                            earned_attn_pts += tenant.attendance_points.get("unexcused", -1.0)
                         elif "late_under_30" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("late_under_30", 0.75)
+                            earned_attn_pts += tenant.attendance_points.get("late_under_30", 0.75)
                         elif "late_over_30" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("late_over_30", 0.50)
+                            earned_attn_pts += tenant.attendance_points.get("late_over_30", 0.50)
                         elif "late" in status_lower:
-                            earned_attn_pts += company.attendance_points.get("late", 0.75)
+                            earned_attn_pts += tenant.attendance_points.get("late", 0.75)
                         elif "excused" in status_lower:
                             earned_attn_pts += 1.0
                         else:
-                            earned_attn_pts += company.attendance_points.get("present", 1.0)
+                            earned_attn_pts += tenant.attendance_points.get("present", 1.0)
                     else:
                         if cur_date in leave_type_map:
                             ltype = leave_type_map[cur_date]
@@ -319,8 +320,8 @@ async def calculate_corporate_payroll(
             if total_working_days > 0:
                 attn_rate = (earned_attn_pts / total_working_days) * 100.0
             
-            if attn_rate >= company.attendance_bonus_threshold:
-                bonuses = gross_base * (company.attendance_bonus_percentage / 100.0)
+            if attn_rate >= tenant.attendance_bonus_threshold:
+                bonuses = gross_base * (tenant.attendance_bonus_percentage / 100.0)
             
             # Calculate Performance Incentive
             from app.models.task import Task, TaskStatus
@@ -338,12 +339,12 @@ async def calculate_corporate_payroll(
             
             # Match performance to tier
             tier_pct = 0.0
-            for tier in company.incentive_tiers:
+            for tier in tenant.incentive_tiers:
                 if tier["min_performance"] <= perf_score <= tier["max_performance"]:
                     tier_pct = tier["pool_percentage"]
                     break
             
-            incentives = gross_base * (tier_pct / 100.0) * (company.performance_incentive_pool_percentage / 100.0)
+            incentives = gross_base * (tier_pct / 100.0) * (tenant.performance_incentive_pool_percentage / 100.0)
                 
             # Backlog penalty (> 5 overdue tasks)
             overdue_count = await Task.find(
@@ -558,14 +559,16 @@ async def create_payroll_draft(
 @router.post("/run", response_model=dict)
 async def run_payroll_engine(
     request: RunPayrollRequest,
-    hr_user: User = Depends(require_hr_team)
+    hr_user: User = Depends(require_hr_team),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """Run payroll processing for matching scope (Company, Department, Employee)."""
+    """Run payroll processing for matching scope (Tenant, Department, Employee). When a
+    business unit is active, only employees within that unit are processed."""
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(hr_user)
-    
+
     query = {
-        "company_id": PydanticObjectId(request.company_id),
+        "tenant_id": PydanticObjectId(request.tenant_id),
         "is_deleted": {"$ne": True}
     }
     if request.department_id:
@@ -579,7 +582,9 @@ async def run_payroll_engine(
             query["department"] = request.department_id
     if request.employee_id:
         query["_id"] = PydanticObjectId(request.employee_id)
-        
+    if active_bu_id is not None:
+        query["business_unit_id"] = active_bu_id
+
     employees = await User.find(query).to_list()
     
     total_processed = 0
@@ -705,23 +710,28 @@ async def mark_payroll_paid(
 @router.get("/summary", response_model=dict)
 async def get_payroll_summary(
     month: str,
-    company_id: str,
-    user: User = Depends(require_hr_team)
+    tenant_id: str,
+    user: User = Depends(require_hr_team),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """Get payroll stats summary for management dashboard."""
+    """Get payroll stats summary for management dashboard. When a business unit is
+    active, only payrolls belonging to that unit are aggregated."""
     from app.routes.employees import get_visible_employee_ids
+    cid = require_tenant_id(user)
     visible_ids = await get_visible_employee_ids(user)
-    
-    query_conditions = [Payroll.month == month]
-    
+
+    query_conditions = [Payroll.month == month, Payroll.tenant_id == cid]
+
     if visible_ids is not None:
         query_conditions.append(In(Payroll.user_id, list(visible_ids)))
-        
+    if active_bu_id is not None:
+        query_conditions.append(Payroll.business_unit_id == active_bu_id)
+
     payrolls = await Payroll.find(*query_conditions).to_list()
-    
+
     total_payout = sum(p.net_salary for p in payrolls)
     total_processed = len(payrolls)
-    
+
     status_counts = {
         "draft": 0,
         "under_review": 0,
@@ -733,7 +743,7 @@ async def get_payroll_summary(
         val = p.status.value
         if val in status_counts:
             status_counts[val] += 1
-            
+
     # Monthly Payout Trend (last 6 months)
     trend = []
     try:
@@ -750,16 +760,18 @@ async def get_payroll_summary(
             m_num += 12
             y_num -= 1
         m_str = f"{y_num}-{m_num:02d}"
-        
-        sub_conds = [Payroll.month == m_str]
+
+        sub_conds = [Payroll.month == m_str, Payroll.tenant_id == cid]
         if visible_ids is not None:
             sub_conds.append(In(Payroll.user_id, list(visible_ids)))
+        if active_bu_id is not None:
+            sub_conds.append(Payroll.business_unit_id == active_bu_id)
         sub_payrolls = await Payroll.find(*sub_conds).to_list()
         trend.append({
             "month": m_str,
             "payout": sum(p.net_salary for p in sub_payrolls)
         })
-        
+
     return {
         "total_payout": total_payout,
         "total_processed": total_processed,
@@ -769,17 +781,23 @@ async def get_payroll_summary(
 
 
 @router.get("/pending", response_model=List[dict])
-async def get_pending_payrolls(user: User = Depends(require_hr_team)):
-    """List payroll runs. Filters by hierarchy for non-Admin roles."""
+async def get_pending_payrolls(
+    user: User = Depends(require_hr_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """List payroll runs. Filters by hierarchy for non-Admin roles. When a business
+    unit is active, only payrolls belonging to that unit are returned."""
     from app.routes.employees import get_visible_employee_ids
+    cid = require_tenant_id(user)
 
     visible_ids = await get_visible_employee_ids(user)
+    conditions = [Payroll.tenant_id == cid]
     if visible_ids is not None:
-        payrolls = await Payroll.find(
-            In(Payroll.user_id, list(visible_ids))
-        ).sort("-month").to_list()
-    else:
-        payrolls = await Payroll.find_all().sort("-month").to_list()
+        conditions.append(In(Payroll.user_id, list(visible_ids)))
+    if active_bu_id is not None:
+        conditions.append(Payroll.business_unit_id == active_bu_id)
+
+    payrolls = await Payroll.find(*conditions).sort("-month").to_list()
 
     return [
         {

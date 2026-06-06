@@ -4,6 +4,7 @@ AI Routes - Endpoints for AI Workforce Intelligence.
 from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from fastapi.responses import StreamingResponse, HTMLResponse
 from app.auth.dependencies import get_current_user, require_management_team
+from app.auth.tenant_scope import get_active_business_unit_id
 from app.models.user import User, UserRole
 from app.services import ai_service
 from typing import Optional, Dict, Any
@@ -17,81 +18,88 @@ router = APIRouter(prefix="/ai", tags=["AI Intelligence"])
 
 @router.get("/dashboard-summary")
 async def get_dashboard_summary(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Get customized role-based AI dashboard summary, recommendations, and operational alerts."""
-    return await ai_service.generate_ai_dashboard_summary(current_user)
+    return await ai_service.get_dashboard_intelligence_summary(current_user, business_unit_id=active_bu_id)
 
 
 @router.get("/task-intelligence")
 async def get_task_intelligence(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Retrieve AI-driven predictions on task completion risk, overloaded assignees, and allocation suggestions."""
     scope = await ai_service.get_employee_ids_in_scope(current_user)
-    return await ai_service.run_task_analysis(scope)
+    return await ai_service.run_task_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
 
 
 @router.get("/performance-intelligence")
 async def get_performance_intelligence(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Retrieve AI-powered employees productivity index, work consistency rating, and burnout warning states."""
     scope = await ai_service.get_employee_ids_in_scope(current_user)
-    return await ai_service.run_performance_analysis(scope)
+    return await ai_service.run_performance_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
 
 
 @router.get("/payroll-intelligence")
 async def get_payroll_intelligence(
-    current_user: User = Depends(require_management_team)
+    current_user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Scan and retrieve payroll outliers, overtime spikes, and deduction variance alerts (Management only)."""
     scope = await ai_service.get_employee_ids_in_scope(current_user)
-    return await ai_service.run_payroll_analysis(scope)
+    return await ai_service.run_payroll_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
 
 
 @router.get("/attendance-intelligence")
 async def get_attendance_intelligence(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Evaluate attendance log logs to predict absenteeism risks and late check-in login trends."""
     scope = await ai_service.get_employee_ids_in_scope(current_user)
-    return await ai_service.run_attendance_analysis(scope)
+    return await ai_service.run_attendance_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
 
 
 @router.post("/assistant")
 async def ask_ai_assistant(
     payload: Dict[str, str] = Body(...),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """In-app chat copilot accepting natural queries and returning permission-safe data insights."""
     message = payload.get("message", "")
     if not message.strip():
         raise HTTPException(status_code=400, detail="Message content cannot be empty.")
-    return await ai_service.run_ai_copilot_assistant(message, current_user)
+    return await ai_service.run_ai_copilot_assistant(message, current_user, business_unit_id=active_bu_id)
 
 
 @router.get("/reports/export")
 async def export_ai_report(
     report_type: str = Query("productivity", regex="^(productivity|payroll|team_performance|attendance|executive)$"),
     report_format: str = Query("excel", regex="^(excel|html)$"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Generates and downloads reports (Excel sheet or styled print-ready HTML page) enriched with AI insights."""
     scope = await ai_service.get_employee_ids_in_scope(current_user)
-    
+
     # Restrict payroll to Admin/HR/Manager
     if report_type == "payroll" and current_user.role not in [UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.MANAGER]:
         raise HTTPException(status_code=403, detail="Unauthorized role access to payroll reports.")
 
     # 1. Fetch AI operational summary context
-    task_intel = await ai_service.run_task_analysis(scope)
-    perf_intel = await ai_service.run_performance_analysis(scope)
-    attendance_intel = await ai_service.run_attendance_analysis(scope)
-    
+    task_intel = await ai_service.run_task_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
+    perf_intel = await ai_service.run_performance_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
+    attendance_intel = await ai_service.run_attendance_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
+
     payroll_intel = {"alerts": []}
     if current_user.role in [UserRole.ADMIN, UserRole.HR_MANAGER]:
-        payroll_intel = await ai_service.run_payroll_analysis(scope)
+        payroll_intel = await ai_service.run_payroll_analysis(scope, current_user.tenant_id, business_unit_id=active_bu_id)
 
     # 2. Build Content based on format
     if report_format == "excel":

@@ -8,6 +8,7 @@ from app.models.user import User, UserRole
 from app.auth.password import hash_password
 from app.models.task import Task
 from app.models.activity_log import ActivityLog
+from app.models.tenant import Tenant
 from app.models.company import Company
 from app.models.attendance import Attendance
 from app.models.holiday import Holiday
@@ -27,6 +28,9 @@ from app.models.policy import PolicyVersion, ApprovalPolicy
 from app.models.employee import Employee
 from app.models.ledger import LeaveLedgerEntry, RewardLedgerEntry
 from app.models.notification_engine import NotificationTemplate, NotificationPreference, NotificationDeliveryLog
+from app.models.subscription_plan import SubscriptionPlan
+from app.models.platform_audit_log import PlatformAuditLog
+from app.models.business_unit import BusinessUnit
 
 
 async def auto_seed_if_needed():
@@ -40,7 +44,7 @@ async def auto_seed_if_needed():
         # Seed admin user
         admin_user = User(
             name="System Admin",
-            email="admin@company.com",
+            email="admin@tenant.com",
             password_hash=hash_password("Admin@123"),
             role=UserRole.ADMIN,
         )
@@ -53,7 +57,7 @@ async def auto_seed_if_needed():
             role=UserRole.EMPLOYEE,
         )
         await employee_user.insert()
-        print(f"[OK] Seeded default users: admin@company.com ({UserRole.ADMIN}), nishitha@vision.com ({UserRole.EMPLOYEE})")
+        print(f"[OK] Seeded default users: admin@tenant.com ({UserRole.ADMIN}), nishitha@vision.com ({UserRole.EMPLOYEE})")
     except Exception as e:
         print(f"[WARNING] Automatic database seeding failed: {str(e)}")
 
@@ -71,17 +75,19 @@ async def init_db():
         await init_beanie(
             database=database,
             document_models=[
-                User, Task, ActivityLog, Company, Attendance, Holiday, 
-                RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
-                AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
+                User, Task, ActivityLog, Tenant, Company, Attendance, Holiday,
+                RecurrenceRule, Notification, Category, Leave, LeaveBalance,
+                AttendanceRegularization,                 SalaryStructure, Payroll, PayrollHistory,
                 ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact,
                 PolicyVersion, ApprovalPolicy, Employee, LeaveLedgerEntry, RewardLedgerEntry,
-                NotificationTemplate, NotificationPreference, NotificationDeliveryLog
+                NotificationTemplate, NotificationPreference, NotificationDeliveryLog,
+                SubscriptionPlan, PlatformAuditLog, BusinessUnit
             ]
         )
         print(f"[OK] Connected to MongoDB: {settings.DATABASE_NAME}")
         if settings.AUTO_SEED_DEFAULT_USERS:
             await auto_seed_if_needed()
+        await _seed_default_subscription_plans()
     except Exception as e:
         print(f"[WARNING] Failed to connect to MongoDB: {str(e)}")
         if not settings.ALLOW_IN_MEMORY_DB_FALLBACK:
@@ -102,18 +108,95 @@ async def init_db():
             await init_beanie(
                 database=mock_database,
                 document_models=[
-                    User, Task, ActivityLog, Company, Attendance, Holiday, 
-                    RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
-                    AttendanceRegularization, SalaryStructure, Payroll, PayrollHistory,
+                    User, Task, ActivityLog, Tenant, Company, Attendance, Holiday,
+                    RecurrenceRule, Notification, Category, Leave, LeaveBalance,
+                    AttendanceRegularization,                     SalaryStructure, Payroll, PayrollHistory,
                     ChatGroup, ChatMessage, CachedAIInsight, AuditEvent, PayrollRecalculationImpact,
                     PolicyVersion, ApprovalPolicy, Employee, LeaveLedgerEntry, RewardLedgerEntry,
-                    NotificationTemplate, NotificationPreference, NotificationDeliveryLog
+                    NotificationTemplate, NotificationPreference, NotificationDeliveryLog,
+                    SubscriptionPlan, PlatformAuditLog, BusinessUnit
                 ]
             )
             print(f"[OK] Connected to mock in-memory MongoDB: {settings.DATABASE_NAME}")
-            
+
             if settings.AUTO_SEED_DEFAULT_USERS:
                 await auto_seed_if_needed()
+            await _seed_default_subscription_plans()
         except Exception as mock_e:
             print(f"[ERROR] Failed to connect to mock MongoDB: {str(mock_e)}")
             raise e
+
+
+DEFAULT_PLANS = [
+    {
+        "name": "Trial",
+        "code": "trial",
+        "description": "14-day evaluation. All features unlocked for one tenant.",
+        "price_monthly": 0.0,
+        "price_yearly": 0.0,
+        "currency": "INR",
+        "max_employees": 10,
+        "max_admins": 2,
+        "storage_gb": 1.0,
+        "trial_days": 14,
+        "is_active": True,
+        "is_default": False,
+        "feature_flags": ["core", "attendance", "tasks", "reports"],
+        "sort_order": 0,
+    },
+    {
+        "name": "Starter",
+        "code": "starter",
+        "description": "For small teams getting started with TaskReward.",
+        "price_monthly": 999.0,
+        "price_yearly": 9999.0,
+        "currency": "INR",
+        "max_employees": 25,
+        "max_admins": 3,
+        "storage_gb": 5.0,
+        "trial_days": 14,
+        "is_active": True,
+        "is_default": True,
+        "feature_flags": ["core", "attendance", "tasks", "reports", "leave", "regularization"],
+        "sort_order": 1,
+    },
+    {
+        "name": "Pro",
+        "code": "pro",
+        "description": "Full feature set including AI assistant and payroll engine.",
+        "price_monthly": 2499.0,
+        "price_yearly": 24999.0,
+        "currency": "INR",
+        "max_employees": 200,
+        "max_admins": 10,
+        "storage_gb": 50.0,
+        "trial_days": 14,
+        "is_active": True,
+        "is_default": False,
+        "feature_flags": [
+            "core",
+            "attendance",
+            "tasks",
+            "reports",
+            "leave",
+            "regularization",
+            "payroll",
+            "ai_assistant",
+            "chat",
+        ],
+        "sort_order": 2,
+    },
+]
+
+
+async def _seed_default_subscription_plans():
+    """Insert the default plans if none exist yet."""
+    try:
+        existing = await SubscriptionPlan.count()
+        if existing > 0:
+            return
+        for plan in DEFAULT_PLANS:
+            await SubscriptionPlan(**plan).insert()
+        print(f"[OK] Seeded {len(DEFAULT_PLANS)} default subscription plans")
+    except Exception as e:
+        print(f"[WARNING] Failed to seed default subscription plans: {e}")

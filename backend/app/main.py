@@ -11,12 +11,12 @@ from app.database.connection import init_db
 
 
 
-from app.routes import auth, employees, tasks, dashboard, reports, companies, attendance, search, holidays, notifications, categories, leaves, regularization, payroll, chat, ai, simulation
+from app.routes import auth, employees, tasks, dashboard, reports, attendance, search, holidays, notifications, categories, leaves, regularization, payroll, chat, ai, simulation, platform, business_units, companies, tenants
 
 
 import asyncio
 from app.services import recurrence_service
-from app.middleware import exception_handler_middleware
+from app.middleware import exception_handler_middleware, tenant_status_middleware
 
 
 def validate_runtime_security_settings():
@@ -30,10 +30,21 @@ def validate_runtime_security_settings():
     if settings.ALLOW_PUBLIC_REGISTRATION:
         raise RuntimeError("ALLOW_PUBLIC_REGISTRATION must be disabled in production.")
 
+
+async def ensure_platform_owner_exists():
+    """Warn loudly if the platform has no owner account configured."""
+    from app.models.user import User, UserRole
+    count = await User.find(User.role == UserRole.PLATFORM_OWNER).count()
+    if count == 0:
+        print(
+            "[WARNING] No platform owner account found. "
+            "Run: python seed_platform_owner.py --email owner@vision.app --password '<strong>' --name 'Owner'"
+        )
+
 async def auto_checkout_stale_sessions():
     """Auto-close attendance sessions that are still open past work hours."""
     from app.models.attendance import Attendance, ist_now
-    from app.models.company import Company
+    from app.models.tenant import Tenant
     from datetime import datetime, timedelta
     import logging
     _logger = logging.getLogger(__name__)
@@ -43,13 +54,13 @@ async def auto_checkout_stale_sessions():
         open_sessions = await Attendance.find(Attendance.check_out == None).to_list()
         
         for session in open_sessions:
-            company = await Company.get(session.company_id)
-            if not company or not company.auto_checkout_enabled:
+            tenant = await Tenant.get(session.tenant_id)
+            if not tenant or not tenant.auto_checkout_enabled:
                 continue
             
             # Parse work_end_time robustly
             try:
-                wt = company.work_end_time.strip().upper()
+                wt = tenant.work_end_time.strip().upper()
                 is_pm = "PM" in wt
                 wt_clean = wt.replace("AM", "").replace("PM", "").strip()
                 end_parts = wt_clean.split(":")
@@ -108,11 +119,13 @@ async def lifespan(app: FastAPI):
     """Application lifespan - initialize DB and background tasks."""
     validate_runtime_security_settings()
     await init_db()
-    
+
     # Seed default templates
     from app.services.notification_engine_service import NotificationEngineService
     await NotificationEngineService.seed_templates()
-    
+
+    await ensure_platform_owner_exists()
+
     bg_task = asyncio.create_task(run_periodic_tasks())
     yield
     bg_task.cancel()
@@ -134,6 +147,7 @@ app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Register custom exception handler
 app.middleware("http")(exception_handler_middleware)
+app.middleware("http")(tenant_status_middleware)
 
 # CORS middleware
 app.add_middleware(
@@ -150,7 +164,6 @@ app.include_router(employees.router)
 app.include_router(tasks.router)
 app.include_router(dashboard.router)
 app.include_router(reports.router)
-app.include_router(companies.router)
 app.include_router(attendance.router, prefix="/attendance", tags=["Attendance"])
 app.include_router(holidays.router, prefix="/holidays", tags=["Holiday Management"])
 app.include_router(search.router)
@@ -162,6 +175,10 @@ app.include_router(payroll.router)
 app.include_router(chat.router)
 app.include_router(ai.router)
 app.include_router(simulation.router)
+app.include_router(platform.router)
+app.include_router(tenants.router)
+app.include_router(companies.router)
+app.include_router(business_units.router)
 
 
 

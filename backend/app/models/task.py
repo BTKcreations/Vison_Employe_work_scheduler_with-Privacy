@@ -48,7 +48,9 @@ class Task(Document):
     reward_given: bool = False
     reward_points: float = 0.0
     quality_multiplier: float = 1.0
-    company_id: Optional[PydanticObjectId] = None
+    tenant_id: Optional[PydanticObjectId] = None
+    business_unit_id: Optional[PydanticObjectId] = None
+    business_unit_name: Optional[str] = None
     company_name: Optional[str] = None
     category_ids: List[PydanticObjectId] = Field(default_factory=list)
     category_names: List[str] = Field(default_factory=list)
@@ -59,7 +61,7 @@ class Task(Document):
 
     class Settings:
         name = "tasks"
-        indexes = ["assigned_to", "created_by", "status", "deadline", "company_id"]
+        indexes = ["assigned_to", "created_by", "status", "deadline", "tenant_id", "business_unit_id", ("tenant_id", "status")]
 
     class Config:
         json_schema_extra = {

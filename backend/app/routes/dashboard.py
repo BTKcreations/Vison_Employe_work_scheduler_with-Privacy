@@ -3,6 +3,7 @@ Dashboard routes - analytics data for admin and employee dashboards.
 """
 from fastapi import APIRouter, Depends
 from app.auth.dependencies import get_current_user, require_management_team
+from app.auth.tenant_scope import get_active_business_unit_id
 from app.services import dashboard_service
 from app.models.user import User
 
@@ -16,10 +17,17 @@ async def admin_dashboard(
     filter_type: str = "month",
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    admin: User = Depends(require_management_team)
+    admin: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
     """Get admin dashboard analytics data with date filters."""
-    return await dashboard_service.get_admin_dashboard(admin, filter_type, start_date, end_date)
+    return await dashboard_service.get_admin_dashboard(
+        admin,
+        filter_type,
+        start_date,
+        end_date,
+        business_unit_id=active_bu_id,
+    )
 
 
 @router.get("/employee")

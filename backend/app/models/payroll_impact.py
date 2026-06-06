@@ -10,6 +10,7 @@ class ImpactStatus(str, Enum):
 
 class PayrollRecalculationImpact(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     employee_name: str
     month: str  # Format: YYYY-MM
 
@@ -23,4 +24,4 @@ class PayrollRecalculationImpact(Document):
 
     class Settings:
         name = "payroll_recalculation_impacts"
-        indexes = ["user_id", "month", "status", "trigger_timestamp"]
+        indexes = ["user_id", "tenant_id", "month", "status", "trigger_timestamp"]

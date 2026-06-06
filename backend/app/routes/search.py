@@ -11,6 +11,7 @@ async def search(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Global search endpoint.
+    Global search endpoint. Always scoped to the caller's company.
+    Platform owners see all tenants (tenant_id=None).
     """
-    return await global_search(q)
+    return await global_search(q, tenant_id=current_user.tenant_id)

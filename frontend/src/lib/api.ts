@@ -9,13 +9,29 @@ const api = axios.create({
   },
 });
 
-// Request interceptor - attach JWT token
+// Request interceptor - attach JWT token and active business unit header
 api.interceptors.request.use(
   (config) => {
     if (typeof window !== 'undefined') {
       const token = localStorage.getItem('access_token');
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
+      }
+      const activeBuId = localStorage.getItem('active_business_unit_id');
+      if (activeBuId) {
+        config.headers['X-Active-Business-Unit-Id'] = activeBuId;
+      } else {
+        if (config.headers && 'X-Active-Business-Unit-Id' in config.headers) {
+          delete (config.headers as Record<string, unknown>)['X-Active-Business-Unit-Id'];
+        }
+      }
+      const activeCompanyId = localStorage.getItem('active_company_id');
+      if (activeCompanyId) {
+        config.headers['X-Active-Company-Id'] = activeCompanyId;
+      } else {
+        if (config.headers && 'X-Active-Company-Id' in config.headers) {
+          delete (config.headers as Record<string, unknown>)['X-Active-Company-Id'];
+        }
       }
     }
     return config;

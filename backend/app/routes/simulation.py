@@ -3,7 +3,7 @@ Simulation routes - seeds the 5 corporate employees and triggers the automated p
 """
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.user import User, UserRole
-from app.models.company import Company
+from app.models.tenant import Tenant
 from app.models.task import Task, TaskStatus, TaskPriority, TaskType
 from app.models.attendance import Attendance
 from app.models.payroll import Payroll, SalaryStructure, PayrollStatus
@@ -33,12 +33,12 @@ async def seed_simulation_data(admin: User = Depends(require_admin)):
         await SalaryStructure.find({"user_id": {"$in": sim_user_ids}}).delete()
         await User.find({"_id": {"$in": sim_user_ids}}).delete()
 
-    # 2. Get or create Company
-    company = await Company.find_one(Company.name == "TaskReward Corp")
-    if not company:
-        company = Company(
+    # 2. Get or create Tenant
+    tenant = await Tenant.find_one(Tenant.name == "TaskReward Corp")
+    if not tenant:
+        tenant = Tenant(
             name="TaskReward Corp",
-            description="Corporate simulation company for task reward & payroll tracking",
+            description="Corporate simulation tenant for task reward & payroll tracking",
             work_days=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
             work_start_time="09:30 AM",
             work_end_time="06:30 PM",
@@ -52,7 +52,7 @@ async def seed_simulation_data(admin: User = Depends(require_admin)):
             attendance_bonus_percentage=5.0,
             performance_incentive_pool_percentage=25.0
         )
-        await company.insert()
+        await tenant.insert()
 
     # 3. Create Users
     # Password hash for default 'password123'
@@ -73,7 +73,7 @@ async def seed_simulation_data(admin: User = Depends(require_admin)):
             email=ud["email"],
             password_hash=pw_hash,
             role=ud["role"],
-            company_id=company.id,
+            tenant_id=tenant.id,
             reward_points=ud["points"],
             hiring_date="2026-05-01",
             is_active=True
@@ -118,45 +118,45 @@ async def seed_simulation_data(admin: User = Depends(require_admin)):
             # 20 present days, 5 overtime on weekdays
             for i in range(16):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
             for i in range(16, 21):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 21, 0), status="approved_overtime", remarks="Approved Overtime shift"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 21, 0), status="approved_overtime", remarks="Approved Overtime shift"))
         elif name == "Mounika":
             # 20 present days -> all 21 weekdays present
             for i in range(21):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
         elif name == "Nishitha":
             # 19 present, 1 excused leave day -> 20 present, 1 excused leave weekday
             for i in range(20):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
             d = weekdays_days[20]
-            logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="excused_leave", remarks="Excused Leave Day"))
+            logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="excused_leave", remarks="Excused Leave Day"))
         elif name == "Umesh":
             # 15 present, 5 late (>30 min) -> 16 present, 5 late weekdays
             for i in range(16):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
             for i in range(16, 21):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 10, 15), check_out=datetime(2026, 5, d, 18, 0), status="late_over_30", remarks="Late check-in > 30 mins"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 10, 15), check_out=datetime(2026, 5, d, 18, 0), status="late_over_30", remarks="Late check-in > 30 mins"))
         elif name == "Shiva":
             # 18 present, 1 late (<30 min), 1 unexcused absence, 2 overtime
             for i in range(17):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="present"))
             # 1 day late under 30 min
             d = weekdays_days[17]
-            logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 15), check_out=datetime(2026, 5, d, 18, 0), status="late_under_30", remarks="Late check-in < 30 mins"))
+            logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 15), check_out=datetime(2026, 5, d, 18, 0), status="late_under_30", remarks="Late check-in < 30 mins"))
             # 2 Overtime shifts
             for i in range(18, 20):
                 d = weekdays_days[i]
-                logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 21, 0), status="approved_overtime", remarks="Approved Overtime shift"))
+                logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 21, 0), status="approved_overtime", remarks="Approved Overtime shift"))
             # 1 unexcused absence
             d = weekdays_days[20]
-            logs.append(Attendance(user_id=user.id, company_id=company.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="unexcused_absence", remarks="Unexcused Absence"))
+            logs.append(Attendance(user_id=user.id, tenant_id=tenant.id, check_in=datetime(2026, 5, d, 9, 0), check_out=datetime(2026, 5, d, 18, 0), status="unexcused_absence", remarks="Unexcused Absence"))
 
         for l in logs:
             await l.insert()
@@ -178,8 +178,8 @@ async def seed_simulation_data(admin: User = Depends(require_admin)):
             completed_at=base_date + timedelta(days=14),
             reward_given=True,
             reward_points=points,
-            company_id=company.id,
-            company_name=company.name,
+            tenant_id=tenant.id,
+            tenant_name=tenant.name,
             status=TaskStatus.COMPLETED
         )
         await t_comp.insert()
@@ -198,8 +198,8 @@ async def seed_simulation_data(admin: User = Depends(require_admin)):
                     task_type=TaskType.ASSIGNED,
                     deadline=datetime(2026, 4, 1) + timedelta(days=b),
                     status=TaskStatus.OVERDUE,
-                    company_id=company.id,
-                    company_name=company.name
+                    tenant_id=tenant.id,
+                    tenant_name=tenant.name
                 )
                 await t_back.insert()
 

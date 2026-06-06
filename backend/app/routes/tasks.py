@@ -5,8 +5,9 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query, Request
 from app.schemas.task import CreateTaskRequest, UpdateTaskRequest, TaskResponse
 from app.services import task_service
 from app.auth.dependencies import get_current_user
+from app.auth.tenant_scope import get_active_business_unit_id, require_tenant_id
 from app.models.user import User, UserRole
-from app.models.company import Company
+from app.models.tenant import Tenant
 from beanie import PydanticObjectId
 from beanie.operators import In, Or
 from typing import List, Optional
@@ -17,12 +18,12 @@ from app.services.notification_service import NotificationService
 router = APIRouter(prefix="/tasks", tags=["Task Management"])
 
 
-async def _resolve_company_name(company_id) -> Optional[str]:
-    """Resolve company name from company_id."""
-    if not company_id:
+async def _resolve_company_name(tenant_id) -> Optional[str]:
+    """Resolve tenant name from tenant_id."""
+    if not tenant_id:
         return None
-    company = await Company.get(company_id)
-    return company.name if company else None
+    tenant = await Tenant.get(tenant_id)
+    return tenant.name if tenant else None
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -30,8 +31,11 @@ async def create_task(
     request: CreateTaskRequest,
     http_request: Request,
     current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """Create a new task. Supports multiple assignees, multiple companies, and recurrence."""
+    """Create a new task. Supports multiple assignees, multiple tenants, and recurrence.
+    The task is stamped with the active business unit (or the assignee's, or the
+    creator's) so the task is visible only inside the matching unit context."""
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(current_user)
     
@@ -81,20 +85,21 @@ async def create_task(
     if not target_employees:
         target_employees = [current_user]
 
-    # 2. Determine target companies
-    target_companies = []
+    # 2. Determine target tenants
+    target_tenants = []
     if request.company_id_list:
-        target_companies = [PydanticObjectId(cid) for cid in request.company_id_list]
-    elif request.company_id:
-        target_companies = [PydanticObjectId(request.company_id)]
+        target_tenants = [PydanticObjectId(cid) for cid in request.company_id_list]
+    elif request.tenant_id:
+        target_tenants = [PydanticObjectId(request.tenant_id)]
     else:
-        target_companies = [None]
+        target_tenants = [None]
 
     # 3. Create initial task instances first
     last_task = None
     created_tasks = []
-    for cid in target_companies:
+    for cid in target_tenants:
         for emp in target_employees:
+            resolved_bu = active_bu_id or emp.business_unit_id or current_user.business_unit_id
             task_instance = await task_service.create_task(
                 work_description=request.work_description,
                 assigned_to=str(emp.id),
@@ -102,9 +107,10 @@ async def create_task(
                 priority=request.priority,
                 deadline=request.deadline,
                 task_type="assigned" if emp.id != current_user.id else "personal",
-                company_id=str(cid) if cid else None,
+                tenant_id=str(cid) if cid else None,
                 recurring_task_id=None,
                 category_ids=request.category_ids,
+                business_unit_id=resolved_bu,
             )
             created_tasks.append(task_instance)
             last_task = task_instance
@@ -145,7 +151,7 @@ async def create_task(
             work_description=request.work_description,
             priority=TaskPriority(request.priority),
             assigned_to_list=[emp.id for emp in target_employees],
-            company_ids=[cid for cid in target_companies if cid is not None],
+            company_ids=[cid for cid in target_tenants if cid is not None],
             category_ids=[PydanticObjectId(cid) for cid in request.category_ids] if request.category_ids else [],
             recurrence_type=RecurrenceType(request.recurrence.type),
             interval=request.recurrence.interval,
@@ -196,7 +202,7 @@ async def create_task(
     # Resolve names for response (using the last created task)
     assigned_user = await User.get(last_task.assigned_to)
     creator = await User.get(last_task.created_by)
-    company_name = await _resolve_company_name(last_task.company_id)
+    tenant_name = await _resolve_company_name(last_task.tenant_id)
 
     # Resolve categories
     cat_names = []
@@ -209,7 +215,7 @@ async def create_task(
         last_task,
         assigned_name=assigned_user.name if assigned_user else None,
         creator_name=creator.name if creator else None,
-        company_name=company_name,
+        tenant_name=tenant_name,
         category_names=cat_names,
     )
 
@@ -221,11 +227,14 @@ async def list_tasks(
     employee_id: Optional[str] = None,
     all_tasks: bool = Query(False, description="Admins can set this to True to see all tasks"),
     current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
 ):
-    """Get tasks. Admins see all; managers/employees see according to hierarchy."""
+    """Get tasks. Admins see all; managers/employees see according to hierarchy.
+    When a business unit is active, the result is narrowed to that unit only."""
     from app.routes.employees import get_visible_employee_ids
 
     visible_ids = await get_visible_employee_ids(current_user)
+    tenant_cid = require_tenant_id(current_user)
 
     # 1. If employee_id is requested, verify permission
     if employee_id:
@@ -241,6 +250,8 @@ async def list_tasks(
             status=status_filter,
             priority=priority,
             is_admin=True,
+            tenant_id=tenant_cid,
+            business_unit_id=active_bu_id,
         )
     else:
         # No employee_id filter.
@@ -256,6 +267,8 @@ async def list_tasks(
                 status=status_filter,
                 priority=priority,
                 is_admin=True,
+                tenant_id=tenant_cid,
+                business_unit_id=active_bu_id,
             )
         elif current_user.role in [UserRole.MANAGER, UserRole.ASSISTANT_MANAGER] and all_tasks:
             # Optimized: Push hierarchy and ownership filtering to the database level
@@ -265,6 +278,8 @@ async def list_tasks(
                 status=status_filter,
                 priority=priority,
                 is_admin=False, # We use explicit user_ids/created_by instead of admin override
+                tenant_id=tenant_cid,
+                business_unit_id=active_bu_id,
             )
         else:
             # HR_MANAGER, ASSISTANT_HR_MANAGER, and EMPLOYEE all see only
@@ -274,18 +289,20 @@ async def list_tasks(
                 status=status_filter,
                 priority=priority,
                 is_admin=False,
+                tenant_id=tenant_cid,
+                business_unit_id=active_bu_id,
             )
 
     # Batch resolve related entity names
     user_ids = set()
-    company_ids = set()
+    tenant_ids = set()
     category_ids_set = set()
-    
+
     for task in tasks:
         user_ids.add(task.assigned_to)
         user_ids.add(task.created_by)
-        if task.company_id:
-            company_ids.add(task.company_id)
+        if task.tenant_id:
+            tenant_ids.add(task.tenant_id)
         for cid in (task.category_ids or []):
             category_ids_set.add(cid)
 
@@ -293,7 +310,7 @@ async def list_tasks(
     import asyncio
     users_data, companies_data, categories_data = await asyncio.gather(
         User.find({"_id": {"$in": list(user_ids)}}).to_list(),
-        Company.find({"_id": {"$in": list(company_ids)}}).to_list(),
+        Tenant.find({"_id": {"$in": list(tenant_ids)}}).to_list(),
         Category.find({"_id": {"$in": list(category_ids_set)}}).to_list()
     )
 
@@ -310,7 +327,7 @@ async def list_tasks(
             task,
             assigned_name=user_map.get(task.assigned_to, "Unknown"),
             creator_name=user_map.get(task.created_by, "Unknown"),
-            company_name=company_map.get(task.company_id) if task.company_id else None,
+            tenant_name=company_map.get(task.tenant_id) if task.tenant_id else None,
             category_names=cat_names,
         ))
 
@@ -375,7 +392,7 @@ async def update_task(
             deadline=request.deadline,
             remarks=request.remarks,
             category_ids=request.category_ids,
-            company_id=request.company_id,
+            tenant_id=request.tenant_id,
             assigned_to=request.assigned_to,
             quality_multiplier=request.quality_multiplier,
         )
@@ -420,7 +437,7 @@ async def update_task(
 
     assigned_user = await User.get(task.assigned_to)
     creator = await User.get(task.created_by)
-    company_name = await _resolve_company_name(task.company_id)
+    tenant_name = await _resolve_company_name(task.tenant_id)
 
     cat_names = []
     for cid in (task.category_ids or []):
@@ -432,7 +449,7 @@ async def update_task(
         task,
         assigned_name=assigned_user.name if assigned_user else None,
         creator_name=creator.name if creator else None,
-        company_name=company_name,
+        tenant_name=tenant_name,
         category_names=cat_names,
     )
 

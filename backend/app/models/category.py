@@ -1,13 +1,15 @@
 """
 Category model for MongoDB categories collection.
 """
-from beanie import Document
+from beanie import Document, PydanticObjectId
 from pydantic import Field
 from datetime import datetime
 from typing import Optional
 
 
 class Category(Document):
+    tenant_id: Optional[PydanticObjectId] = None
+    business_unit_id: Optional[PydanticObjectId] = None
     name: str = Field(..., min_length=1, max_length=100)
     color: str = Field(default="#6366f1")  # Default indigo color
     is_active: bool = True
@@ -16,7 +18,7 @@ class Category(Document):
 
     class Settings:
         name = "categories"
-        indexes = ["name"]
+        indexes = ["tenant_id", "business_unit_id", "name", ("tenant_id", "name")]
 
     class Config:
         json_schema_extra = {

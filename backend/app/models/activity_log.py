@@ -10,6 +10,7 @@ from beanie import PydanticObjectId
 
 class ActivityLog(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     action: str = Field(..., max_length=100)
     task_id: Optional[PydanticObjectId] = None
     details: Optional[str] = Field(default=None, max_length=500)
@@ -17,4 +18,4 @@ class ActivityLog(Document):
 
     class Settings:
         name = "activity_logs"
-        indexes = ["user_id", "timestamp"]
+        indexes = ["user_id", "tenant_id", "timestamp"]

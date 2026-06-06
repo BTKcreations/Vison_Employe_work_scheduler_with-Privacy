@@ -7,7 +7,7 @@ import Link from 'next/link';
 import {
   LayoutDashboard, Users, ClipboardList, FileBarChart,
   Trophy, LogOut, Zap, ChevronRight, Building2, MapPin, Menu, X as CloseIcon,
-  Settings, Calendar, Clock, DollarSign, Trash2, MessageSquare
+  Settings, Calendar, Clock, DollarSign, Trash2, MessageSquare, Briefcase
 } from 'lucide-react';
 import { useState } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
@@ -16,9 +16,10 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { Key } from 'lucide-react';
 import AIAssistant from '@/components/AIAssistant';
 import { Skeleton } from '@/components/Skeleton';
+import ScopeSwitcher from '@/components/ScopeSwitcher';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, isAdmin, isHR, isManager, isAssistantManager, isHRTeam, isTaskTeam, logout } = useAuth();
+  const { user, isLoading, isAdmin, isHR, isManager, isAssistantManager, isHRTeam, isTaskTeam, logout, activeBusinessUnitId, activeCompanyId } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -152,6 +153,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             <GlobalSearch />
           </div>
           <div className="flex items-center gap-4">
+            <ScopeSwitcher />
             <NotificationBell />
             {/* Settings Dropdown */}
             <div className="relative group">
@@ -180,8 +182,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
                     Holidays
                   </Link>
-                  <Link 
-                    href="/admin/settings/categories" 
+                  <Link
+                    href="/admin/settings/categories"
                     className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
                   >
                     <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
@@ -189,6 +191,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     </div>
                     Categories
                   </Link>
+                  <Link
+                    href="/admin/settings/business-units"
+                    className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                  >
+                    <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                      <Building2 className="w-3.5 h-3.5" />
+                    </div>
+                    Business Units
+                  </Link>
+                  {(isAdmin || isHR) && (
+                    <Link
+                      href="/admin/companies"
+                      className="flex items-center gap-3 px-3 py-2.5 hover:bg-indigo-50 hover:text-indigo-600 rounded-lg text-xs font-bold text-slate-600 transition-colors"
+                    >
+                      <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center">
+                        <Briefcase className="w-3.5 h-3.5" />
+                      </div>
+                      Companies
+                    </Link>
+                  )}
                   {isHRTeam && (
                     <Link 
                       href="/admin/settings/deleted-employees" 
@@ -220,7 +242,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </div>
         </header>
 
-        <div className="p-6 lg:p-8">
+        <div
+          className="p-6 lg:p-8"
+          key={`${activeCompanyId || 'all'}:${activeBusinessUnitId || 'all'}`}
+        >
           {children}
         </div>
       </main>

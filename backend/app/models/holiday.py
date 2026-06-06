@@ -10,9 +10,9 @@ from typing import Optional
 class Holiday(Document):
     name: str = Field(..., min_length=1, max_length=200)
     date: datetime
-    company_id: Optional[PydanticObjectId] = None # Global if None, else company specific
+    tenant_id: Optional[PydanticObjectId] = None # Global if None, else company specific
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     class Settings:
         name = "holidays"
-        indexes = ["date", "company_id"]
+        indexes = ["date", "tenant_id"]

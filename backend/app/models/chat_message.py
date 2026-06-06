@@ -6,6 +6,7 @@ from typing import Optional, List
 class ChatMessage(Document):
     group_id: Optional[PydanticObjectId] = None
     sender_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
     sender_name: str
     recipient_id: Optional[PydanticObjectId] = None
     text: str
@@ -21,4 +22,4 @@ class ChatMessage(Document):
 
     class Settings:
         name = "chat_messages"
-        indexes = ["group_id", "sender_id", "recipient_id", "created_at"]
+        indexes = ["group_id", "tenant_id", "sender_id", "recipient_id", "created_at"]

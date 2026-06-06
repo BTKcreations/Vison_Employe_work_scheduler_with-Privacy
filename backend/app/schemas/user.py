@@ -14,7 +14,8 @@ class CreateEmployeeRequest(BaseModel):
     alternate_mobile: Optional[str] = None
     reporting_manager_id: Optional[str] = None
     hr_reporting_manager_id: Optional[str] = None
-    
+    business_unit_id: Optional[str] = None
+
     # New fields
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
@@ -37,7 +38,8 @@ class UpdateEmployeeRequest(BaseModel):
     password: Optional[str] = Field(None, min_length=6, max_length=100)
     reporting_manager_id: Optional[str] = None
     hr_reporting_manager_id: Optional[str] = None
-    
+    business_unit_id: Optional[str] = None
+
     # New fields
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
@@ -61,7 +63,8 @@ class EmployeeResponse(BaseModel):
     alternate_mobile: Optional[str] = None
     reporting_manager_id: Optional[str] = None
     hr_reporting_manager_id: Optional[str] = None
-    
+    business_unit_id: Optional[str] = None
+
     # New fields
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
@@ -89,6 +92,7 @@ class EmployeeResponse(BaseModel):
             alternate_mobile=user.alternate_mobile,
             reporting_manager_id=str(user.reporting_manager_id) if user.reporting_manager_id else None,
             hr_reporting_manager_id=str(user.hr_reporting_manager_id) if user.hr_reporting_manager_id else None,
+            business_unit_id=str(user.business_unit_id) if user.business_unit_id else None,
             identity_card_type=user.identity_card_type,
             identity_card_url=user.identity_card_url,
             emergency_contact=user.emergency_contact,

@@ -12,7 +12,7 @@ class Employee(Document):
     role: str = Field(..., max_length=50)
 
     # Company affiliation – links to a Company document
-    company_id: PydanticObjectId = Field(..., description="Reference to the subsidiary/company the employee belongs to")
+    tenant_id: PydanticObjectId = Field(..., description="Reference to the subsidiary/company the employee belongs to")
     location: str = Field(..., description="Work location / office name")
 
     # Hierarchy

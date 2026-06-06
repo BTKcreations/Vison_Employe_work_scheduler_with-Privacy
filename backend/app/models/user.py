@@ -5,10 +5,11 @@ from beanie import Document, PydanticObjectId
 from pydantic import EmailStr, Field
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 
 class UserRole(str, Enum):
+    PLATFORM_OWNER = "platform_owner"
     ADMIN = "admin"
     HR_MANAGER = "hr_manager"
     ASSISTANT_HR_MANAGER = "assistant_hr_manager"
@@ -23,7 +24,10 @@ class User(Document):
     password_hash: str
     raw_password: Optional[str] = None  # Deprecated: retained only to read legacy documents; never populate.
     role: UserRole = UserRole.EMPLOYEE
-    company_id: Optional[PydanticObjectId] = None
+    tenant_id: Optional[PydanticObjectId] = None
+    primary_company_id: Optional[PydanticObjectId] = None
+    scope_company_ids: List[PydanticObjectId] = Field(default_factory=list)
+    business_unit_id: Optional[PydanticObjectId] = None
     department_id: Optional[PydanticObjectId] = None
     branch_id: Optional[PydanticObjectId] = None
     reporting_manager_id: Optional[PydanticObjectId] = None
@@ -34,11 +38,13 @@ class User(Document):
     alternate_mobile: Optional[str] = None
     is_active: bool = Field(default=True)
     is_deleted: bool = Field(default=False)
+    is_platform_owner: bool = Field(default=False)
+    must_change_password: bool = Field(default=False)
+    last_login_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: Optional[datetime] = None
     last_active: datetime = Field(default_factory=datetime.utcnow)
 
-    # New required and optional fields for employees
     identity_card_type: Optional[str] = None
     identity_card_url: Optional[str] = None
     emergency_contact: Optional[str] = None
@@ -50,7 +56,17 @@ class User(Document):
 
     class Settings:
         name = "users"
-        indexes = ["email"]
+        indexes = [
+            "email",
+            "tenant_id",
+            "primary_company_id",
+            "scope_company_ids",
+            "business_unit_id",
+            "role",
+            "is_platform_owner",
+            ("tenant_id", "business_unit_id"),
+            ("tenant_id", "primary_company_id"),
+        ]
 
     class Config:
         json_schema_extra = {

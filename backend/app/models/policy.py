@@ -9,14 +9,14 @@ from beanie import PydanticObjectId
 
 
 class PolicyVersion(Document):
-    company_id: PydanticObjectId
+    tenant_id: PydanticObjectId
     version: int = Field(default=1)
     effective_from: datetime = Field(default_factory=datetime.utcnow)
     effective_to: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     created_by_id: Optional[PydanticObjectId] = None
 
-    # Versioned configurations duplicated from Company
+    # Versioned configurations duplicated from Tenant
     work_days: List[str] = Field(default=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
     work_start_time: str = Field(default="09:00")
     work_end_time: str = Field(default="18:00")
@@ -84,14 +84,14 @@ class PolicyVersion(Document):
     class Settings:
         name = "policy_versions"
         indexes = [
-            "company_id",
-            ("company_id", "version"),
-            ("company_id", "effective_from", "effective_to")
+            "tenant_id",
+            ("tenant_id", "version"),
+            ("tenant_id", "effective_from", "effective_to")
         ]
 
 
 class ApprovalPolicy(Document):
-    company_id: PydanticObjectId
+    tenant_id: PydanticObjectId
     event_type: str = Field(..., max_length=50)  # "leave", "regularization", "payroll"
     required_approvals: List[str] = Field(default=["manager", "hr_manager"])  # Ordered roles required for approval
     effective_from: datetime = Field(default_factory=datetime.utcnow)
@@ -101,6 +101,6 @@ class ApprovalPolicy(Document):
     class Settings:
         name = "approval_policies"
         indexes = [
-            "company_id",
-            ("company_id", "event_type", "is_active")
+            "tenant_id",
+            ("tenant_id", "event_type", "is_active")
         ]

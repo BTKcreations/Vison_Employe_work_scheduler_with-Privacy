@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+﻿from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.models.user import User, UserRole
 from app.models.regularization import AttendanceRegularization, RegularizationStatus
 from app.models.attendance import Attendance
@@ -7,6 +7,7 @@ from app.services.audit_service import AuditService
 from app.services.notification_service import NotificationService
 from app.utils.ist_time import to_utc_iso
 from app.auth.dependencies import get_current_user, require_hr_team, require_any_hr_manager, require_management_team, require_admin
+from app.auth.tenant_scope import get_active_business_unit_id, require_tenant_id
 from pydantic import BaseModel
 from datetime import datetime
 from typing import List, Optional
@@ -69,10 +70,10 @@ async def request_regularization(
         )
         
         if not attendance:
-            # Create placeholder attendance (null-safe company_id fallback)
+            # Create placeholder attendance (null-safe tenant_id fallback)
             attendance = Attendance(
                 user_id=current_user.id,
-                company_id=current_user.company_id or PydanticObjectId(),
+                tenant_id=current_user.tenant_id or PydanticObjectId(),
                 check_in=request.requested_check_in,
                 check_out=request.requested_check_out,
                 status="absent",
@@ -147,18 +148,32 @@ async def get_my_regularizations(current_user: User = Depends(get_current_user))
 
 
 @router.get("/pending", response_model=List[dict])
-async def get_pending_regularizations(user: User = Depends(require_management_team)):
-    """List pending correction requests. Filters by hierarchy for all management roles except Admin."""
+async def get_pending_regularizations(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """List pending correction requests. Filters by hierarchy for all management roles except Admin.
+    When a business unit is active, narrows the result to that unit only.
+    """
+    cid = require_tenant_id(user)
     query_conditions = [
         AttendanceRegularization.status != RegularizationStatus.APPROVED,
-        AttendanceRegularization.status != RegularizationStatus.REJECTED
+        AttendanceRegularization.status != RegularizationStatus.REJECTED,
+        AttendanceRegularization.tenant_id == cid,
     ]
-    
+
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
         from beanie.operators import In
         query_conditions.append(In(AttendanceRegularization.user_id, list(visible_ids)))
+
+    if active_bu_id is not None:
+        bu_user_ids = await User.find(
+            User.tenant_id == cid,
+            User.business_unit_id == active_bu_id,
+        ).distinct(User.id)
+        query_conditions.append(In(AttendanceRegularization.user_id, [str(uid) for uid in bu_user_ids]))
 
     reqs = await AttendanceRegularization.find(*query_conditions).sort("-created_at").to_list()
 
@@ -182,20 +197,30 @@ async def get_pending_regularizations(user: User = Depends(require_management_te
 
 
 @router.get("/all", response_model=List[dict])
-async def get_all_regularizations(user: User = Depends(require_management_team)):
-    """List all correction requests (history). Filters by hierarchy for all management roles except Admin."""
-    query_conditions = []
-    
+async def get_all_regularizations(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """List all correction requests (history). Filters by hierarchy for all management roles except Admin.
+    When a business unit is active, narrows the result to that unit only.
+    """
+    cid = require_tenant_id(user)
+    query_conditions = [AttendanceRegularization.tenant_id == cid]
+
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
         from beanie.operators import In
         query_conditions.append(In(AttendanceRegularization.user_id, list(visible_ids)))
 
-    if query_conditions:
-        reqs = await AttendanceRegularization.find(*query_conditions).sort("-created_at").to_list()
-    else:
-        reqs = await AttendanceRegularization.find_all().sort("-created_at").to_list()
+    if active_bu_id is not None:
+        bu_user_ids = await User.find(
+            User.tenant_id == cid,
+            User.business_unit_id == active_bu_id,
+        ).distinct(User.id)
+        query_conditions.append(In(AttendanceRegularization.user_id, [str(uid) for uid in bu_user_ids]))
+
+    reqs = await AttendanceRegularization.find(*query_conditions).sort("-created_at").to_list()
     return [
         {
             "id": str(r.id),
@@ -406,14 +431,14 @@ async def approve_regularization(
     # --- Populate location if missing (placeholder entries have no location_in) ---
     if not attendance.location_in:
         try:
-            from app.models.company import Company
+            from app.models.tenant import Tenant
             applicant_user = await User.get(req.user_id)
-            company = await Company.get(applicant_user.company_id) if applicant_user and applicant_user.company_id else None
-            if company and company.office_lat is not None and company.office_lng is not None:
-                attendance.location_in = {"lat": company.office_lat, "lng": company.office_lng}
+            tenant = await Tenant.get(applicant_user.tenant_id) if applicant_user and applicant_user.tenant_id else None
+            if tenant and tenant.office_lat is not None and tenant.office_lng is not None:
+                attendance.location_in = {"lat": tenant.office_lat, "lng": tenant.office_lng}
                 attendance.address_in = "Regularized – Office Location"
                 if not attendance.location_out and req.requested_check_out:
-                    attendance.location_out = {"lat": company.office_lat, "lng": company.office_lng}
+                    attendance.location_out = {"lat": tenant.office_lat, "lng": tenant.office_lng}
                     attendance.address_out = "Regularized – Office Location"
         except Exception as loc_err:
             logger.warning(f"Could not set office location on regularized attendance: {loc_err}")

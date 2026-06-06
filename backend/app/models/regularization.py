@@ -16,6 +16,7 @@ class RegularizationStatus(str, Enum):
 class AttendanceRegularization(Document):
     user_id: PydanticObjectId
     user_name: Optional[str] = None
+    tenant_id: Optional[PydanticObjectId] = None
     attendance_id: PydanticObjectId
     requested_check_in: Optional[datetime] = None
     requested_check_out: Optional[datetime] = None
@@ -31,4 +32,4 @@ class AttendanceRegularization(Document):
 
     class Settings:
         name = "attendance_regularizations"
-        indexes = ["user_id", "attendance_id", "status"]
+        indexes = ["user_id", "tenant_id", "attendance_id", "status"]

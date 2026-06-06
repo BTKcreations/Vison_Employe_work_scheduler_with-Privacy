@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.models.user import User, UserRole
-from app.models.company import Company
+from app.models.tenant import Tenant
 from app.auth.dependencies import get_current_user
+from app.auth.tenant_scope import get_active_business_unit_id
 from app.services.audit_service import AuditService
 from app.services.geofence_utils import (
     is_within_geofence, calculate_drift_km, detect_anomalies, get_distance_to_office
@@ -31,7 +32,7 @@ class AttendanceResponse(BaseModel):
     user_name: Optional[str] = None
     user_email: Optional[str] = None
     user_reward_points: Optional[float] = 0.0
-    company_id: str
+    tenant_id: str
     check_in: datetime
     check_out: Optional[datetime] = None
     location_in: Optional[dict] = None
@@ -53,7 +54,7 @@ def _build_response(attendance: Attendance, user: Optional[User] = None) -> dict
     res = attendance.model_dump()
     res["id"] = str(attendance.id)
     res["user_id"] = str(attendance.user_id)
-    res["company_id"] = str(attendance.company_id)
+    res["tenant_id"] = str(attendance.tenant_id)
     if user:
         res["user_name"] = user.name
         res["user_email"] = user.email
@@ -81,32 +82,32 @@ async def check_in(
     if existing:
         raise HTTPException(status_code=400, detail="You are already checked in.")
 
-    # Get company for geofence and policy settings
-    company = await Company.get(current_user.company_id) if current_user.company_id else None
+    # Get tenant for geofence and policy settings
+    tenant = await Tenant.get(current_user.tenant_id) if current_user.tenant_id else None
     
     # --- GEOFENCE VALIDATION ---
     distance_from_office = None
     geofence_flags = []
     
-    if company and company.office_lat is not None and company.office_lng is not None:
+    if tenant and tenant.office_lat is not None and tenant.office_lng is not None:
         distance_from_office = get_distance_to_office(
-            req.lat, req.lng, company.office_lat, company.office_lng
+            req.lat, req.lng, tenant.office_lat, tenant.office_lng
         )
         
         within_fence = is_within_geofence(
             req.lat, req.lng,
-            company.office_lat, company.office_lng,
-            company.geofence_radius_meters
+            tenant.office_lat, tenant.office_lng,
+            tenant.geofence_radius_meters
         )
         
         if not within_fence:
-            if company.geofence_policy == "strict":
+            if tenant.geofence_policy == "strict":
                 raise HTTPException(
                     status_code=400,
                     detail=f"You are {int(distance_from_office)}m away from the office. "
-                           f"Check-in is only allowed within {company.geofence_radius_meters}m of the office."
+                           f"Check-in is only allowed within {tenant.geofence_radius_meters}m of the office."
                 )
-            elif company.geofence_policy == "flexible":
+            elif tenant.geofence_policy == "flexible":
                 geofence_flags.append("outside_geofence")
 
     # --- DEVICE FINGERPRINT CHECK ---
@@ -123,11 +124,11 @@ async def check_in(
 
     # --- LATE STATUS CALCULATION ---
     status_str = "present"
-    if company and company.work_start_time:
+    if tenant and tenant.work_start_time:
         try:
             # Robust parsing of various formats (e.g., "09:30 AM", "9:00AM", "14:00")
             work_start = None
-            raw_time = company.work_start_time.strip().upper()
+            raw_time = tenant.work_start_time.strip().upper()
             
             formats = ["%I:%M %p", "%I:%M%p", "%H:%M"]
             for fmt in formats:
@@ -147,7 +148,7 @@ async def check_in(
                     else:
                         status_str = "late_over_30"
             else:
-                logger.warning(f"Could not parse work_start_time: {company.work_start_time}")
+                logger.warning(f"Could not parse work_start_time: {tenant.work_start_time}")
         except Exception as e:
             logger.error(f"Error calculating late status: {e}")
 
@@ -167,7 +168,8 @@ async def check_in(
 
     attendance = Attendance(
         user_id=current_user.id,
-        company_id=current_user.company_id or current_user.id,
+        tenant_id=current_user.tenant_id or current_user.id,
+        business_unit_id=current_user.business_unit_id,
         location_in={"lat": req.lat, "lng": req.lng},
         address_in=req.address,
         remarks=req.remarks,
@@ -206,17 +208,17 @@ async def check_out(
         raise HTTPException(status_code=400, detail="No active check-in session found.")
 
     before_state = attendance.model_dump()
-    company = await Company.get(current_user.company_id) if current_user.company_id else None
+    tenant = await Tenant.get(current_user.tenant_id) if current_user.tenant_id else None
 
     # --- MINIMUM SESSION DURATION CHECK ---
-    if company and company.min_session_minutes > 0:
+    if tenant and tenant.min_session_minutes > 0:
         now_utc = datetime.now(timezone.utc)
         session_duration = (now_utc - attendance.check_in).total_seconds() / 60
-        if session_duration < company.min_session_minutes:
-            remaining = int(company.min_session_minutes - session_duration)
+        if session_duration < tenant.min_session_minutes:
+            remaining = int(tenant.min_session_minutes - session_duration)
             raise HTTPException(
                 status_code=400,
-                detail=f"Minimum session duration is {company.min_session_minutes} minutes. "
+                detail=f"Minimum session duration is {tenant.min_session_minutes} minutes. "
                        f"Please wait {remaining} more minute(s) before checking out."
             )
 
@@ -224,15 +226,15 @@ async def check_out(
     distance_from_office_out = None
     checkout_flags = list(attendance.flags)  # Preserve existing flags
     
-    if company and company.office_lat is not None and company.office_lng is not None:
+    if tenant and tenant.office_lat is not None and tenant.office_lng is not None:
         distance_from_office_out = get_distance_to_office(
-            req.lat, req.lng, company.office_lat, company.office_lng
+            req.lat, req.lng, tenant.office_lat, tenant.office_lng
         )
         
         within_fence = is_within_geofence(
             req.lat, req.lng,
-            company.office_lat, company.office_lng,
-            company.geofence_radius_meters
+            tenant.office_lat, tenant.office_lng,
+            tenant.geofence_radius_meters
         )
         
         if not within_fence:
@@ -246,8 +248,8 @@ async def check_out(
         {"lat": req.lat, "lng": req.lng}
     )
     
-    if drift_km is not None and company:
-        if drift_km > company.location_drift_threshold_km:
+    if drift_km is not None and tenant:
+        if drift_km > tenant.location_drift_threshold_km:
             if f"location_drift_{drift_km}km" not in checkout_flags:
                 checkout_flags.append(f"location_drift_{drift_km}km")
 
@@ -296,7 +298,10 @@ async def get_my_attendance(current_user: User = Depends(get_current_user)):
     return [_build_response(log, current_user) for log in logs]
 
 @router.get("/all", response_model=List[AttendanceResponse])
-async def get_all_attendance(current_user: User = Depends(get_current_user)):
+async def get_all_attendance(
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
     """Retrieve attendance logs for management with user names. Hierarchy-scoped for non-admins."""
     if current_user.role not in [
         UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER,
@@ -307,14 +312,15 @@ async def get_all_attendance(current_user: User = Depends(get_current_user)):
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(current_user)
 
+    base_q: dict = {}
+    if current_user.tenant_id is not None:
+        base_q["tenant_id"] = current_user.tenant_id
+    if active_bu_id is not None:
+        base_q["business_unit_id"] = active_bu_id
     if visible_ids is not None:
-        # Filter logs to only visible employees
-        logs = await Attendance.find(
-            In(Attendance.user_id, list(visible_ids))
-        ).sort(-Attendance.check_in).to_list()
-    else:
-        # Admin: fetch all
-        logs = await Attendance.find().sort(-Attendance.check_in).to_list()
+        base_q["user_id"] = {"$in": list(visible_ids)}
+
+    logs = await Attendance.find(base_q).sort(-Attendance.check_in).to_list()
 
     user_ids = list(set([log.user_id for log in logs]))
     if not user_ids:
@@ -325,8 +331,12 @@ async def get_all_attendance(current_user: User = Depends(get_current_user)):
 
     return [_build_response(log, user_map.get(log.user_id)) for log in logs]
 
+
 @router.get("/summary")
-async def get_summary(current_user: User = Depends(get_current_user)):
+async def get_summary(
+    current_user: User = Depends(get_current_user),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
     """Get attendance summary. Admin/HR see all; Managers see their hierarchy."""
     if current_user.role not in [
         UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER,
@@ -336,7 +346,10 @@ async def get_summary(current_user: User = Depends(get_current_user)):
     from app.services import dashboard_service
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(current_user)
-    return await dashboard_service.get_all_attendance_summary(visible_employee_ids=visible_ids)
+    return await dashboard_service.get_all_attendance_summary(
+        visible_employee_ids=visible_ids,
+        business_unit_id=active_bu_id,
+    )
 
 @router.get("/geofence-status")
 async def get_geofence_status(
@@ -344,9 +357,9 @@ async def get_geofence_status(
     current_user: User = Depends(get_current_user)
 ):
     """Check if the current location is within the geofence. Returns distance and status."""
-    company = await Company.get(current_user.company_id) if current_user.company_id else None
+    tenant = await Tenant.get(current_user.tenant_id) if current_user.tenant_id else None
     
-    if not company or company.office_lat is None or company.office_lng is None:
+    if not tenant or tenant.office_lat is None or tenant.office_lng is None:
         return {
             "geofence_configured": False,
             "policy": "disabled",
@@ -355,16 +368,16 @@ async def get_geofence_status(
             "radius_meters": None,
         }
     
-    distance = get_distance_to_office(lat, lng, company.office_lat, company.office_lng)
-    within = is_within_geofence(lat, lng, company.office_lat, company.office_lng, company.geofence_radius_meters)
+    distance = get_distance_to_office(lat, lng, tenant.office_lat, tenant.office_lng)
+    within = is_within_geofence(lat, lng, tenant.office_lat, tenant.office_lng, tenant.geofence_radius_meters)
     
     return {
         "geofence_configured": True,
-        "policy": company.geofence_policy,
+        "policy": tenant.geofence_policy,
         "within_geofence": within,
         "distance_meters": distance,
-        "radius_meters": company.geofence_radius_meters,
-        "min_session_minutes": company.min_session_minutes,
+        "radius_meters": tenant.geofence_radius_meters,
+        "min_session_minutes": tenant.min_session_minutes,
     }
 
 
@@ -374,21 +387,21 @@ async def get_my_calendar_summary(current_user: User = Depends(get_current_user)
     - attendance logs (raw check-in/out records)
     - approved regularization dates (YYYY-MM-DD strings, IST)
     - approved leave date ranges with details
-    - holiday dates (global + company-specific)
-    - company work_days config and work_start_time
+    - holiday dates (global + tenant-specific)
+    - tenant work_days config and work_start_time
     """
     from app.models.regularization import AttendanceRegularization, RegularizationStatus
     from app.models.leave import Leave, LeaveStatus
     from app.models.holiday import Holiday
     from beanie.operators import Or
 
-    # Company config
-    company = await Company.get(current_user.company_id) if current_user.company_id else None
-    if not company:
-        company = await Company.find_one(Company.is_active == True)
+    # Tenant config
+    tenant = await Tenant.get(current_user.tenant_id) if current_user.tenant_id else None
+    if not tenant:
+        tenant = await Tenant.find_one(Tenant.is_active == True)
 
-    work_days = company.work_days if company else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    work_start_time = company.work_start_time if company else "09:00"
+    work_days = tenant.work_days if tenant else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    work_start_time = tenant.work_start_time if tenant else "09:00"
 
     # Last 90 days window
     now_ist = ist_now()
@@ -444,10 +457,10 @@ async def get_my_calendar_summary(current_user: User = Depends(get_current_user)
             "comments": leave.comments,
         })
 
-    # Holidays (global + company-specific) within the 90-day window
+    # Holidays (global + tenant-specific) within the 90-day window
     holidays_list = await Holiday.find(
         Holiday.date >= history_start,
-        Or(Holiday.company_id == current_user.company_id, Holiday.company_id == None)
+        Or(Holiday.tenant_id == current_user.tenant_id, Holiday.tenant_id == None)
     ).to_list()
 
     holiday_dates: list[dict] = [
@@ -478,8 +491,8 @@ async def get_employee_calendar_summary(
     - attendance logs (raw check-in/out records)
     - approved regularization dates (YYYY-MM-DD strings, IST)
     - approved leave date ranges with details
-    - holiday dates (global + company-specific)
-    - company work_days config and work_start_time
+    - holiday dates (global + tenant-specific)
+    - tenant work_days config and work_start_time
     """
     if current_user.role not in [
         UserRole.ADMIN, UserRole.HR_MANAGER, UserRole.ASSISTANT_HR_MANAGER,
@@ -507,13 +520,13 @@ async def get_employee_calendar_summary(
     from app.models.holiday import Holiday
     from beanie.operators import Or
 
-    # Company config
-    company = await Company.get(employee.company_id) if employee.company_id else None
-    if not company:
-        company = await Company.find_one(Company.is_active == True)
+    # Tenant config
+    tenant = await Tenant.get(employee.tenant_id) if employee.tenant_id else None
+    if not tenant:
+        tenant = await Tenant.find_one(Tenant.is_active == True)
 
-    work_days = company.work_days if company else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-    work_start_time = company.work_start_time if company else "09:00"
+    work_days = tenant.work_days if tenant else ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    work_start_time = tenant.work_start_time if tenant else "09:00"
 
     # Last 90 days window
     now_ist = ist_now()
@@ -569,10 +582,10 @@ async def get_employee_calendar_summary(
             "comments": leave.comments,
         })
 
-    # Holidays (global + company-specific) within the 90-day window
+    # Holidays (global + tenant-specific) within the 90-day window
     holidays_list = await Holiday.find(
         Holiday.date >= history_start,
-        Or(Holiday.company_id == employee.company_id, Holiday.company_id == None)
+        Or(Holiday.tenant_id == employee.tenant_id, Holiday.tenant_id == None)
     ).to_list()
 
     holiday_dates: list[dict] = [

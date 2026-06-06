@@ -7,9 +7,9 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: true,
   typescript: {
-    // Skip typescript type checking during production builds for speed
     ignoreBuildErrors: true,
   },
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   turbopack: {
     root: path.resolve(__dirname),
   },

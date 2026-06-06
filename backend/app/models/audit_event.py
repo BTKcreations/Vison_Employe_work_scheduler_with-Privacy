@@ -5,6 +5,7 @@ from typing import Optional, Any
 
 class AuditEvent(Document):
     actor_id: Optional[PydanticObjectId] = None
+    tenant_id: Optional[PydanticObjectId] = None
     actor_name: Optional[str] = None
     actor_role: Optional[str] = None
 
@@ -23,4 +24,4 @@ class AuditEvent(Document):
 
     class Settings:
         name = "audit_events"
-        indexes = ["actor_id", "entity_type", "entity_id", "action", "timestamp", "correlation_id"]
+        indexes = ["actor_id", "tenant_id", "entity_type", "entity_id", "action", "timestamp", "correlation_id"]

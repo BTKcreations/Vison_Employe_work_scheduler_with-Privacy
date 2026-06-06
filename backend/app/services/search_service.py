@@ -3,49 +3,57 @@ Search service - cross-collection searching.
 """
 from app.models.user import User, UserRole
 from app.models.task import Task
-from app.models.company import Company
+from app.models.tenant import Tenant
 from typing import List, Dict, Any
 
-async def global_search(query: str, company_id: str = None) -> Dict[str, List[Dict[str, Any]]]:
+async def global_search(query: str, tenant_id: str = None) -> Dict[str, List[Dict[str, Any]]]:
     """
-    Search across employees, companies, and tasks.
+    Search across employees, tenants, and tasks.
+
+    Scoping rules:
+    - `tenant_id` is None  -> platform owner context: search across ALL tenants.
+    - `tenant_id` provided -> tenant context: only return rows in that tenant.
     """
     if not query or len(query) < 2:
-        return {"employees": [], "companies": [], "tasks": []}
+        return {"employees": [], "tenants": [], "tasks": []}
 
     search_filter = {"$regex": query, "$options": "i"}
-    
-    # 1. Search Employees
-    employees = await User.find(
+
+    # 1. Search Employees (always tenant-scoped)
+    user_query = {
         User.role == UserRole.EMPLOYEE,
         {"$or": [
             {"name": search_filter},
             {"email": search_filter}
         ]}
-    ).limit(5).to_list()
-    
-    # 2. Search Companies
-    company_query = {"name": search_filter}
-    if company_id:
-        # If user belongs to a company, maybe they can only search their company?
-        # But usually admin can search all.
-        pass
-    
-    companies = await Company.find(company_query).limit(5).to_list()
-    
-    # 3. Search Tasks
+    }
+    if tenant_id is not None:
+        user_query.add({"tenant_id": tenant_id})
+
+    employees = await User.find(*user_query).limit(5).to_list()
+
+    # 2. Search Companies (cross-tenant only for platform owners)
+    if tenant_id is None:
+        tenants = await Tenant.find({"name": search_filter}).limit(5).to_list()
+    else:
+        tenants = await Tenant.find(
+            {"name": search_filter, "_id": tenant_id}
+        ).limit(5).to_list()
+
+    # 3. Search Tasks (tenant-scoped unless platform owner)
     task_query = {"work_description": search_filter}
-    # For tasks, we might want to search by assigned_to_name too if it's indexed
+    if tenant_id is not None:
+        task_query["tenant_id"] = tenant_id
     tasks = await Task.find(task_query).limit(5).to_list()
-    
+
     return {
         "employees": [
             {"id": str(e.id), "name": e.name, "email": e.email, "type": "employee"}
             for e in employees
         ],
-        "companies": [
-            {"id": str(c.id), "name": c.name, "type": "company"}
-            for c in companies
+        "tenants": [
+            {"id": str(c.id), "name": c.name, "type": "tenant"}
+            for c in tenants
         ],
         "tasks": [
             {"id": str(t.id), "description": t.work_description, "status": t.status.value, "type": "task"}

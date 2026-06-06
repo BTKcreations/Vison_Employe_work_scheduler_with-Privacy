@@ -7,6 +7,8 @@ from typing import Optional
 
 class SalaryStructure(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
+    business_unit_id: Optional[PydanticObjectId] = None
     basic: float = Field(default=0.0)
     hra: float = Field(default=0.0)
     special_allowance: float = Field(default=0.0)
@@ -18,7 +20,7 @@ class SalaryStructure(Document):
 
     class Settings:
         name = "salary_structures"
-        indexes = ["user_id"]
+        indexes = ["user_id", "tenant_id", "business_unit_id"]
 
 
 class PayrollStatus(str, Enum):
@@ -31,6 +33,8 @@ class PayrollStatus(str, Enum):
 
 class Payroll(Document):
     user_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
+    business_unit_id: Optional[PydanticObjectId] = None
     user_name: str
     month: str  # Format: YYYY-MM
     status: PayrollStatus = PayrollStatus.DRAFT
@@ -80,11 +84,13 @@ class Payroll(Document):
 
     class Settings:
         name = "payrolls"
-        indexes = ["user_id", "month", "status"]
+        indexes = ["user_id", "tenant_id", "business_unit_id", "month", "status"]
 
 
 class PayrollHistory(Document):
     payroll_id: PydanticObjectId
+    tenant_id: Optional[PydanticObjectId] = None
+    business_unit_id: Optional[PydanticObjectId] = None
     version_number: int
     payroll_snapshot: dict
     reason_for_change: Optional[str] = None
@@ -93,4 +99,4 @@ class PayrollHistory(Document):
 
     class Settings:
         name = "payroll_history"
-        indexes = ["payroll_id", "version_number"]
+        indexes = ["payroll_id", "tenant_id", "business_unit_id", "version_number"]

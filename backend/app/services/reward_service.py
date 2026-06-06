@@ -48,22 +48,22 @@ async def apply_performance_score(task: Task, is_rejection: bool = False) -> Tup
     if not user:
         return 0.0, "Assigned user not found."
 
-    from app.models.company import Company
-    company = None
-    if task.company_id:
-        company = await Company.get(task.company_id)
-    if not company and user.company_id:
-        company = await Company.get(user.company_id)
-    if not company:
-        company = await Company.find_one(Company.is_active == True)
+    from app.models.tenant import Tenant
+    tenant = None
+    if task.tenant_id:
+        tenant = await Tenant.get(task.tenant_id)
+    if not tenant and user.tenant_id:
+        tenant = await Tenant.get(user.tenant_id)
+    if not tenant:
+        tenant = await Tenant.find_one(Tenant.is_active == True)
 
-    priority_points = company.task_priority_points if company else {
+    priority_points = tenant.task_priority_points if tenant else {
         "critical": 10.0, "high": 5.0, "medium": 3.0, "regular": 1.0, "low": 1.0
     }
-    delay_penalties_map = company.delay_penalties if company else {
+    delay_penalties_map = tenant.delay_penalties if tenant else {
         "on_time": 1.0, "1_day_late": 0.75, "2_days_late": 0.50, "3_days_late": 0.25, "4_plus_days_late": 0.0
     }
-    early_mult_val = company.early_completion_multiplier if company else 1.1
+    early_mult_val = tenant.early_completion_multiplier if tenant else 1.1
 
     points = 0.0
     details = ""

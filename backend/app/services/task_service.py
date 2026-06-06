@@ -3,7 +3,7 @@ Task service - business logic for task operations.
 """
 from app.models.task import Task, TaskStatus, TaskPriority, TaskType
 from app.models.user import User
-from app.models.company import Company
+from app.models.tenant import Tenant
 from app.models.category import Category
 from app.models.activity_log import ActivityLog
 from app.services.reward_service import apply_performance_score
@@ -21,14 +21,38 @@ async def create_task(
     priority: str,
     deadline: datetime,
     task_type: str = "assigned",
-    company_id: Optional[str] = None,
+    tenant_id: Optional[str] = None,
+    business_unit_id: Optional[str] = None,
     recurring_task_id: Optional[PydanticObjectId] = None,
     category_ids: Optional[List[str]] = None,
 ) -> Task:
-    """Create a new task."""
+    """Create a new task.
+
+    If `business_unit_id` is not given explicitly, falls back to the
+    assignee's `business_unit_id` (or the creator's), so the task is always
+    pinned to a unit when the user is in one.
+    """
     assigned_user = await User.get(PydanticObjectId(assigned_to))
     creator_user = await User.get(PydanticObjectId(created_by))
-    company = await Company.get(PydanticObjectId(company_id)) if company_id else None
+    tenant = await Tenant.get(PydanticObjectId(tenant_id)) if tenant_id else None
+
+    resolved_bu_id: Optional[PydanticObjectId] = None
+    if business_unit_id:
+        try:
+            resolved_bu_id = PydanticObjectId(business_unit_id)
+        except Exception:
+            resolved_bu_id = None
+    if resolved_bu_id is None and assigned_user and assigned_user.business_unit_id:
+        resolved_bu_id = assigned_user.business_unit_id
+    if resolved_bu_id is None and creator_user and creator_user.business_unit_id:
+        resolved_bu_id = creator_user.business_unit_id
+
+    bu_name: Optional[str] = None
+    if resolved_bu_id is not None:
+        from app.models.business_unit import BusinessUnit
+        bu = await BusinessUnit.get(resolved_bu_id)
+        if bu:
+            bu_name = bu.name
 
     # Resolve categories
     resolved_category_ids = []
@@ -49,8 +73,10 @@ async def create_task(
         priority=TaskPriority(priority),
         task_type=TaskType(task_type),
         deadline=deadline,
-        company_id=PydanticObjectId(company_id) if company_id else None,
-        company_name=company.name if company else None,
+        tenant_id=PydanticObjectId(tenant_id) if tenant_id else None,
+        tenant_name=tenant.name if tenant else None,
+        business_unit_id=resolved_bu_id,
+        business_unit_name=bu_name,
         category_ids=resolved_category_ids,
         category_names=resolved_category_names,
         recurring_task_id=recurring_task_id,
@@ -84,8 +110,15 @@ async def get_tasks(
     status: Optional[str] = None,
     priority: Optional[str] = None,
     is_admin: bool = False,
+    tenant_id: Optional[PydanticObjectId] = None,
+    business_unit_id: Optional[PydanticObjectId] = None,
 ) -> List[Task]:
-    """Get tasks with optional filters. Optimized with database-level RBAC and overdue marking."""
+    """Get tasks with optional filters. Optimized with database-level RBAC and overdue marking.
+
+    When `tenant_id` is provided, results are tenant-scoped. When
+    `business_unit_id` is also provided, only tasks in that unit are returned
+    (otherwise tasks in *any* unit of the tenant are returned).
+    """
     query_parts = []
 
     if user_id:
@@ -105,6 +138,11 @@ async def get_tasks(
 
     if priority:
         query_parts.append(Task.priority == priority)
+
+    if tenant_id is not None:
+        query_parts.append(Task.tenant_id == tenant_id)
+        if business_unit_id is not None:
+            query_parts.append(Task.business_unit_id == business_unit_id)
 
     # 1. Optimized Batch Auto-mark overdue tasks before fetching
     from datetime import timezone
@@ -127,6 +165,11 @@ async def get_tasks(
             ]
         else:
             overdue_update_query["assigned_to"] = {"$in": user_ids}
+
+    if tenant_id is not None:
+        overdue_update_query["tenant_id"] = tenant_id
+        if business_unit_id is not None:
+            overdue_update_query["business_unit_id"] = business_unit_id
 
     # Batch update status to OVERDUE for all matching tasks
     await Task.find(overdue_update_query).update({"$set": {"status": TaskStatus.OVERDUE, "updated_at": now}})
@@ -167,10 +210,10 @@ async def update_task(task_id: str, user_id: str, is_admin: bool, **kwargs) -> O
                 user = await User.get(PydanticObjectId(value))
                 if user:
                     update_data["assigned_to_name"] = user.name
-            elif key == "company_id":
-                update_data["company_id"] = PydanticObjectId(value)
-                company = await Company.get(PydanticObjectId(value))
-                update_data["company_name"] = company.name if company else "Personal / Internal"
+            elif key == "tenant_id":
+                update_data["tenant_id"] = PydanticObjectId(value)
+                tenant = await Tenant.get(PydanticObjectId(value))
+                update_data["tenant_name"] = tenant.name if tenant else "Personal / Internal"
             elif key == "category_ids":
                 resolved_ids = []
                 resolved_names = []
@@ -253,13 +296,19 @@ async def delete_task(task_id: str) -> bool:
     return True
 
 
-async def get_task_counts(user_id: Optional[str] = None, user_ids: Optional[list] = None):
+async def get_task_counts(
+    user_id: Optional[str] = None,
+    user_ids: Optional[list] = None,
+    business_unit_id: Optional[PydanticObjectId] = None,
+):
     """Get task count summary using a single aggregation pipeline."""
     base_query = {}
     if user_id:
         base_query["assigned_to"] = PydanticObjectId(user_id)
     elif user_ids is not None:
         base_query["assigned_to"] = {"$in": user_ids}
+    if business_unit_id is not None:
+        base_query["business_unit_id"] = business_unit_id
 
     # Auto-update overdue tasks first (this still requires an update_many or individual updates)
     from datetime import timezone

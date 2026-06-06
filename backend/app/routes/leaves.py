@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+﻿from fastapi import APIRouter, Depends, HTTPException, status, Request
 from app.models.user import User, UserRole
 from app.models.leave import Leave, LeaveType, LeaveStatus
 from app.models.leave_balance import LeaveBalance
 from app.models.ledger import LeaveLedgerEntry
 from app.models.notification import Notification
 from app.auth.dependencies import get_current_user, require_hr_team, require_any_hr_manager, require_hr_manager, require_management_team
+from app.auth.tenant_scope import get_active_business_unit_id, require_tenant_id
 from pydantic import BaseModel
 from datetime import datetime, timezone
 from typing import List, Optional
@@ -37,7 +38,7 @@ async def get_ledger_leave_summary(user_id: PydanticObjectId, leave_type: str, c
             )
             await latest_accrual.insert()
     else:
-        # Check if company limit changed and log delta
+        # Check if tenant limit changed and log delta
         pipeline = [
             {"$match": {
                 "user_id": user_id,
@@ -58,7 +59,7 @@ async def get_ledger_leave_summary(user_id: PydanticObjectId, leave_type: str, c
                 leave_type=leave_type,
                 amount=delta,
                 transaction_type="adjustment",
-                description=f"Company leave limit policy adjustment (Delta: {delta})"
+                description=f"Tenant leave limit policy adjustment (Delta: {delta})"
             )
             await adj.insert()
             
@@ -107,18 +108,18 @@ async def sync_leave_balance_from_ledger(user_id: PydanticObjectId, company_limi
 
 
 async def _get_synced_leave_balance(user: User) -> LeaveBalance:
-    """Fetch (or create) and sync a user's leave balance from company rules using the leave ledger."""
-    from app.models.company import Company
-    company = None
-    if user.company_id:
-        company = await Company.get(user.company_id)
-    if not company:
-        company = await Company.find_one(Company.is_active == True)
+    """Fetch (or create) and sync a user's leave balance from tenant rules using the leave ledger."""
+    from app.models.tenant import Tenant
+    tenant = None
+    if user.tenant_id:
+        tenant = await Tenant.get(user.tenant_id)
+    if not tenant:
+        tenant = await Tenant.find_one(Tenant.is_active == True)
 
     limits = {
-        "casual": company.casual_leave_limit if company else 12,
-        "sick": company.sick_leave_limit if company else 0,
-        "earned": company.earned_leave_limit if company else 0
+        "casual": tenant.casual_leave_limit if tenant else 12,
+        "sick": tenant.sick_leave_limit if tenant else 0,
+        "earned": tenant.earned_leave_limit if tenant else 0
     }
     return await sync_leave_balance_from_ledger(user.id, limits)
 
@@ -258,6 +259,8 @@ async def apply_leave(
     leave = Leave(
         user_id=current_user.id,
         user_name=current_user.name,
+        tenant_id=current_user.tenant_id,
+        business_unit_id=current_user.business_unit_id,
         leave_type=request.leave_type,
         start_date=request.start_date,
         end_date=request.end_date,
@@ -310,14 +313,23 @@ async def get_my_leaves(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/pending", response_model=List[dict])
-async def get_pending_leaves(user: User = Depends(require_management_team)):
-    """List all pending leave requests. Filters by hierarchy for all management roles except Admin."""
-    query_conditions = [Leave.status != LeaveStatus.APPROVED, Leave.status != LeaveStatus.REJECTED]
-    
+async def get_pending_leaves(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """List all pending leave requests. Filters by hierarchy for all management roles except Admin.
+    When a business unit is active, narrows the result to that unit only.
+    """
+    cid = require_tenant_id(user)
+    query_conditions = [Leave.status != LeaveStatus.APPROVED, Leave.status != LeaveStatus.REJECTED, Leave.tenant_id == cid]
+
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
         query_conditions.append(In(Leave.user_id, list(visible_ids)))
+
+    if active_bu_id is not None:
+        query_conditions.append(Leave.business_unit_id == active_bu_id)
 
     leaves = await Leave.find(*query_conditions).sort("-created_at").to_list()
     return [
@@ -340,19 +352,25 @@ async def get_pending_leaves(user: User = Depends(require_management_team)):
 
 
 @router.get("/all", response_model=List[dict])
-async def get_all_leaves(user: User = Depends(require_management_team)):
-    """List all leave requests (history). Filters by hierarchy for all management roles except Admin."""
-    query_conditions = []
-    
+async def get_all_leaves(
+    user: User = Depends(require_management_team),
+    active_bu_id = Depends(get_active_business_unit_id),
+):
+    """List all leave requests (history). Filters by hierarchy for all management roles except Admin.
+    When a business unit is active, narrows the result to that unit only.
+    """
+    cid = require_tenant_id(user)
+    query_conditions = [Leave.tenant_id == cid]
+
     from app.routes.employees import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(user)
     if visible_ids is not None:
         query_conditions.append(In(Leave.user_id, list(visible_ids)))
 
-    if query_conditions:
-        leaves = await Leave.find(*query_conditions).sort("-created_at").to_list()
-    else:
-        leaves = await Leave.find_all().sort("-created_at").to_list()
+    if active_bu_id is not None:
+        query_conditions.append(Leave.business_unit_id == active_bu_id)
+
+    leaves = await Leave.find(*query_conditions).sort("-created_at").to_list()
     return [
         {
             "id": str(l.id),
@@ -496,18 +514,18 @@ async def approve_leave(
         await ledger_entry.insert()
         
         # Sync leave balance document
-        from app.models.company import Company
+        from app.models.tenant import Tenant
         applicant_user = await User.get(leave.user_id)
-        company = None
-        if applicant_user and applicant_user.company_id:
-            company = await Company.get(applicant_user.company_id)
-        if not company:
-            company = await Company.find_one(Company.is_active == True)
+        tenant = None
+        if applicant_user and applicant_user.tenant_id:
+            tenant = await Tenant.get(applicant_user.tenant_id)
+        if not tenant:
+            tenant = await Tenant.find_one(Tenant.is_active == True)
         
         limits = {
-            "casual": company.casual_leave_limit if company else 12,
-            "sick": company.sick_leave_limit if company else 0,
-            "earned": company.earned_leave_limit if company else 0
+            "casual": tenant.casual_leave_limit if tenant else 12,
+            "sick": tenant.sick_leave_limit if tenant else 0,
+            "earned": tenant.earned_leave_limit if tenant else 0
         }
         await sync_leave_balance_from_ledger(leave.user_id, limits)
 
@@ -543,7 +561,7 @@ async def approve_leave(
 
     # Fetch applicant once (reused below for notifications too)
     applicant = await User.get(leave.user_id)
-    comp_id = applicant.company_id if (applicant and applicant.company_id) else PydanticObjectId()
+    comp_id = applicant.tenant_id if (applicant and applicant.tenant_id) else PydanticObjectId()
 
     current_date = leave.start_date
     while current_date <= leave.end_date:
@@ -559,7 +577,7 @@ async def approve_leave(
         if not attendance:
             attendance = Attendance(
                 user_id=leave.user_id,
-                company_id=comp_id,
+                tenant_id=comp_id,
                 check_in=current_date.replace(hour=9, minute=0, second=0),
                 check_out=current_date.replace(hour=18, minute=0, second=0),
                 status="present",

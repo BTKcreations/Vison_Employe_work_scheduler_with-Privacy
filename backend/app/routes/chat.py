@@ -73,7 +73,10 @@ async def ensure_message_participant(message: ChatMessage, user: User) -> None:
 @router.get("/users", response_model=List[dict])
 async def get_active_chat_users(current_user: User = Depends(get_current_user)):
     """Retrieve all active, non-deleted employees for direct chats, with last message, unread count, sorted by recent activity."""
-    users = await User.find(User.is_deleted != True).to_list()
+    users = await User.find(
+        User.is_deleted != True,
+        User.tenant_id == current_user.tenant_id,
+    ).to_list()
     
     hydrated_users = []
     for u in users:
@@ -198,6 +201,7 @@ async def create_chat_group(
             continue
 
     group = ChatGroup(
+        tenant_id=current_user.tenant_id,
         name=request.name.strip(),
         members=list(member_ids),
         created_by=current_user.id
@@ -359,6 +363,7 @@ async def send_chat_message(
     msg = ChatMessage(
         group_id=g_id,
         sender_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         sender_name=current_user.name,
         recipient_id=r_id,
         text=request.text,
@@ -521,6 +526,7 @@ async def gift_points_in_chat(
     # Generate appreciation tip chat message
     tip_msg = ChatMessage(
         sender_id=current_user.id,
+        tenant_id=current_user.tenant_id,
         sender_name=current_user.name,
         recipient_id=recipient.id,
         text=request.message.strip() or f"Appreciated you with +{request.points} reward points!",

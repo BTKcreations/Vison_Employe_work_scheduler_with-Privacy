@@ -7,6 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:owner": "playwright test tests/e2e/owner.spec.ts",
+    "test:e2e:bu": "playwright test tests/e2e/business-units.spec.ts",
+    "test:e2e:switcher": "playwright test tests/e2e/switcher.spec.ts",
+    "test:e2e:isolation": "playwright test tests/e2e/isolation.spec.ts",
+    "test:e2e:employee": "playwright test tests/e2e/employee-bu.spec.ts",
     "deploy": "gh-pages -d out --dotfiles"
   },
   "dependencies": {
