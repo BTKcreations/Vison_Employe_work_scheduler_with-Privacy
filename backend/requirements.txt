@@ -11,6 +11,7 @@ python-multipart==0.0.9
 pandas>=2.2.3
 openpyxl==3.1.5
 python-dotenv==1.0.1
+httpx>=0.28.1
 gunicorn>=23.0.0
 pytest>=8.0.0
 pytest-asyncio>=0.23.0
