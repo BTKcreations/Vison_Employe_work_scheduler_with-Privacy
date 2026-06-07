@@ -198,12 +198,12 @@ async def create_task(
     creator = await User.get(last_task.created_by)
     company_name = await _resolve_company_name(last_task.company_id)
 
-    # Resolve categories
+    # Resolve categories using a single batched query
     cat_names = []
-    for cid in (last_task.category_ids or []):
-        cat = await Category.get(cid)
-        if cat:
-            cat_names.append(cat.name)
+    if last_task.category_ids:
+        categories = await Category.find(In(Category.id, last_task.category_ids)).to_list()
+        cat_map = {cat.id: cat.name for cat in categories}
+        cat_names = [cat_map.get(cid) for cid in last_task.category_ids if cid in cat_map]
 
     return TaskResponse.from_task(
         last_task,
@@ -511,10 +511,10 @@ async def update_task(
     company_name = await _resolve_company_name(updated_task.company_id)
 
     cat_names = []
-    for cid in (updated_task.category_ids or []):
-        cat = await Category.get(cid)
-        if cat:
-            cat_names.append(cat.name)
+    if updated_task.category_ids:
+        categories = await Category.find(In(Category.id, updated_task.category_ids)).to_list()
+        cat_map = {cat.id: cat.name for cat in categories}
+        cat_names = [cat_map.get(cid) for cid in updated_task.category_ids if cid in cat_map]
 
     return TaskResponse.from_task(
         updated_task,
