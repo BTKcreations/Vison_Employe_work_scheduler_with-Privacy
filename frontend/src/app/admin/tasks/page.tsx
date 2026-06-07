@@ -1012,6 +1012,7 @@ export default function AdminTasksPage() {
                             <option value="daily">Day(s)</option>
                             <option value="weekly">Week(s)</option>
                             <option value="monthly">Month(s)</option>
+                            <option value="yearly">Year(s)</option>
                           </select>
                         </div>
                       </div>

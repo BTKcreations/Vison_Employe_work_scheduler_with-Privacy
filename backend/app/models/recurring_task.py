@@ -9,6 +9,7 @@ class RecurrenceType(str, Enum):
     DAILY = "daily"
     WEEKLY = "weekly"
     MONTHLY = "monthly"
+    YEARLY = "yearly"
 
 class RecurrenceEndType(str, Enum):
     NEVER = "never"
@@ -26,7 +27,7 @@ class RecurrenceRule(Document):
     
     # Recurrence rules
     type: RecurrenceType
-    interval: int = 1  # every 1 day/week/month
+    interval: int = 1  # every 1 day/week/month/year
     weekdays: Optional[List[int]] = None  # 0-6 (Mon-Sun)
     month_day: Optional[int] = None
     
