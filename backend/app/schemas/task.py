@@ -14,7 +14,7 @@ class RemarkEntry(BaseModel):
 
 
 class RecurrenceRuleSchema(BaseModel):
-    type: str  # daily, weekly, monthly
+    type: str  # daily, weekly, monthly, yearly
     interval: int = 1
     weekdays: Optional[List[int]] = None
     month_day: Optional[int] = None
