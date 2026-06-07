@@ -5,7 +5,7 @@ from app.models.user import User, UserRole
 from app.auth.password import hash_password, validate_password_strength
 from app.models.activity_log import ActivityLog
 from beanie import PydanticObjectId
-from beanie.operators import In
+from beanie.operators import In, Eq
 from datetime import datetime, timezone
 from typing import Optional, List
 
@@ -308,66 +308,73 @@ async def get_visible_employee_ids(user: User) -> set:
     if user.role == UserRole.MANAGER:
         # Performance optimization: Targeted DB queries instead of full scan
         # Get AMs and AHRMs reporting to this Manager
-        sub_managers = await User.find(
-            User.reporting_manager_id == user.id,
-            In(User.role, [UserRole.ASSISTANT_MANAGER, UserRole.ASSISTANT_HR_MANAGER])
-        ).to_list()
+        sub_managers = await User.get_pymongo_collection().find(
+            {
+                "reporting_manager_id": user.id,
+                "role": {"$in": [UserRole.ASSISTANT_MANAGER.value, UserRole.ASSISTANT_HR_MANAGER.value]}
+            },
+            {"_id": 1, "role": 1}
+        ).to_list(length=None)
 
         am_ids = []
         for u in sub_managers:
-            visible_ids.add(u.id)
-            if u.role == UserRole.ASSISTANT_MANAGER:
-                am_ids.append(u.id)
+            visible_ids.add(u["_id"])
+            if u["role"] == UserRole.ASSISTANT_MANAGER.value:
+                am_ids.append(u["_id"])
 
         if am_ids:
             # Employees reporting to those AMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.reporting_manager_id, am_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE.value,
+                "reporting_manager_id": {"$in": am_ids}
+            })
+            visible_ids.update(emp_ids)
 
     elif user.role == UserRole.HR_MANAGER:
         # Get AHRMs and AMs reporting to this HR Manager
-        sub_managers = await User.find(
-            User.hr_reporting_manager_id == user.id,
-            In(User.role, [UserRole.ASSISTANT_HR_MANAGER, UserRole.ASSISTANT_MANAGER])
-        ).to_list()
+        sub_managers = await User.get_pymongo_collection().find(
+            {
+                "hr_reporting_manager_id": user.id,
+                "role": {"$in": [UserRole.ASSISTANT_HR_MANAGER.value, UserRole.ASSISTANT_MANAGER.value]}
+            },
+            {"_id": 1, "role": 1}
+        ).to_list(length=None)
 
         ahrm_ids = []
         for u in sub_managers:
-            visible_ids.add(u.id)
-            if u.role == UserRole.ASSISTANT_HR_MANAGER:
-                ahrm_ids.append(u.id)
+            visible_ids.add(u["_id"])
+            if u["role"] == UserRole.ASSISTANT_HR_MANAGER.value:
+                ahrm_ids.append(u["_id"])
 
         if ahrm_ids:
             # Employees reporting to those AHRMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.hr_reporting_manager_id, ahrm_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+            emp_ids = await User.distinct("_id", {
+                "role": UserRole.EMPLOYEE.value,
+                "hr_reporting_manager_id": {"$in": ahrm_ids}
+            })
+            visible_ids.update(emp_ids)
 
     elif user.role == UserRole.ASSISTANT_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE.value,
+            "reporting_manager_id": user.id
+        })
+        visible_ids.update(emp_ids)
 
     elif user.role == UserRole.ASSISTANT_HR_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.hr_reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+        emp_ids = await User.distinct("_id", {
+            "role": UserRole.EMPLOYEE.value,
+            "hr_reporting_manager_id": user.id
+        })
+        visible_ids.update(emp_ids)
 
     if scope_company_ids:
-        scoped_users = await User.find(
-            In(User.id, list(visible_ids)),
-            In(User.primary_company_id, list(scope_company_ids))
-        ).project({"_id": 1}).to_list()
-        visible_ids = {u.id if hasattr(u, "id") else u["_id"] for u in scoped_users}
+        # Restrict to users within allowed companies
+        visible_ids = await User.distinct("_id", {
+            "_id": {"$in": list(visible_ids)},
+            "primary_company_id": {"$in": list(scope_company_ids)}
+        })
+        visible_ids = set(visible_ids)
 
     user._visible_employee_ids_cache = visible_ids
     return visible_ids
