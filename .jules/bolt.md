@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-05 - Beanie/Motor Enum and Object Serialization in Raw Queries
+**Learning:** When using `User.get_pymongo_collection()` or Beanie's class-level `distinct("field", query_dict)`, Pydantic Enums and `PydanticObjectId`s are NOT automatically serialized. This leads to `bson.errors.InvalidDocument` or empty results.
+**Action:** Always manually convert Enums to strings (`Enum.value`) and ensure `PydanticObjectId`s are used correctly when passing raw dictionaries to these methods. Use Beanie's `find().distinct()` (if available/working) or `find()` for better serialization. Note: In Beanie 2.1.0, `find().distinct()` is NOT available; use `Model.distinct("field", query_dict)` instead.
