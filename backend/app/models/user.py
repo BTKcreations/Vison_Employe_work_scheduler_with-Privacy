@@ -65,6 +65,8 @@ class User(Document):
             "business_unit_id",
             "role",
             "is_platform_owner",
+            "reporting_manager_id",
+            "hr_reporting_manager_id",
             ("tenant_id", "business_unit_id"),
             ("tenant_id", "primary_company_id"),
         ]

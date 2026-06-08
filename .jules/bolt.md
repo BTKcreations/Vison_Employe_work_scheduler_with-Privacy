@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Beanie Projection and Serialization Constraints
+**Learning:** Beanie 2.1.0's `.project()` method on `find()` queries expects a Pydantic model. Passing a raw dictionary projection (e.g., `{"name": 1}`) results in `AttributeError: 'dict' object has no attribute 'model_config'` because Beanie attempts to access Pydantic v2 metadata on the result "model". Additionally, nesting Beanie `Comparison` objects inside manual `$and` dictionaries for `distinct()` or `aggregate()` can cause serialization failures in the MongoDB driver.
+**Action:** Use `Model.get_pymongo_collection().find(query, projection)` for raw dictionary projections to bypass the Beanie/Pydantic layer entirely. For complex queries in `distinct()`, use the `And(*filters)` operator which correctly serializes Beanie expression objects.
