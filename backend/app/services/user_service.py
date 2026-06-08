@@ -321,11 +321,14 @@ async def get_visible_employee_ids(user: User) -> set:
 
         if am_ids:
             # Employees reporting to those AMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.reporting_manager_id, am_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+            emp_ids_raw = await User.get_pymongo_collection().find(
+                {
+                    "role": UserRole.EMPLOYEE.value,
+                    "reporting_manager_id": {"$in": am_ids}
+                },
+                {"_id": 1}
+            ).to_list(length=None)
+            visible_ids.update(e["_id"] for e in emp_ids_raw)
 
     elif user.role == UserRole.HR_MANAGER:
         # Get AHRMs and AMs reporting to this HR Manager
@@ -342,32 +345,44 @@ async def get_visible_employee_ids(user: User) -> set:
 
         if ahrm_ids:
             # Employees reporting to those AHRMs
-            emp_ids = await User.find(
-                User.role == UserRole.EMPLOYEE,
-                In(User.hr_reporting_manager_id, ahrm_ids)
-            ).project({"_id": 1}).to_list()
-            visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+            emp_ids_raw = await User.get_pymongo_collection().find(
+                {
+                    "role": UserRole.EMPLOYEE.value,
+                    "hr_reporting_manager_id": {"$in": ahrm_ids}
+                },
+                {"_id": 1}
+            ).to_list(length=None)
+            visible_ids.update(e["_id"] for e in emp_ids_raw)
 
     elif user.role == UserRole.ASSISTANT_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+        emp_ids_raw = await User.get_pymongo_collection().find(
+            {
+                "role": UserRole.EMPLOYEE.value,
+                "reporting_manager_id": user.id
+            },
+            {"_id": 1}
+        ).to_list(length=None)
+        visible_ids.update(e["_id"] for e in emp_ids_raw)
 
     elif user.role == UserRole.ASSISTANT_HR_MANAGER:
-        emp_ids = await User.find(
-            User.role == UserRole.EMPLOYEE,
-            User.hr_reporting_manager_id == user.id
-        ).project({"_id": 1}).to_list()
-        visible_ids.update(e.id if hasattr(e, "id") else e["_id"] for e in emp_ids)
+        emp_ids_raw = await User.get_pymongo_collection().find(
+            {
+                "role": UserRole.EMPLOYEE.value,
+                "hr_reporting_manager_id": user.id
+            },
+            {"_id": 1}
+        ).to_list(length=None)
+        visible_ids.update(e["_id"] for e in emp_ids_raw)
 
     if scope_company_ids:
-        scoped_users = await User.find(
-            In(User.id, list(visible_ids)),
-            In(User.primary_company_id, list(scope_company_ids))
-        ).project({"_id": 1}).to_list()
-        visible_ids = {u.id if hasattr(u, "id") else u["_id"] for u in scoped_users}
+        scoped_users_raw = await User.get_pymongo_collection().find(
+            {
+                "_id": {"$in": list(visible_ids)},
+                "primary_company_id": {"$in": list(scope_company_ids)}
+            },
+            {"_id": 1}
+        ).to_list(length=None)
+        visible_ids = {u["_id"] for u in scoped_users_raw}
 
     user._visible_employee_ids_cache = visible_ids
     return visible_ids

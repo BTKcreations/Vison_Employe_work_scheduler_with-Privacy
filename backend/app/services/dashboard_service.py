@@ -11,7 +11,7 @@ from app.services.reward_service import get_leaderboard
 from app.models.attendance import Attendance, ist_now, IST
 from app.utils.ist_time import to_utc_iso
 from beanie import PydanticObjectId
-from beanie.operators import In, NE, GTE
+from beanie.operators import In, NE, GTE, And
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 
@@ -64,77 +64,58 @@ async def get_admin_dashboard(
 
         visible_ids = await get_visible_employee_ids(current_user)
 
-    bu_filter = {"business_unit_id": business_unit_id} if business_unit_id is not None else {}
-
-    if visible_ids is not None:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-    else:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-
-    # Get today's attendance stats with a single query
+    # 1. Get today's attendance stats with a single query first
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    att_query = GTE(Attendance.check_in, today_start)
+    att_filters = [GTE(Attendance.check_in, today_start), Attendance.tenant_id == current_user.tenant_id]
     if visible_ids is not None:
-        att_query = {"$and": [att_query, In(Attendance.user_id, list(visible_ids))]}
-    att_query = {"$and": [att_query, {"tenant_id": current_user.tenant_id}]} if "$and" in att_query else {"$and": [att_query, {"tenant_id": current_user.tenant_id}]}
+        att_filters.append(In(Attendance.user_id, list(visible_ids)))
     if business_unit_id is not None:
-        att_query = {"$and": [att_query, {"business_unit_id": business_unit_id}]}
+        att_filters.append(Attendance.business_unit_id == business_unit_id)
 
-    present_user_ids = await Attendance.distinct("user_id", att_query)
+    # Use Beanie's class method for distinct to handle serialization correctly
+    present_user_ids = await Attendance.distinct("user_id", And(*att_filters))
     present_user_ids = [PydanticObjectId(uid) for uid in present_user_ids]
 
-    # Get precise counts for each role and calculate present/absent stats per role using aggregation
+    # 2. Get precise counts for each role and calculate present/absent stats using ONE aggregation
+    # This avoids multiple redundant User.find(...).count() calls for total/active employees
     role_counts = {
         role.value: {"total": 0, "present": 0, "absent": 0} for role in UserRole
     }
     role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
 
-    user_match = NE(User.is_deleted, True)
-    user_match = {"$and": [user_match, {"tenant_id": current_user.tenant_id}]} if isinstance(user_match, dict) else {"$and": [{"is_deleted": {"$ne": True}}, {"tenant_id": current_user.tenant_id}]}
+    # Construct user filters using idiomatic Beanie
+    user_filters = [
+        User.is_deleted != True,
+        User.tenant_id == current_user.tenant_id
+    ]
     if visible_ids is not None:
-        user_match = {"$and": [user_match, In(User.id, list(visible_ids))]}
+        user_filters.append(In(User.id, list(visible_ids)))
     if business_unit_id is not None:
-        user_match = {"$and": [user_match, {"business_unit_id": business_unit_id}]}
+        user_filters.append(User.business_unit_id == business_unit_id)
 
+    # Using find().aggregate() allows Beanie to handle operator serialization
     pipeline = [
-        {"$match": user_match},
-        {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
+        {
+            "$project": {
+                "role": 1,
+                "is_active": 1,
+                "is_present": {"$in": ["$_id", present_user_ids]}
+            }
+        },
         {
             "$group": {
                 "_id": "$role",
                 "total": {"$sum": 1},
+                "active": {"$sum": {"$cond": ["$is_active", 1, 0]}},
                 "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
             }
         },
     ]
 
-    role_stats = await User.aggregate(pipeline).to_list()
+    total_employees = 0
+    active_employees = 0
+    present_employees = 0
+    role_stats = await User.find(*user_filters).aggregate(pipeline).to_list()
     for stat in role_stats:
         r_val = stat["_id"]
         role_counts[r_val] = {
@@ -145,6 +126,12 @@ async def get_admin_dashboard(
         role_counts["total_all_inclusive"]["total"] += stat["total"]
         role_counts["total_all_inclusive"]["present"] += stat["present"]
         role_counts["total_all_inclusive"]["absent"] += stat["total"] - stat["present"]
+
+        # Aggregate totals for the top-level 'employees' card (only for non-admin roles)
+        if r_val in [r.value for r in NON_ADMIN_ROLES]:
+            total_employees += stat["total"]
+            active_employees += stat["active"]
+            present_employees += stat["present"]
 
     if visible_ids is not None:
         task_counts = await get_task_counts(user_ids=list(visible_ids), business_unit_id=business_unit_id)
@@ -190,8 +177,16 @@ async def get_admin_dashboard(
         )
 
     user_ids = list(set([a.user_id for a in recent_activities]))
-    users = await User.find(In(User.id, user_ids)).to_list()
-    user_map = {u.id: u.name for u in users}
+    user_map = {}
+    if user_ids:
+        # Optimized with projection to only fetch necessary fields.
+        # Using pymongo collection directly to bypass Beanie's projection model requirement.
+        cursor = User.get_pymongo_collection().find(
+            {"_id": {"$in": user_ids}},
+            {"_id": 1, "name": 1}
+        )
+        users = await cursor.to_list(length=len(user_ids))
+        user_map = {u["_id"]: u["name"] for u in users}
 
     activity_list = [
         {
@@ -221,9 +216,11 @@ async def get_admin_dashboard(
         },
         "tasks": task_counts,
         "priority_distribution": priority_dist,
-        "attendance_today": await _get_today_attendance_stats(
-            total_employees, visible_ids
-        ),
+        "attendance_today": {
+            "present": present_employees,
+            "absent": max(0, total_employees - present_employees),
+            "total": total_employees
+        },
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
         "total_rewards_given": total_rewards,
