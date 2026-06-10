@@ -64,39 +64,6 @@ async def get_admin_dashboard(
 
         visible_ids = await get_visible_employee_ids(current_user)
 
-    bu_filter = {"business_unit_id": business_unit_id} if business_unit_id is not None else {}
-
-    if visible_ids is not None:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-    else:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-
     # Get today's attendance stats with a single query
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
     att_query = GTE(Attendance.check_in, today_start)
@@ -124,17 +91,30 @@ async def get_admin_dashboard(
 
     pipeline = [
         {"$match": user_match},
-        {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
+        {
+            "$project": {
+                "role": 1,
+                "is_active": 1,
+                "is_present": {"$in": ["$_id", present_user_ids]},
+            }
+        },
         {
             "$group": {
                 "_id": "$role",
                 "total": {"$sum": 1},
+                "active": {"$sum": {"$cond": ["$is_active", 1, 0]}},
                 "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
             }
         },
     ]
 
     role_stats = await User.aggregate(pipeline).to_list()
+    total_employees = 0
+    active_employees = 0
+    present_employees = 0
+
+    non_admin_role_values = {r.value for r in NON_ADMIN_ROLES}
+
     for stat in role_stats:
         r_val = stat["_id"]
         role_counts[r_val] = {
@@ -145,6 +125,12 @@ async def get_admin_dashboard(
         role_counts["total_all_inclusive"]["total"] += stat["total"]
         role_counts["total_all_inclusive"]["present"] += stat["present"]
         role_counts["total_all_inclusive"]["absent"] += stat["total"] - stat["present"]
+
+        # Track total/active/present counts for NON_ADMIN_ROLES (excluding system roles)
+        if r_val in non_admin_role_values:
+            total_employees += stat["total"]
+            active_employees += stat["active"]
+            present_employees += stat["present"]
 
     if visible_ids is not None:
         task_counts = await get_task_counts(user_ids=list(visible_ids), business_unit_id=business_unit_id)
@@ -190,8 +176,11 @@ async def get_admin_dashboard(
         )
 
     user_ids = list(set([a.user_id for a in recent_activities]))
-    users = await User.find(In(User.id, user_ids)).to_list()
-    user_map = {u.id: u.name for u in users}
+    # Optimized: Use projection to fetch only needed fields and bypass Beanie overhead
+    users = await User.get_pymongo_collection().find(
+        {"_id": {"$in": user_ids}}, {"_id": 1, "name": 1}
+    ).to_list(length=None)
+    user_map = {u["_id"]: u["name"] for u in users}
 
     activity_list = [
         {
@@ -221,9 +210,11 @@ async def get_admin_dashboard(
         },
         "tasks": task_counts,
         "priority_distribution": priority_dist,
-        "attendance_today": await _get_today_attendance_stats(
-            total_employees, visible_ids
-        ),
+        "attendance_today": {
+            "present": present_employees,
+            "absent": max(0, total_employees - present_employees),
+            "total": total_employees,
+        },
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
         "total_rewards_given": total_rewards,
