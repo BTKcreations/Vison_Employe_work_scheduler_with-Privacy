@@ -405,23 +405,34 @@ async def get_employee_dashboard(
 async def get_all_attendance_summary(
     visible_employee_ids=None,
     business_unit_id: Optional[PydanticObjectId] = None,
+    tenant_id: Optional[PydanticObjectId] = None,
 ):
-    """Get last 5 days attendance summary for all employees (or a hierarchy-scoped subset)."""
+    """Get last 5 days attendance summary for all employees (or a hierarchy-scoped subset).
+    Optimized with raw PyMongo projections and date pre-calculation.
+    """
+    user_query = {"is_deleted": {"$ne": True}}
+    if tenant_id:
+        user_query["tenant_id"] = tenant_id
+    if business_unit_id:
+        user_query["business_unit_id"] = business_unit_id
     if visible_employee_ids is not None:
-        employees = await User.find(In(User.id, list(visible_employee_ids))).to_list()
+        user_query["_id"] = {"$in": list(visible_employee_ids)}
     else:
-        employees = await User.find(In(User.role, NON_ADMIN_ROLES)).to_list()
+        user_query["role"] = {"$in": [r.value for r in NON_ADMIN_ROLES]}
 
-    if business_unit_id is not None:
-        employees = [e for e in employees if e.business_unit_id == business_unit_id]
+    # Use raw PyMongo find for faster projection without Beanie/Pydantic overhead
+    employees = await User.get_pymongo_collection().find(
+        user_query,
+        {"_id": 1, "name": 1, "email": 1, "reward_points": 1}
+    ).to_list(length=None)
+
+    if not employees:
+        return []
 
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
     five_days_ago = today_start - timedelta(days=4)
 
-    # Build user_id set for scoped attendance query (avoids full-table scan)
-    employee_ids = [emp.id for emp in employees]
-    if not employee_ids:
-        return []
+    employee_ids = [emp["_id"] for emp in employees]
     logs = await Attendance.find(
         Attendance.check_in >= five_days_ago, In(Attendance.user_id, employee_ids)
     ).to_list()
@@ -434,45 +445,48 @@ async def get_all_attendance_summary(
         if uid not in log_map:
             log_map[uid] = {}
         if date_str not in log_map[uid]:
-            log_map[uid][date_str] = log  # store full Attendance object
+            log_map[uid][date_str] = log
+
+    # Pre-calculate date metadata to avoid redundant computation in O(N*5) loop
+    date_metadata = []
+    for i in range(5):
+        day = today_start - timedelta(days=i)
+        date_metadata.append({
+            "iso": to_utc_iso(day),
+            "date_str": day.date().isoformat()
+        })
+    date_metadata.reverse()
 
     summary = []
     for emp in employees:
-        uid = str(emp.id)
+        uid = str(emp["_id"])
         history = []
-        for i in range(5):
-            day = today_start - timedelta(days=i)
-            date_str = day.date().isoformat()
-            record = log_map.get(uid, {}).get(date_str)
+        # O(5) inner loop
+        for meta in date_metadata:
+            record = log_map.get(uid, {}).get(meta["date_str"])
             entry = {
-                "date": to_utc_iso(day),
+                "date": meta["iso"],
                 "status": "present" if record else "absent",
             }
             if record:
-                entry["check_in"] = (
-                    to_utc_iso(record.check_in) if record.check_in else None
-                )
-                entry["check_out"] = (
-                    to_utc_iso(record.check_out) if record.check_out else None
-                )
-                entry["location_in"] = record.location_in
-                entry["location_out"] = record.location_out
-                entry["address_in"] = record.address_in
-                entry["address_out"] = record.address_out
-                entry["is_regularized"] = bool(
-                    record.remarks and "Regularized" in (record.remarks or "")
-                )
+                entry.update({
+                    "check_in": to_utc_iso(record.check_in) if record.check_in else None,
+                    "check_out": to_utc_iso(record.check_out) if record.check_out else None,
+                    "location_in": record.location_in,
+                    "location_out": record.location_out,
+                    "address_in": record.address_in,
+                    "address_out": record.address_out,
+                    "is_regularized": bool(record.remarks and "Regularized" in (record.remarks or ""))
+                })
             history.append(entry)
-        history.reverse()
-        summary.append(
-            {
-                "user_id": uid,
-                "user_name": emp.name,
-                "user_email": emp.email,
-                "reward_points": emp.reward_points,
-                "history": history,
-            }
-        )
+
+        summary.append({
+            "user_id": uid,
+            "user_name": emp["name"],
+            "user_email": emp["email"],
+            "reward_points": emp.get("reward_points", 0.0),
+            "history": history,
+        })
     return summary
 
 
