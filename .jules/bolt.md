@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-10 - Beanie Query List vs Set
+**Learning:** Constructing queries as a set `{}` containing Beanie comparison objects (e.g., `User.role == UserRole.EMPLOYEE`) triggers a `TypeError: unhashable type: 'Eq'` because these objects are not hashable.
+**Action:** Always construct queries using a list `[]` to ensure compatibility with Beanie's comparison operators when building dynamic filters.
