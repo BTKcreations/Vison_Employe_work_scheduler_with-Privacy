@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-06 - Pre-calculating Loop Invariants in Dashboards
+**Learning:** Redundant date calculations (like `to_utc_iso` or `timedelta`) inside O(N) loops for large employee sets cause significant CPU overhead. Combined with Beanie model instantiation, this makes summary endpoints sluggish (~1.3s for 200 users).
+**Action:** Pre-calculate all date-related metadata and ISO strings outside the main loop. Use raw PyMongo projections to bypass Pydantic validation when generating high-volume list responses.
