@@ -378,6 +378,7 @@ async def get_summary(
     from app.services.user_service import get_visible_employee_ids
     visible_ids = await get_visible_employee_ids(current_user)
     return await dashboard_service.get_all_attendance_summary(
+        tenant_id=current_user.tenant_id,
         visible_employee_ids=visible_ids,
         business_unit_id=active_bu_id,
     )
