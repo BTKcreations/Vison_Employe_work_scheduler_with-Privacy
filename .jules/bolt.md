@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-10 - Raw Motor Cursor Constraints
+**Learning:** When bypassing Beanie's `find().to_list()` wrapper and using `Model.get_pymongo_collection().find().to_list()`, the `length` argument is mandatory for the underlying Motor driver. Passing `None` or omitting it triggers a `TypeError`.
+**Action:** Always provide a reasonable `length` (e.g., `10000`) when calling `.to_list()` on raw Motor cursors to avoid runtime crashes while still benefiting from projection performance.
