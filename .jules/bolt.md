@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Optimized Attendance Summary with Raw PyMongo
+**Learning:** Fetching full Beanie models and filtering by business unit in-memory in `get_all_attendance_summary` caused significant performance degradation (~2.5s for 500 users). Motor cursors' `.to_list()` requires a mandatory `length` parameter when bypassing Beanie.
+**Action:** Use `Model.get_pymongo_collection().find(query, projection)` to fetch only necessary fields as dictionaries and push all filters (including `business_unit_id`) to the database level. Always provide a `length` (e.g., `10000`) to `.to_list()` when working with raw Motor cursors.
