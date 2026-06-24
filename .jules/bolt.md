@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Optimized Bulk Attendance Summary
+**Learning:** Instantiating hundreds of Beanie models (User and Attendance) for a 5-day summary dashboard caused significant overhead (~0.66s for 500 users). Direct Pydantic model access in nested loops was also slower than dictionary access.
+**Action:** Use raw PyMongo `find` with projections via `Model.get_pymongo_collection()` to bypass model instantiation. Pre-calculate constant values (like daily ISO strings) outside the main employee loop to minimize redundant computations. Ensure null-safety for `check_in`/`check_out` fields as they can be null for active sessions. This achieved a ~23% performance improvement in local benchmarks.
