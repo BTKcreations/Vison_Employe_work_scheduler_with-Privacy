@@ -24,3 +24,11 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-21 - Raw Projections for Bulk Data
+**Learning:** Fetching hundreds of documents as Beanie models triggers significant Pydantic validation overhead. Using raw PyMongo collection access with projections (`Model.get_pymongo_collection().find(query, projection)`) bypasses this, drastically reducing CPU and memory usage.
+**Action:** Use raw projections for bulk analytical queries (like dashboard summaries) where full model functionality is not required. Always include a `length` parameter in `.to_list()` as it is mandatory for Motor cursors.
+
+## 2026-06-21 - Driver Consistency in Test Scripts
+**Learning:** Initializing Beanie with `motor.motor_asyncio.AsyncIOMotorClient` when the application uses `pymongo.AsyncMongoClient` (available in newer Motor/PyMongo versions) can cause `TypeError: MotorDatabase object is not callable` during `init_beanie`.
+**Action:** Always use `pymongo.AsyncMongoClient` for standalone scripts and benchmarks to ensure compatibility with the application's database initialization logic.
