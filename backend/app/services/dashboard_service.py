@@ -417,79 +417,98 @@ async def get_all_attendance_summary(
     tenant_id: Optional[PydanticObjectId] = None,
 ):
     """Get last 5 days attendance summary for all employees (or a hierarchy-scoped subset)."""
-    query_conditions = []
+    # Bolt Optimization: Use raw PyMongo collection and projections to bypass Beanie/Pydantic overhead.
+    # This reduces execution time by avoiding model instantiation for hundreds of users and records.
+    user_query = {"is_deleted": {"$ne": True}}
     if tenant_id is not None:
-        query_conditions.append(User.tenant_id == tenant_id)
+        user_query["tenant_id"] = tenant_id
 
     if visible_employee_ids is not None:
-        query_conditions.append(In(User.id, list(visible_employee_ids)))
+        user_query["_id"] = {"$in": list(visible_employee_ids)}
     else:
-        query_conditions.append(In(User.role, NON_ADMIN_ROLES))
-
-    employees = await User.find(*query_conditions).to_list()
-
+        user_query["role"] = {"$in": [r.value for r in NON_ADMIN_ROLES]}
 
     if business_unit_id is not None:
-        employees = [e for e in employees if e.business_unit_id == business_unit_id]
+        user_query["business_unit_id"] = business_unit_id
+
+    # Projection to only fetch necessary fields
+    user_projection = {"_id": 1, "name": 1, "email": 1, "reward_points": 1}
+    employees = await User.get_pymongo_collection().find(user_query, user_projection).to_list(length=100000)
+
+    if not employees:
+        return []
 
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
     five_days_ago = today_start - timedelta(days=4)
+    employee_ids = [emp["_id"] for emp in employees]
 
-    # Build user_id set for scoped attendance query (avoids full-table scan)
-    employee_ids = [emp.id for emp in employees]
-    if not employee_ids:
-        return []
-    logs = await Attendance.find(
-        Attendance.check_in >= five_days_ago, In(Attendance.user_id, employee_ids)
-    ).to_list()
+    # Bolt Optimization: Fetch attendance logs as raw dictionaries and project needed fields.
+    attendance_query = {
+        "check_in": {"$gte": five_days_ago},
+        "user_id": {"$in": employee_ids}
+    }
+    attendance_projection = {
+        "user_id": 1, "check_in": 1, "check_out": 1,
+        "location_in": 1, "location_out": 1,
+        "address_in": 1, "address_out": 1, "remarks": 1
+    }
 
-    # Map logs by user_id and date → store the full record (first per day)
+    logs = await Attendance.get_pymongo_collection().find(
+        attendance_query, attendance_projection
+    ).to_list(length=500000)
+
+    # Bolt Optimization: Pre-calculate date keys and ISO strings to avoid redundant operations in loops.
+    date_info = []
+    for i in range(5):
+        day = today_start - timedelta(days=i)
+        date_info.append({
+            "key": day.date().isoformat(),
+            "iso": to_utc_iso(day)
+        })
+    date_info.reverse() # We want it in chronological order if possible or just matches the original reverse() logic
+
+    # Map logs by user_id and date
     log_map: dict = {}
     for log in logs:
-        uid = str(log.user_id)
-        date_str = log.check_in.astimezone(IST).date().isoformat()
+        uid = str(log["user_id"])
+        # Use ASTIMEZONE IST for consistent date keys
+        date_str = log["check_in"].replace(tzinfo=timezone.utc).astimezone(IST).date().isoformat()
         if uid not in log_map:
             log_map[uid] = {}
         if date_str not in log_map[uid]:
-            log_map[uid][date_str] = log  # store full Attendance object
+            log_map[uid][date_str] = log
 
     summary = []
     for emp in employees:
-        uid = str(emp.id)
+        uid = str(emp["_id"])
         history = []
-        for i in range(5):
-            day = today_start - timedelta(days=i)
-            date_str = day.date().isoformat()
-            record = log_map.get(uid, {}).get(date_str)
+        user_logs = log_map.get(uid, {})
+
+        for info in date_info:
+            record = user_logs.get(info["key"])
             entry = {
-                "date": to_utc_iso(day),
+                "date": info["iso"],
                 "status": "present" if record else "absent",
             }
             if record:
-                entry["check_in"] = (
-                    to_utc_iso(record.check_in) if record.check_in else None
-                )
-                entry["check_out"] = (
-                    to_utc_iso(record.check_out) if record.check_out else None
-                )
-                entry["location_in"] = record.location_in
-                entry["location_out"] = record.location_out
-                entry["address_in"] = record.address_in
-                entry["address_out"] = record.address_out
+                entry["check_in"] = to_utc_iso(record["check_in"]) if record.get("check_in") else None
+                entry["check_out"] = to_utc_iso(record["check_out"]) if record.get("check_out") else None
+                entry["location_in"] = record.get("location_in")
+                entry["location_out"] = record.get("location_out")
+                entry["address_in"] = record.get("address_in")
+                entry["address_out"] = record.get("address_out")
                 entry["is_regularized"] = bool(
-                    record.remarks and "Regularized" in (record.remarks or "")
+                    record.get("remarks") and "Regularized" in record["remarks"]
                 )
             history.append(entry)
-        history.reverse()
-        summary.append(
-            {
-                "user_id": uid,
-                "user_name": emp.name,
-                "user_email": emp.email,
-                "reward_points": emp.reward_points,
-                "history": history,
-            }
-        )
+
+        summary.append({
+            "user_id": uid,
+            "user_name": emp.get("name", "Unknown"),
+            "user_email": emp.get("email", ""),
+            "reward_points": emp.get("reward_points", 0),
+            "history": history,
+        })
     return summary
 
 
