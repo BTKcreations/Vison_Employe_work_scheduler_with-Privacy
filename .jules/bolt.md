@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Bypassing ODM for Heavy Data Exports
+**Learning:** Generating large Excel/CSV reports using Beanie models (Pydantic objects) is extremely CPU and memory intensive due to validation and instantiation overhead. For 2000 records, this adds significant latency (~16% overhead).
+**Action:** Use `Model.get_pymongo_collection().find(query, projection)` to fetch raw dictionaries for reporting services. Always include a `projection` to minimize data transfer. When using `.to_list()` on Motor cursors, the `length` parameter is mandatory.
