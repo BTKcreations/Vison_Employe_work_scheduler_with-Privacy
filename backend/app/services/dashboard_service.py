@@ -222,7 +222,11 @@ async def get_admin_dashboard(
         "tasks": task_counts,
         "priority_distribution": priority_dist,
         "attendance_today": await _get_today_attendance_stats(
-            total_employees, visible_ids, tenant_id=current_user.tenant_id
+            total_employees,
+            visible_ids,
+            tenant_id=current_user.tenant_id,
+            present_count=len(present_user_ids),
+            business_unit_id=business_unit_id,
         ),
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
@@ -526,25 +530,38 @@ async def get_all_attendance_summary(
     return summary
 
 
-async def _get_today_attendance_stats(total_employees: int, visible_employee_ids=None, tenant_id: Optional[PydanticObjectId] = None):
+async def _get_today_attendance_stats(
+    total_employees: int,
+    visible_employee_ids=None,
+    tenant_id: Optional[PydanticObjectId] = None,
+    present_count: Optional[int] = None,
+    business_unit_id: Optional[PydanticObjectId] = None,
+):
     """Helper to get today's attendance stats using optimized database-level aggregation."""
-    # Using IST for consistent day boundaries.
-    today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    if present_count is None:
+        # Using IST for consistent day boundaries.
+        today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
 
-    match_query = GTE(Attendance.check_in, today_start)
-    if tenant_id is not None:
-        match_query = {"$and": [match_query, {"tenant_id": tenant_id}]}
+        match_query = GTE(Attendance.check_in, today_start)
+        if tenant_id is not None:
+            match_query = {"$and": [match_query, {"tenant_id": tenant_id}]}
 
-    if visible_employee_ids is not None:
-        if isinstance(match_query, dict) and "$and" in match_query:
-            match_query["$and"].append(In(Attendance.user_id, list(visible_employee_ids)))
-        else:
-            match_query = {
-                "$and": [match_query, In(Attendance.user_id, list(visible_employee_ids))]
-            }
+        if business_unit_id is not None:
+            if isinstance(match_query, dict) and "$and" in match_query:
+                match_query["$and"].append({"business_unit_id": business_unit_id})
+            else:
+                match_query = {"$and": [match_query, {"business_unit_id": business_unit_id}]}
 
-    # Get count of unique users who checked in today
-    present_count = len(await Attendance.distinct("user_id", match_query))
+        if visible_employee_ids is not None:
+            if isinstance(match_query, dict) and "$and" in match_query:
+                match_query["$and"].append(In(Attendance.user_id, list(visible_employee_ids)))
+            else:
+                match_query = {
+                    "$and": [match_query, In(Attendance.user_id, list(visible_employee_ids))]
+                }
+
+        # Get count of unique users who checked in today
+        present_count = len(await Attendance.distinct("user_id", match_query))
 
     absent_count = max(0, total_employees - present_count)
 
