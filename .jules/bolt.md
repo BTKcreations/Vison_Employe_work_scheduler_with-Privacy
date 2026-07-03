@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-07-03 - Report Generation Optimization
+**Learning:** Beanie's document instantiation and Pydantic validation are significant overheads when generating large reports. Using raw PyMongo collection access with `Model.get_pymongo_collection()` and targeted field projections bypassed this overhead.
+**Action:** For large data exports or reports, use raw collection access and projections. Ensure timezone awareness when performing manual datetime math (e.g., `deadline - completed_at`) since Beanie's automatic normalization is bypassed.
