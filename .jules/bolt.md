@@ -24,3 +24,19 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-07-04 - Virtual Overdue Logic in Aggregations
+**Learning:** Performing persistent  calls in a read-only dashboard service (GET) causes unnecessary write load and potential lock contention.
+**Action:** Implement 'virtual overdue' status directly in the aggregation pipeline using `$cond` and checking `deadline < now` for active tasks. This ensures accurate display without side-effect writes.
+
+## 2026-07-04 - Filter-Consistent Metrics
+**Learning:** Mismatched role filters between "total" and "present" counts in dashboards lead to illogical stats (e.g., negative absent counts).
+**Action:** Ensure all metrics in a dashboard use a consistent set of filters. In the User aggregation, calculate role-specific presence (`present_non_admin`) to pair with the total non-admin count.
+
+## 2026-07-04 - Virtual Overdue Logic in Aggregations
+**Learning:** Performing persistent `update_many` calls in a read-only dashboard service (GET) causes unnecessary write load and potential lock contention.
+**Action:** Implement 'virtual overdue' status directly in the aggregation pipeline using `$cond` and checking `deadline < now` for active tasks. This ensures accurate display without side-effect writes.
+
+## 2026-07-04 - Filter-Consistent Metrics
+**Learning:** Mismatched role filters between "total" and "present" counts in dashboards lead to illogical stats (e.g., negative absent counts).
+**Action:** Ensure all metrics in a dashboard use a consistent set of filters. In the User aggregation, calculate role-specific presence (`present_non_admin`) to pair with the total non-admin count.
