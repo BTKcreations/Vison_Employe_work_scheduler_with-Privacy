@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-10 - Logical Consistency in Dashboard Metrics
+**Learning:** When optimizing dashboards with consolidated aggregations, it is critical to ensure that summary metrics (like total "present" count) are derived from the same filtered population as the denominators (like "total employees"). Mismatched filters (e.g., including admins in "present" but not in "total") leads to broken statistics.
+**Action:** Derive summary metrics directly from role-based aggregation results to ensure consistent filtering. Avoid mixing data from different queries (like `distinct` and `aggregate`) when they have different role scope assumptions.
