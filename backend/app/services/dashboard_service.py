@@ -64,79 +64,56 @@ async def get_admin_dashboard(
 
         visible_ids = await get_visible_employee_ids(current_user)
 
-    bu_filter = {"business_unit_id": business_unit_id} if business_unit_id is not None else {}
-
-    if visible_ids is not None:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-    else:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-
-    # Get today's attendance stats with a single query
+    # 1. Fetch today's attendance once to reuse across facets
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    att_query = GTE(Attendance.check_in, today_start)
+    att_query = {"check_in": {"$gte": today_start}, "tenant_id": current_user.tenant_id}
     if visible_ids is not None:
-        att_query = {"$and": [att_query, In(Attendance.user_id, list(visible_ids))]}
-    att_query = {"$and": [att_query, {"tenant_id": current_user.tenant_id}]} if "$and" in att_query else {"$and": [att_query, {"tenant_id": current_user.tenant_id}]}
+        att_query["user_id"] = {"$in": list(visible_ids)}
     if business_unit_id is not None:
-        att_query = {"$and": [att_query, {"business_unit_id": business_unit_id}]}
+        att_query["business_unit_id"] = business_unit_id
 
     present_user_ids = await Attendance.distinct("user_id", att_query)
     present_user_ids = [PydanticObjectId(uid) for uid in present_user_ids]
 
-    # Get precise counts for each role and calculate present/absent stats per role using aggregation
-    role_counts = {
-        role.value: {"total": 0, "present": 0, "absent": 0} for role in UserRole
-    }
-    role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
-
-    user_match = NE(User.is_deleted, True)
-    user_match = {"$and": [user_match, {"tenant_id": current_user.tenant_id}]} if isinstance(user_match, dict) else {"$and": [{"is_deleted": {"$ne": True}}, {"tenant_id": current_user.tenant_id}]}
+    # 2. Consolidate all User stats (Total, Active, Role-based) into ONE aggregation
+    user_match = {"is_deleted": {"$ne": True}, "tenant_id": current_user.tenant_id}
     if visible_ids is not None:
-        user_match = {"$and": [user_match, In(User.id, list(visible_ids))]}
+        user_match["_id"] = {"$in": list(visible_ids)}
     if business_unit_id is not None:
-        user_match = {"$and": [user_match, {"business_unit_id": business_unit_id}]}
+        user_match["business_unit_id"] = business_unit_id
 
     pipeline = [
         {"$match": user_match},
-        {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
+        {
+            "$project": {
+                "role": 1,
+                "is_active": 1,
+                "is_present": {"$in": ["$_id", present_user_ids]},
+            }
+        },
         {
             "$group": {
                 "_id": "$role",
                 "total": {"$sum": 1},
+                "active": {"$sum": {"$cond": ["$is_active", 1, 0]}},
                 "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
             }
         },
     ]
 
     role_stats = await User.aggregate(pipeline).to_list()
+
+    # Process role stats and derive top-level headcounts
+    role_counts = {role.value: {"total": 0, "present": 0, "absent": 0} for role in UserRole}
+    role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
+
+    total_employees = 0
+    active_employees = 0
+    present_non_admin = 0
+
     for stat in role_stats:
         r_val = stat["_id"]
+        # Aggregation keys are raw strings for Enums
         role_counts[r_val] = {
             "total": stat["total"],
             "present": stat["present"],
@@ -146,29 +123,158 @@ async def get_admin_dashboard(
         role_counts["total_all_inclusive"]["present"] += stat["present"]
         role_counts["total_all_inclusive"]["absent"] += stat["total"] - stat["present"]
 
+        # Track NON_ADMIN counts for the top-level dashboard metrics
+        if r_val in [r.value for r in NON_ADMIN_ROLES]:
+            total_employees += stat["total"]
+            active_employees += stat["active"]
+            present_non_admin += stat["present"]
+
+    # 3. Consolidate Task metrics (Counts, Priority, Rewards, Performance) into ONE aggregation
+    # Note: We use 'virtual overdue' logic here to avoid persistent writes during a fetch operation.
+    task_base_query = {"tenant_id": current_user.tenant_id}
     if visible_ids is not None:
-        task_counts = await get_task_counts(user_ids=list(visible_ids), business_unit_id=business_unit_id, tenant_id=current_user.tenant_id)
+        task_base_query["assigned_to"] = {"$in": list(visible_ids)}
+    if business_unit_id is not None:
+        task_base_query["business_unit_id"] = business_unit_id
+
+    now = datetime.now(timezone.utc)
+    start_date, end_date = get_date_range_for_filter(filter_type, custom_start, custom_end)
+
+    # Enum values for raw aggregation
+    C = TaskStatus.COMPLETED.value
+    CL = TaskStatus.COMPLETED_LATE.value
+    O = TaskStatus.OVERDUE.value
+    P = TaskStatus.PENDING.value
+    IP = TaskStatus.IN_PROGRESS.value
+
+    task_pipeline = [
+        {"$match": task_base_query},
+        {
+            "$project": {
+                "status": 1,
+                "priority": 1,
+                "reward_given": 1,
+                "deadline": 1,
+                "completed_at": 1,
+                "is_overdue": {
+                    "$or": [
+                        {"$eq": ["$status", O]},
+                        {"$and": [{"$in": ["$status", [P, IP]]}, {"$lt": ["$deadline", now]}]}
+                    ]
+                }
+            }
+        },
+        {
+            "$facet": {
+                "status_counts": [
+                    {
+                        "$group": {
+                            "_id": {
+                                "$cond": ["$is_overdue", O, "$status"]
+                            },
+                            "count": {"$sum": 1}
+                        }
+                    }
+                ],
+                "priority_dist": [
+                    {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+                ],
+                "total_rewards": [
+                    {"$match": {"reward_given": True}},
+                    {"$count": "count"}
+                ],
+                "performance": [
+                    {"$match": {"deadline": {"$gte": start_date, "$lte": end_date}}},
+                    {
+                        "$group": {
+                            "_id": None,
+                            "assigned": {"$sum": 1},
+                            "completed": {
+                                "$sum": {
+                                    "$cond": [
+                                        {"$in": ["$status", [C, CL]]},
+                                        1, 0
+                                    ]
+                                }
+                            },
+                            "completed_on_time": {
+                                "$sum": {
+                                    "$cond": [
+                                        {
+                                            "$and": [
+                                                {"$in": ["$status", [C, CL]]},
+                                                {"$lte": ["$completed_at", "$deadline"]}
+                                            ]
+                                        },
+                                        1, 0
+                                    ]
+                                }
+                            },
+                            "overdue": {
+                                "$sum": {
+                                    "$cond": ["$is_overdue", 1, 0]
+                                }
+                            },
+                            "pending": {
+                                "$sum": {
+                                    "$cond": [
+                                        {
+                                            "$and": [
+                                                {"$not": {"$in": ["$status", [C, CL]]}},
+                                                {"$not": "$is_overdue"}
+                                            ]
+                                        },
+                                        1, 0
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+
+    task_results = await Task.aggregate(task_pipeline).to_list()
+    res = task_results[0] if task_results else {}
+
+    # Extract Task Counts
+    task_counts = {"total": 0, "completed": 0, "completed_late": 0, "pending": 0, "in_progress": 0, "overdue": 0}
+    for s in res.get("status_counts", []):
+        status = s["_id"]
+        if status in task_counts:
+            task_counts[status] = s["count"]
+        task_counts["total"] += s["count"]
+
+    # Extract Priority Distribution
+    priority_dist = {"critical": 0, "high": 0, "medium": 0, "regular": 0}
+    for p in res.get("priority_dist", []):
+        if p["_id"] in priority_dist:
+            priority_dist[p["_id"]] = p["count"]
+
+    # Extract Total Rewards
+    total_rewards = res.get("total_rewards", [{}])[0].get("count", 0) if res.get("total_rewards") else 0
+
+    # Extract Performance Metrics
+    perf_data = res.get("performance", [{}])[0] if res.get("performance") else {}
+    assigned = perf_data.get("assigned", 0)
+    completed = perf_data.get("completed", 0)
+    completed_on_time = perf_data.get("completed_on_time", 0)
+
+    performance_tracking = {
+        "assigned_tasks": assigned,
+        "completed_tasks": completed,
+        "pending_tasks": perf_data.get("pending", 0),
+        "overdue_tasks": perf_data.get("overdue", 0),
+        "productivity_pct": round((completed / assigned * 100.0), 1) if assigned > 0 else 0.0,
+        "performance_score": round((completed_on_time / assigned * 100.0), 1) if assigned > 0 else 0.0,
+    }
+
+    # 4. Fetch Leaderboard (Keep separate for now as it's a different analytical query)
+    if visible_ids is not None:
         leaderboard = await get_leaderboard(limit=5, user_ids=list(visible_ids), tenant_id=current_user.tenant_id)
     else:
-        task_counts = await get_task_counts(business_unit_id=business_unit_id, tenant_id=current_user.tenant_id)
         leaderboard = await get_leaderboard(limit=5, tenant_id=current_user.tenant_id)
-
-    # Task priority distribution - optimized with single aggregation
-    priority_pipeline = []
-    priority_pipeline.append({"$match": {"tenant_id": current_user.tenant_id}})
-    if business_unit_id is not None:
-        priority_pipeline.append({"$match": {"business_unit_id": business_unit_id}})
-    if visible_ids is not None:
-        priority_pipeline.append(
-            {"$match": {"assigned_to": {"$in": list(visible_ids)}}}
-        )
-    priority_pipeline.append({"$group": {"_id": "$priority", "count": {"$sum": 1}}})
-
-    priority_results = await Task.aggregate(priority_pipeline).to_list()
-    priority_dist = {"critical": 0, "high": 0, "medium": 0, "regular": 0}
-    for res in priority_results:
-        if res["_id"] in priority_dist:
-            priority_dist[res["_id"]] = res["count"]
 
     # Recent activity - optimized with batch user fetching
     if visible_ids is not None:
@@ -205,14 +311,6 @@ async def get_admin_dashboard(
         for a in recent_activities
     ]
 
-    # Total rewards given
-    if visible_ids is not None:
-        total_rewards = await Task.find(
-            Task.reward_given == True, Task.tenant_id == current_user.tenant_id, In(Task.assigned_to, list(visible_ids))
-        ).count()
-    else:
-        total_rewards = await Task.find(Task.reward_given == True, Task.tenant_id == current_user.tenant_id).count()
-
     return {
         "employees": {
             "total": total_employees,
@@ -221,22 +319,15 @@ async def get_admin_dashboard(
         },
         "tasks": task_counts,
         "priority_distribution": priority_dist,
-        "attendance_today": await _get_today_attendance_stats(
-            total_employees, visible_ids, tenant_id=current_user.tenant_id
-        ),
+        "attendance_today": {
+            "present": present_non_admin,
+            "absent": max(0, total_employees - present_non_admin),
+            "total": total_employees
+        },
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
         "total_rewards_given": total_rewards,
-        "performance_tracking": await get_performance_metrics(
-            user_ids=list(visible_ids) if visible_ids is not None else None,
-            start_date=get_date_range_for_filter(filter_type, custom_start, custom_end)[
-                0
-            ],
-            end_date=get_date_range_for_filter(filter_type, custom_start, custom_end)[
-                1
-            ],
-            tenant_id=current_user.tenant_id,
-        ),
+        "performance_tracking": performance_tracking,
     }
 
 
@@ -634,7 +725,7 @@ async def get_performance_metrics(
                             {
                                 "$in": [
                                     "$status",
-                                    [TaskStatus.COMPLETED, TaskStatus.COMPLETED_LATE],
+                                    [TaskStatus.COMPLETED.value, TaskStatus.COMPLETED_LATE.value],
                                 ]
                             },
                             1,
@@ -651,8 +742,8 @@ async def get_performance_metrics(
                                         "$in": [
                                             "$status",
                                             [
-                                                TaskStatus.COMPLETED,
-                                                TaskStatus.COMPLETED_LATE,
+                                                TaskStatus.COMPLETED.value,
+                                                TaskStatus.COMPLETED_LATE.value,
                                             ],
                                         ]
                                     },
@@ -669,7 +760,7 @@ async def get_performance_metrics(
                         "$cond": [
                             {
                                 "$or": [
-                                    {"$eq": ["$status", TaskStatus.OVERDUE]},
+                                    {"$eq": ["$status", TaskStatus.OVERDUE.value]},
                                     {
                                         "$and": [
                                             {
@@ -677,8 +768,8 @@ async def get_performance_metrics(
                                                     "$in": [
                                                         "$status",
                                                         [
-                                                            TaskStatus.COMPLETED,
-                                                            TaskStatus.COMPLETED_LATE,
+                                                            TaskStatus.COMPLETED.value,
+                                                            TaskStatus.COMPLETED_LATE.value,
                                                         ],
                                                     ]
                                                 }
@@ -703,13 +794,13 @@ async def get_performance_metrics(
                                             "$in": [
                                                 "$status",
                                                 [
-                                                    TaskStatus.COMPLETED,
-                                                    TaskStatus.COMPLETED_LATE,
+                                                    TaskStatus.COMPLETED.value,
+                                                    TaskStatus.COMPLETED_LATE.value,
                                                 ],
                                             ]
                                         }
                                     },
-                                    {"$not": {"$eq": ["$status", TaskStatus.OVERDUE]}},
+                                    {"$not": {"$eq": ["$status", TaskStatus.OVERDUE.value]}},
                                     {"$gte": ["$deadline", now]},
                                 ]
                             },
