@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Consolidation with $facet and Virtual State
+**Learning:** Consolidating multiple analytical queries (counts, priority distributions, and performance metrics) into a single MongoDB aggregation using `$facet` drastically reduces database round-trips (from 13+ to 5 in this case). Furthermore, implementing 'virtual overdue' logic directly in the pipeline (calculating overdue status on-the-fly based on current time) avoids expensive write side-effects during read-only dashboard fetches.
+**Action:** Use `$facet` to batch independent aggregation results. Use `$project` to compute virtual state (like `is_overdue`) and reuse it across multiple facet branches. Always ensure Enums are serialized to `.value` in these pipelines.
