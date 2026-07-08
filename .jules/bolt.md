@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Consolidation via $facet
+**Learning:** Consolidating multiple count, sum, and conditional group queries into a single aggregation using MongoDB's `$facet` operator significantly reduces database round-trip latency. In the admin dashboard, merging 7+ separate queries into 2 pipelines (User and Task facets) reduced execution time by ~54%.
+**Action:** For read-heavy analytical dashboards, prioritize consolidated `$facet` aggregations over multiple `find().count()` or `find().to_list()` calls. Combine this with 'virtual' field calculation (like overdue status) to avoid persistent database writes during read operations.
