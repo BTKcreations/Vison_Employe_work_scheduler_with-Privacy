@@ -58,84 +58,80 @@ async def get_admin_dashboard(
     visible_ids: Optional[set] = None,
     business_unit_id: Optional[PydanticObjectId] = None,
 ):
-    """Get admin dashboard analytics data with optimized batch queries and hierarchy filtering."""
+    """Get admin dashboard analytics data with highly optimized facet aggregations."""
     if visible_ids is None:
         from app.services.user_service import get_visible_employee_ids
-
         visible_ids = await get_visible_employee_ids(current_user)
 
-    bu_filter = {"business_unit_id": business_unit_id} if business_unit_id is not None else {}
-
-    if visible_ids is not None:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-    else:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-
-    # Get today's attendance stats with a single query
+    # 1. Get today's attendance check-ins
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    att_query = GTE(Attendance.check_in, today_start)
+    att_query = {"check_in": {"$gte": today_start}, "tenant_id": current_user.tenant_id}
     if visible_ids is not None:
-        att_query = {"$and": [att_query, In(Attendance.user_id, list(visible_ids))]}
-    att_query = {"$and": [att_query, {"tenant_id": current_user.tenant_id}]} if "$and" in att_query else {"$and": [att_query, {"tenant_id": current_user.tenant_id}]}
+        att_query["user_id"] = {"$in": list(visible_ids)}
     if business_unit_id is not None:
-        att_query = {"$and": [att_query, {"business_unit_id": business_unit_id}]}
+        att_query["business_unit_id"] = business_unit_id
 
     present_user_ids = await Attendance.distinct("user_id", att_query)
     present_user_ids = [PydanticObjectId(uid) for uid in present_user_ids]
 
-    # Get precise counts for each role and calculate present/absent stats per role using aggregation
-    role_counts = {
-        role.value: {"total": 0, "present": 0, "absent": 0} for role in UserRole
-    }
-    role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
-
-    user_match = NE(User.is_deleted, True)
-    user_match = {"$and": [user_match, {"tenant_id": current_user.tenant_id}]} if isinstance(user_match, dict) else {"$and": [{"is_deleted": {"$ne": True}}, {"tenant_id": current_user.tenant_id}]}
+    # 2. Consolidate ALL User-related data (stats, roles, leaderboard) into one facet
+    user_match = {"is_deleted": {"$ne": True}, "tenant_id": current_user.tenant_id}
     if visible_ids is not None:
-        user_match = {"$and": [user_match, In(User.id, list(visible_ids))]}
+        user_match["_id"] = {"$in": list(visible_ids)}
     if business_unit_id is not None:
-        user_match = {"$and": [user_match, {"business_unit_id": business_unit_id}]}
+        user_match["business_unit_id"] = business_unit_id
 
-    pipeline = [
+    non_admin_role_values = [r.value for r in NON_ADMIN_ROLES]
+
+    user_pipeline = [
         {"$match": user_match},
-        {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
         {
-            "$group": {
-                "_id": "$role",
-                "total": {"$sum": 1},
-                "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
+            "$facet": {
+                "role_stats": [
+                    {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
+                    {
+                        "$group": {
+                            "_id": "$role",
+                            "total": {"$sum": 1},
+                            "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
+                        }
+                    }
+                ],
+                "general_stats": [
+                    {"$match": {"role": {"$in": non_admin_role_values}}},
+                    {
+                        "$group": {
+                            "_id": None,
+                            "total_employees": {"$sum": 1},
+                            "active_employees": {"$sum": {"$cond": ["$is_active", 1, 0]}}
+                        }
+                    }
+                ],
+                "leaderboard": [
+                    {"$match": {"is_active": True, "role": {"$in": non_admin_role_values}}},
+                    {"$sort": {"reward_points": -1}},
+                    {"$limit": 5},
+                    {"$project": {"_id": 1, "name": 1, "email": 1, "reward_points": 1, "role": 1}}
+                ]
             }
-        },
+        }
     ]
 
-    role_stats = await User.aggregate(pipeline).to_list()
-    for stat in role_stats:
+    user_agg = await User.aggregate(user_pipeline).to_list()
+    user_results = user_agg[0] if user_agg else {}
+
+    role_results = user_results.get("role_stats", [])
+    general_results = user_results.get("general_stats", [])
+    lb_results = user_results.get("leaderboard", [])
+
+    total_employees = general_results[0]["total_employees"] if general_results else 0
+    active_employees = general_results[0]["active_employees"] if general_results else 0
+
+    role_counts = {role.value: {"total": 0, "present": 0, "absent": 0} for role in UserRole}
+    role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
+
+    present_non_admin = 0
+    for stat in role_results:
         r_val = stat["_id"]
         role_counts[r_val] = {
             "total": stat["total"],
@@ -145,53 +141,104 @@ async def get_admin_dashboard(
         role_counts["total_all_inclusive"]["total"] += stat["total"]
         role_counts["total_all_inclusive"]["present"] += stat["present"]
         role_counts["total_all_inclusive"]["absent"] += stat["total"] - stat["present"]
+        if r_val in non_admin_role_values:
+            present_non_admin += stat["present"]
 
-    if visible_ids is not None:
-        task_counts = await get_task_counts(user_ids=list(visible_ids), business_unit_id=business_unit_id, tenant_id=current_user.tenant_id)
-        leaderboard = await get_leaderboard(limit=5, user_ids=list(visible_ids), tenant_id=current_user.tenant_id)
-    else:
-        task_counts = await get_task_counts(business_unit_id=business_unit_id, tenant_id=current_user.tenant_id)
-        leaderboard = await get_leaderboard(limit=5, tenant_id=current_user.tenant_id)
+    leaderboard = [
+        {
+            "user_id": str(u["_id"]),
+            "name": u["name"],
+            "email": u["email"],
+            "reward_points": u["reward_points"],
+            "role": u["role"],
+        }
+        for u in lb_results
+    ]
 
-    # Task priority distribution - optimized with single aggregation
-    priority_pipeline = []
-    priority_pipeline.append({"$match": {"tenant_id": current_user.tenant_id}})
+    # 3. Consolidate Task-related data (counts, priority, rewards) into one facet
+    task_match = {"tenant_id": current_user.tenant_id}
     if business_unit_id is not None:
-        priority_pipeline.append({"$match": {"business_unit_id": business_unit_id}})
+        task_match["business_unit_id"] = business_unit_id
     if visible_ids is not None:
-        priority_pipeline.append(
-            {"$match": {"assigned_to": {"$in": list(visible_ids)}}}
-        )
-    priority_pipeline.append({"$group": {"_id": "$priority", "count": {"$sum": 1}}})
+        task_match["assigned_to"] = {"$in": list(visible_ids)}
 
-    priority_results = await Task.aggregate(priority_pipeline).to_list()
+    now = datetime.now(timezone.utc)
+    task_pipeline = [
+        {"$match": task_match},
+        {
+            "$facet": {
+                "status_counts": [
+                    {
+                        "$project": {
+                            "status": {
+                                "$cond": [
+                                    {
+                                        "$and": [
+                                            {"$in": ["$status", [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]]},
+                                            {"$lt": ["$deadline", now]}
+                                        ]
+                                    },
+                                    TaskStatus.OVERDUE.value,
+                                    "$status"
+                                ]
+                            }
+                        }
+                    },
+                    {"$group": {"_id": "$status", "count": {"$sum": 1}}}
+                ],
+                "priority_dist": [
+                    {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+                ],
+                "total_rewards": [
+                    {"$match": {"reward_given": True}},
+                    {"$count": "count"}
+                ]
+            }
+        }
+    ]
+
+    task_agg = await Task.aggregate(task_pipeline).to_list()
+    task_results = task_agg[0] if task_agg else {}
+
+    status_results = task_results.get("status_counts", [])
+    priority_results = task_results.get("priority_dist", [])
+    reward_results = task_results.get("total_rewards", [])
+
+    task_counts = {
+        "total": 0,
+        "completed": 0,
+        "completed_late": 0,
+        "pending": 0,
+        "in_progress": 0,
+        "overdue": 0,
+    }
+    for res in status_results:
+        s = res["_id"]
+        c = res["count"]
+        if s in task_counts:
+            task_counts[s] = c
+        task_counts["total"] += c
+
     priority_dist = {"critical": 0, "high": 0, "medium": 0, "regular": 0}
     for res in priority_results:
-        if res["_id"] in priority_dist:
-            priority_dist[res["_id"]] = res["count"]
+        p = res["_id"]
+        if p in priority_dist:
+            priority_dist[p] = res["count"]
 
-    # Recent activity - optimized with batch user fetching
+    total_rewards = reward_results[0]["count"] if reward_results else 0
+
+    # 4. Recent activity
     if visible_ids is not None:
-        recent_activities = (
-            await ActivityLog.find(
-                In(ActivityLog.user_id, list(visible_ids)),
-                ActivityLog.tenant_id == current_user.tenant_id,
-            )
-            .sort("-timestamp")
-            .limit(10)
-            .to_list()
-        )
+        act_match = {"user_id": {"$in": list(visible_ids)}, "tenant_id": current_user.tenant_id}
     else:
-        recent_activities = (
-            await ActivityLog.find(ActivityLog.tenant_id == current_user.tenant_id)
-            .sort("-timestamp")
-            .limit(10)
-            .to_list()
-        )
+        act_match = {"tenant_id": current_user.tenant_id}
+
+    recent_activities = await ActivityLog.find(act_match).sort("-timestamp").limit(10).to_list()
 
     user_ids = list(set([a.user_id for a in recent_activities]))
-    users = await User.find(In(User.id, user_ids), User.tenant_id == current_user.tenant_id).to_list()
-    user_map = {u.id: u.name for u in users}
+    # Use raw PyMongo projection to avoid Beanie/Pydantic config errors with manual dict projections
+    users = await User.get_pymongo_collection().find({"_id": {"$in": user_ids}}, {"_id": 1, "name": 1}).to_list(length=100)
+    user_map = {u["_id"]: u["name"] for u in users}
 
     activity_list = [
         {
@@ -205,13 +252,14 @@ async def get_admin_dashboard(
         for a in recent_activities
     ]
 
-    # Total rewards given
-    if visible_ids is not None:
-        total_rewards = await Task.find(
-            Task.reward_given == True, Task.tenant_id == current_user.tenant_id, In(Task.assigned_to, list(visible_ids))
-        ).count()
-    else:
-        total_rewards = await Task.find(Task.reward_given == True, Task.tenant_id == current_user.tenant_id).count()
+    # 5. Performance tracking
+    start_date, end_date = get_date_range_for_filter(filter_type, custom_start, custom_end)
+    performance_tracking = await get_performance_metrics(
+        user_ids=list(visible_ids) if visible_ids is not None else None,
+        start_date=start_date,
+        end_date=end_date,
+        tenant_id=current_user.tenant_id,
+    )
 
     return {
         "employees": {
@@ -221,22 +269,15 @@ async def get_admin_dashboard(
         },
         "tasks": task_counts,
         "priority_distribution": priority_dist,
-        "attendance_today": await _get_today_attendance_stats(
-            total_employees, visible_ids, tenant_id=current_user.tenant_id
-        ),
+        "attendance_today": {
+            "present": present_non_admin,
+            "absent": max(0, total_employees - present_non_admin),
+            "total": total_employees
+        },
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
         "total_rewards_given": total_rewards,
-        "performance_tracking": await get_performance_metrics(
-            user_ids=list(visible_ids) if visible_ids is not None else None,
-            start_date=get_date_range_for_filter(filter_type, custom_start, custom_end)[
-                0
-            ],
-            end_date=get_date_range_for_filter(filter_type, custom_start, custom_end)[
-                1
-            ],
-            tenant_id=current_user.tenant_id,
-        ),
+        "performance_tracking": performance_tracking,
     }
 
 
@@ -526,29 +567,6 @@ async def get_all_attendance_summary(
     return summary
 
 
-async def _get_today_attendance_stats(total_employees: int, visible_employee_ids=None, tenant_id: Optional[PydanticObjectId] = None):
-    """Helper to get today's attendance stats using optimized database-level aggregation."""
-    # Using IST for consistent day boundaries.
-    today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
-
-    match_query = GTE(Attendance.check_in, today_start)
-    if tenant_id is not None:
-        match_query = {"$and": [match_query, {"tenant_id": tenant_id}]}
-
-    if visible_employee_ids is not None:
-        if isinstance(match_query, dict) and "$and" in match_query:
-            match_query["$and"].append(In(Attendance.user_id, list(visible_employee_ids)))
-        else:
-            match_query = {
-                "$and": [match_query, In(Attendance.user_id, list(visible_employee_ids))]
-            }
-
-    # Get count of unique users who checked in today
-    present_count = len(await Attendance.distinct("user_id", match_query))
-
-    absent_count = max(0, total_employees - present_count)
-
-    return {"present": present_count, "absent": absent_count, "total": total_employees}
 
 
 def get_date_range_for_filter(

@@ -24,3 +24,11 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-15 - Consolidating Dashboard Metrics with $facet
+**Learning:** Executing multiple separate database queries (count, aggregate, distinct) for a single dashboard view causes significant latency due to repeated round-trips. Consolidating these into one or two $facet pipelines reduces execution time by ~51%.
+**Action:** Use $facet to group multiple analytical operations into a single MongoDB aggregation call. Always handle empty result lists (e.g., `agg_results[0] if agg_results else {}`) to prevent IndexErrors when matches are zero.
+
+## 2026-06-15 - Raw PyMongo Projections for Exports
+**Learning:** Beanie model instantiation and Pydantic validation are heavy overhead for large data sets (e.g., 1000+ tasks in a report). Using raw collection access with field projections is significantly faster.
+**Action:** Use `Model.get_pymongo_collection().find(query, projection)` for read-only operations like CSV/Excel export. Remember to access results via dictionary keys and handle naive/aware datetime conversions manually.
