@@ -24,3 +24,7 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-08 - Dashboard Consolidations & Virtual Overdue
+**Learning:** Consolidating multiple dashboard queries into a single `$facet` aggregation significantly reduces database round-trips and improves performance. Furthermore, read-only GET requests should avoid persistent state changes (like marking tasks overdue in the DB).
+**Action:** Use `$facet` to gather disparate metrics (e.g., status counts vs priority distribution) in one call. Implement "virtual overdue" logic within the aggregation pipeline using `$addFields` and `$cond` to dynamically calculate state-dependent fields without performing database writes.

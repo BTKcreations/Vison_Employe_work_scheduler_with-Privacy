@@ -66,77 +66,70 @@ async def get_admin_dashboard(
 
     bu_filter = {"business_unit_id": business_unit_id} if business_unit_id is not None else {}
 
-    if visible_ids is not None:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            In(User.id, list(visible_ids)),
-            **bu_filter,
-        ).count()
-    else:
-        total_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-        active_employees = await User.find(
-            In(User.role, NON_ADMIN_ROLES),
-            User.is_active == True,
-            User.is_deleted != True,
-            User.tenant_id == current_user.tenant_id,
-            **bu_filter,
-        ).count()
-
     # Get today's attendance stats with a single query
     today_start = ist_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    att_query = GTE(Attendance.check_in, today_start)
+    att_query = {"check_in": {"$gte": today_start}, "tenant_id": current_user.tenant_id}
     if visible_ids is not None:
-        att_query = {"$and": [att_query, In(Attendance.user_id, list(visible_ids))]}
-    att_query = {"$and": [att_query, {"tenant_id": current_user.tenant_id}]} if "$and" in att_query else {"$and": [att_query, {"tenant_id": current_user.tenant_id}]}
+        att_query["user_id"] = {"$in": list(visible_ids)}
     if business_unit_id is not None:
-        att_query = {"$and": [att_query, {"business_unit_id": business_unit_id}]}
+        att_query["business_unit_id"] = business_unit_id
 
-    present_user_ids = await Attendance.distinct("user_id", att_query)
+    present_user_ids = await Attendance.get_pymongo_collection().distinct("user_id", att_query)
     present_user_ids = [PydanticObjectId(uid) for uid in present_user_ids]
 
-    # Get precise counts for each role and calculate present/absent stats per role using aggregation
+    # Consolidate user-related metrics into a single aggregation
+    user_match = {"is_deleted": {"$ne": True}, "tenant_id": current_user.tenant_id}
+    if visible_ids is not None:
+        user_match["_id"] = {"$in": list(visible_ids)}
+    if business_unit_id is not None:
+        user_match["business_unit_id"] = business_unit_id
+
+    non_admin_role_values = [r.value for r in NON_ADMIN_ROLES]
+
+    user_pipeline = [
+        {"$match": user_match},
+        {
+            "$facet": {
+                "total_non_admin": [
+                    {"$match": {"role": {"$in": non_admin_role_values}}},
+                    {"$count": "count"}
+                ],
+                "active_non_admin": [
+                    {"$match": {"role": {"$in": non_admin_role_values}, "is_active": True}},
+                    {"$count": "count"}
+                ],
+                "role_stats": [
+                    {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
+                    {
+                        "$group": {
+                            "_id": "$role",
+                            "total": {"$sum": 1},
+                            "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
+                        }
+                    }
+                ]
+            }
+        }
+    ]
+
+    user_results = await User.aggregate(user_pipeline).to_list()
+    user_data = user_results[0] if user_results else {}
+
+    total_employees = user_data.get("total_non_admin", [{}])[0].get("count", 0) if user_data.get("total_non_admin") else 0
+    active_employees = user_data.get("active_non_admin", [{}])[0].get("count", 0) if user_data.get("active_non_admin") else 0
+
     role_counts = {
         role.value: {"total": 0, "present": 0, "absent": 0} for role in UserRole
     }
     role_counts["total_all_inclusive"] = {"total": 0, "present": 0, "absent": 0}
 
-    user_match = NE(User.is_deleted, True)
-    user_match = {"$and": [user_match, {"tenant_id": current_user.tenant_id}]} if isinstance(user_match, dict) else {"$and": [{"is_deleted": {"$ne": True}}, {"tenant_id": current_user.tenant_id}]}
-    if visible_ids is not None:
-        user_match = {"$and": [user_match, In(User.id, list(visible_ids))]}
-    if business_unit_id is not None:
-        user_match = {"$and": [user_match, {"business_unit_id": business_unit_id}]}
-
-    pipeline = [
-        {"$match": user_match},
-        {"$project": {"role": 1, "is_present": {"$in": ["$_id", present_user_ids]}}},
-        {
-            "$group": {
-                "_id": "$role",
-                "total": {"$sum": 1},
-                "present": {"$sum": {"$cond": ["$is_present", 1, 0]}},
-            }
-        },
-    ]
-
-    role_stats = await User.aggregate(pipeline).to_list()
-    for stat in role_stats:
+    present_non_admin = 0
+    for stat in user_data.get("role_stats", []):
         r_val = stat["_id"]
+        # Ensure role exists in role_counts (might be a string value from DB)
+        if r_val not in role_counts:
+            role_counts[r_val] = {"total": 0, "present": 0, "absent": 0}
+
         role_counts[r_val] = {
             "total": stat["total"],
             "present": stat["present"],
@@ -146,29 +139,78 @@ async def get_admin_dashboard(
         role_counts["total_all_inclusive"]["present"] += stat["present"]
         role_counts["total_all_inclusive"]["absent"] += stat["total"] - stat["present"]
 
+        if r_val in non_admin_role_values:
+            present_non_admin += stat["present"]
+
+    # Consolidate task metrics (status counts and priority distribution)
+    task_match = {"tenant_id": current_user.tenant_id}
+    if business_unit_id is not None:
+        task_match["business_unit_id"] = business_unit_id
     if visible_ids is not None:
-        task_counts = await get_task_counts(user_ids=list(visible_ids), business_unit_id=business_unit_id, tenant_id=current_user.tenant_id)
+        task_match["assigned_to"] = {"$in": list(visible_ids)}
+
+    # Optimized task analytics using "virtual overdue" logic (no persistent DB writes in GET)
+    now = datetime.now(timezone.utc)
+    task_pipeline = [
+        {"$match": task_match},
+        {
+            "$addFields": {
+                "effective_status": {
+                    "$cond": [
+                        {
+                            "$and": [
+                                {"$in": ["$status", [TaskStatus.PENDING.value, TaskStatus.IN_PROGRESS.value]]},
+                                {"$lt": ["$deadline", now]}
+                            ]
+                        },
+                        TaskStatus.OVERDUE.value,
+                        "$status"
+                    ]
+                }
+            }
+        },
+        {
+            "$facet": {
+                "status_counts": [
+                    {"$group": {"_id": "$effective_status", "count": {"$sum": 1}}}
+                ],
+                "priority_dist": [
+                    {"$group": {"_id": "$priority", "count": {"$sum": 1}}}
+                ]
+            }
+        }
+    ]
+
+    task_results = await Task.aggregate(task_pipeline).to_list()
+    task_data = task_results[0] if task_results else {}
+
+    # Initialize defaults for task_counts using Enum values as keys for consistency
+    task_counts = {
+        "total": 0,
+        TaskStatus.COMPLETED.value: 0,
+        TaskStatus.COMPLETED_LATE.value: 0,
+        TaskStatus.PENDING.value: 0,
+        TaskStatus.IN_PROGRESS.value: 0,
+        TaskStatus.OVERDUE.value: 0,
+    }
+    for res in task_data.get("status_counts", []):
+        status = res["_id"]
+        count = res["count"]
+        if status in task_counts:
+            task_counts[status] = count
+        task_counts["total"] += count
+
+    # Initialize defaults for priority_dist
+    priority_dist = {"critical": 0, "high": 0, "medium": 0, "regular": 0}
+    for res in task_data.get("priority_dist", []):
+        p_val = res["_id"]
+        if p_val in priority_dist:
+            priority_dist[p_val] = res["count"]
+
+    if visible_ids is not None:
         leaderboard = await get_leaderboard(limit=5, user_ids=list(visible_ids), tenant_id=current_user.tenant_id)
     else:
-        task_counts = await get_task_counts(business_unit_id=business_unit_id, tenant_id=current_user.tenant_id)
         leaderboard = await get_leaderboard(limit=5, tenant_id=current_user.tenant_id)
-
-    # Task priority distribution - optimized with single aggregation
-    priority_pipeline = []
-    priority_pipeline.append({"$match": {"tenant_id": current_user.tenant_id}})
-    if business_unit_id is not None:
-        priority_pipeline.append({"$match": {"business_unit_id": business_unit_id}})
-    if visible_ids is not None:
-        priority_pipeline.append(
-            {"$match": {"assigned_to": {"$in": list(visible_ids)}}}
-        )
-    priority_pipeline.append({"$group": {"_id": "$priority", "count": {"$sum": 1}}})
-
-    priority_results = await Task.aggregate(priority_pipeline).to_list()
-    priority_dist = {"critical": 0, "high": 0, "medium": 0, "regular": 0}
-    for res in priority_results:
-        if res["_id"] in priority_dist:
-            priority_dist[res["_id"]] = res["count"]
 
     # Recent activity - optimized with batch user fetching
     if visible_ids is not None:
@@ -221,9 +263,11 @@ async def get_admin_dashboard(
         },
         "tasks": task_counts,
         "priority_distribution": priority_dist,
-        "attendance_today": await _get_today_attendance_stats(
-            total_employees, visible_ids, tenant_id=current_user.tenant_id
-        ),
+        "attendance_today": {
+            "present": present_non_admin,
+            "absent": max(0, total_employees - present_non_admin),
+            "total": total_employees
+        },
         "leaderboard": leaderboard,
         "recent_activity": activity_list,
         "total_rewards_given": total_rewards,
