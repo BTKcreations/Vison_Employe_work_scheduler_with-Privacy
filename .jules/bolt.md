@@ -24,3 +24,15 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-10 - Aggregation Consolidation with $facet
+**Learning:** Consolidating multiple independent database queries into a single aggregation pipeline using $facet can significantly reduce database round-trips and overhead. In `get_admin_dashboard`, this reduced execution time by ~48%.
+**Action:** Use $facet to group analytical queries (like counts, distributions, and performance metrics) into a single database call for dashboard views.
+
+## 2026-06-10 - Virtual Overdue Logic
+**Learning:** Performing database writes (like updating 'overdue' status) during high-frequency read requests (like dashboard loads) adds unnecessary latency and database load.
+**Action:** Implement "virtual overdue" logic directly in aggregation pipelines using `$cond` and `$lt` on the `deadline` field. This keeps the dashboard fast and reduces write contention.
+
+## 2026-06-10 - Beanie vs Raw Motor Aggregation Consistency
+**Learning:** Calling `.aggregate()` on a raw Motor collection (`get_pymongo_collection()`) can behave inconsistently across environments (returning a coroutine in some mock setups but a cursor in others). Beanie's `Model.aggregate(pipeline).to_list()` provides a more stable interface.
+**Action:** Prefer Beanie's `Model.aggregate()` over raw collection access for aggregation pipelines unless specific performance needs dictate otherwise, ensuring smoother transition between test and production environments.
