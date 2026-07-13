@@ -19,7 +19,15 @@
 
 ## 2026-06-05 - Batch Overdue Task Updates
 **Learning:** The previous implementation of `get_tasks` performed an O(N) loop to check and update each task's overdue status individually using `await task.set()`. This caused severe performance degradation (up to 12s for just 50 tasks) as each update triggered a separate database round-trip.
-**Action:** Replace sequential updates in loops with a single `update_many` operation using `Model.find(query).update({"$set": {...}})`. This reduced execution time by ~94% in benchmarks.
+**Action:** While `update_many` is better than N updates, for high-frequency read paths like dashboards, implement "virtual overdue" logic directly in aggregation pipelines using `$cond` to avoid write operations entirely during reads.
+
+## 2026-06-10 - Dashboard Aggregation via $facet
+**Learning:** Sequential database calls for related metrics (counts, leaderboard, distributions) cause significant latency due to round-trips.
+**Action:** Use MongoDB `$facet` to consolidate multiple analytical queries into a single database round-trip. This achieved a verified ~70% speedup for the admin dashboard.
+
+## 2026-06-10 - MongoDB Null Handling in Date Comparisons
+**Learning:** MongoDB's `$lte` operator treats `null` as smaller than any date. Comparing a potentially null `completed_at` to a `deadline` results in false positives for on-time completion.
+**Action:** Always include an explicit null check (e.g., `{"$gt": ["$completed_at", null]}`) when performing date-based logic in aggregation pipelines.
 
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
