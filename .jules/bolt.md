@@ -24,3 +24,11 @@
 ## 2026-06-05 - Push RBAC and Hierarchy Filtering to Database
 **Learning:** Fetching all tasks into memory to filter by hierarchy (e.g., `[t for t in all_tasks if t.assigned_to in visible_ids]`) is a major scalability bottleneck.
 **Action:** Extend service signatures to accept collections of IDs (e.g., `user_ids: List[PydanticObjectId]`) and use database-level operators like `In` and `Or` to perform the filtering at the database layer.
+
+## 2026-06-10 - Dashboard Consolidation with $facet
+**Learning:** Sequential calls to `.count()` and separate `.aggregate()` pipelines for related metrics create unnecessary database round-trips. Consolidating these into a single `$facet` stage allows MongoDB to process multiple analytical pipelines in one pass over the data.
+**Action:** Use `$facet` in dashboard services to group headcounts, status distributions, and performance metrics. Re-use results (e.g., deriving attendance percentages from role counts) to eliminate redundant queries.
+
+## 2026-06-10 - Virtual Overdue Logic
+**Learning:** Performing `update_many` to mark tasks as overdue during a dashboard read operation is a hidden performance killer. It introduces write lock contention and redundant IO on every page load.
+**Action:** Implement "virtual overdue" logic inside the aggregation pipeline using `$cond` to treat `PENDING` tasks past their deadline as `OVERDUE` for reporting purposes. Reserve physical status updates for background workers or state-transition events.
