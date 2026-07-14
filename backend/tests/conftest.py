@@ -33,8 +33,36 @@ from pymongo import AsyncMongoClient
 
 @pytest_asyncio.fixture(autouse=True)
 async def db():
-    mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-    client = AsyncMongoClient(mongodb_url)
+    from app.config import settings
+    if os.getenv("ALLOW_IN_MEMORY_DB_FALLBACK") == "True":
+        import mongomock
+        orig_list_collection_names = mongomock.Database.list_collection_names
+        def patched_list_collection_names(self, filter=None, session=None, *args, **kwargs):
+            return orig_list_collection_names(self, filter=filter, session=session)
+        mongomock.Database.list_collection_names = patched_list_collection_names
+        from mongomock_motor import AsyncMongoMockClient
+        client = AsyncMongoMockClient(tz_aware=True)
+    else:
+        mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+        client = AsyncMongoClient(mongodb_url)
+
+    import asyncio
+    import beanie.odm.queries.aggregation
+
+    # Patch Beanie to support mongomock_motor's aggregate return type
+    orig_get_cursor = beanie.odm.queries.aggregation.AggregationQuery.get_cursor
+    async def patched_get_cursor(self):
+        res = self.document_model.get_pymongo_collection().aggregate(
+            self.aggregation_pipeline, session=self.session, **self.pymongo_kwargs
+        )
+        if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+            try:
+                return await res
+            except TypeError:
+                return res
+        return res
+    beanie.odm.queries.aggregation.AggregationQuery.get_cursor = patched_get_cursor
+
     await init_beanie(database=client.test_db_fixes, document_models=[
         User, Task, ActivityLog, Tenant, Company, Attendance, Holiday, 
         RecurrenceRule, Notification, Category, Leave, LeaveBalance, 
