@@ -64,7 +64,21 @@ async def _get_task_data(
 
     query = await _scope_tasks(query, tenant_id)
 
-    tasks = await Task.find(query).sort("-created_at").to_list()
+    # Performance Optimization: Using raw PyMongo collection access and projections to bypass Beanie/Pydantic overhead.
+    projection = {
+        "assigned_to_name": 1,
+        "company_name": 1,
+        "category_names": 1,
+        "work_description": 1,
+        "priority": 1,
+        "deadline": 1,
+        "completed_at": 1,
+        "status": 1,
+        "remarks": 1,
+        "created_at": 1,
+        "created_by_name": 1
+    }
+    tasks = await Task.get_pymongo_collection().find(query, projection).sort("created_at", -1).to_list(length=100000)
 
     rows = []
     # Determine timezone for formatting
@@ -74,15 +88,27 @@ async def _get_task_data(
         """Format datetime in local timezone if provided."""
         if dt is None:
             return ""
+        # Ensure UTC awareness if needed (raw MongoDB dates might be naive or UTC)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
         if tz:
-            dt = dt.replace(tzinfo=timezone.utc).astimezone(tz)
+            dt = dt.astimezone(tz)
         return dt.strftime("%d-%m-%Y %H:%M:%S")
 
     for i, task in enumerate(tasks, 1):
         # Calculate Time Variance (Deadline - Completed Time)
         time_variance = ""
-        if task.completed_at:
-            variance = task.deadline - task.completed_at
+        completed_at = task.get("completed_at")
+        deadline = task.get("deadline")
+
+        if completed_at and deadline:
+            # Ensure naive dates are treated as UTC for subtraction
+            if completed_at.tzinfo is None:
+                completed_at = completed_at.replace(tzinfo=timezone.utc)
+            if deadline.tzinfo is None:
+                deadline = deadline.replace(tzinfo=timezone.utc)
+
+            variance = deadline - completed_at
             hours = variance.total_seconds() / 3600
             if hours > 0:
                 time_variance = f"{hours:.1f}h Early"
@@ -90,23 +116,27 @@ async def _get_task_data(
                 time_variance = f"{abs(hours):.1f}h Late"
 
         # Format Remarks (Join all remark texts)
-        remarks_str = " | ".join([r.get("text", "") for r in task.remarks]) if task.remarks else ""
+        remarks = task.get("remarks")
+        remarks_str = " | ".join([r.get("text", "") for r in remarks]) if remarks else ""
+
+        status = task.get("status", "")
+        priority = task.get("priority", "")
 
         rows.append({
             "s.no": i,
-            "employee name": task.assigned_to_name or "Unknown",
-            "company name": task.company_name or "Personal / Internal",
-            "category": ", ".join(task.category_names) if task.category_names else "",
-            "work description": task.work_description,
-            "work priority": task.priority.value.capitalize(),
-            "dead-line": fmt_dt(task.deadline),
-            "completed time": fmt_dt(task.completed_at) if task.completed_at else "",
+            "employee name": task.get("assigned_to_name") or "Unknown",
+            "company name": task.get("company_name") or "Personal / Internal",
+            "category": ", ".join(task.get("category_names", [])) if task.get("category_names") else "",
+            "work description": task.get("work_description", ""),
+            "work priority": priority.capitalize() if priority else "",
+            "dead-line": fmt_dt(deadline),
+            "completed time": fmt_dt(completed_at) if completed_at else "",
             "Time variance": time_variance,
-            "Status": task.status.value.capitalize(),
+            "Status": status.capitalize() if status else "",
             "Remarks": remarks_str,
-            "points": 1 if task.status == "completed" else 0,
-            "created time": fmt_dt(task.created_at),
-            "Assigned by": task.created_by_name or "Unknown"
+            "points": 1 if status == "completed" else 0,
+            "created time": fmt_dt(task.get("created_at")),
+            "Assigned by": task.get("created_by_name") or "Unknown"
         })
 
     df = pd.DataFrame(rows)
