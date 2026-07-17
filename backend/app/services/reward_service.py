@@ -143,32 +143,39 @@ async def get_leaderboard(
     tenant_id: Optional[PydanticObjectId] = None,
 ):
     """Get top employees by reward points (all non-admin roles). Filtered by user_ids list if provided."""
+    # Performance Optimization: Using raw PyMongo collection access and projections
+    # to bypass Beanie overhead and Pydantic model validation.
     from app.models.user import UserRole
-    from beanie.operators import In
-    NON_ADMIN_ROLES = [
-        UserRole.HR_MANAGER,
-        UserRole.ASSISTANT_HR_MANAGER,
-        UserRole.MANAGER,
-        UserRole.ASSISTANT_MANAGER,
-        UserRole.EMPLOYEE,
-    ]
-    query_conditions = [User.is_active == True]
+
+    query = {
+        "is_active": True,
+        "is_deleted": {"$ne": True}
+    }
     if tenant_id is not None:
-        query_conditions.append(User.tenant_id == tenant_id)
+        query["tenant_id"] = tenant_id
     if user_ids is not None:
-        query_conditions.append(In(User.id, user_ids))
+        query["_id"] = {"$in": [PydanticObjectId(uid) for uid in user_ids]}
     else:
-        query_conditions.append(In(User.role, NON_ADMIN_ROLES))
+        query["role"] = {"$in": [
+            UserRole.HR_MANAGER.value,
+            UserRole.ASSISTANT_HR_MANAGER.value,
+            UserRole.MANAGER.value,
+            UserRole.ASSISTANT_MANAGER.value,
+            UserRole.EMPLOYEE.value,
+        ]}
 
-
-    employees = await User.find(*query_conditions).sort("-reward_points").limit(limit).to_list()
+    user_collection = User.get_pymongo_collection()
+    employees = await user_collection.find(
+        query,
+        projection={"_id": 1, "name": 1, "email": 1, "reward_points": 1}
+    ).sort("reward_points", -1).limit(limit).to_list(length=limit)
 
     return [
         {
-            "id": str(emp.id),
-            "name": emp.name,
-            "email": emp.email,
-            "reward_points": emp.reward_points,
+            "id": str(emp["_id"]),
+            "name": emp.get("name"),
+            "email": emp.get("email"),
+            "reward_points": emp.get("reward_points", 0.0),
         }
         for emp in employees
     ]
